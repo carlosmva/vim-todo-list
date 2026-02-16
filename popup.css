@@ -1,0 +1,663 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  /* Use a moderate intrinsic width that Chrome popups typically honor. */
+  width: 720px;
+  /* Chrome popup has a practical max height (~600px). Oversizing forces a page scrollbar. */
+  height: 600px;
+  overflow: hidden !important;
+  background: var(--cds-layer, #f4f4f4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: 10px 10px 6px;
+}
+
+.headerRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.headerLinks {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.headerLink {
+  font-size: 12px;
+  font-family: var(
+    --cds-font-family-mono,
+    "RedHatMono",
+    "Red Hat Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace
+  );
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+.headerLink:hover {
+  text-decoration: underline;
+}
+
+.headerLink:focus,
+.headerLink:focus-visible {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+  border-radius: 3px;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+/* Monospaced link-style action controls (buttons semantically, links visually) */
+.monoLinkButton {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  font-family: var(
+    --cds-font-family-mono,
+    "RedHatMono",
+    "Red Hat Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace
+  );
+  cursor: pointer;
+  text-decoration: none;
+  text-underline-offset: 2px;
+  border-radius: 3px;
+}
+
+.monoLinkButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/* Action emphasis on highlight (keyboard focus / hover) */
+.monoLinkButton[data-action="deleteLink"]:hover:not(:disabled),
+.monoLinkButton[data-action="deleteLink"]:focus:not(:disabled),
+.monoLinkButton[data-action="deleteLink"]:focus-visible:not(:disabled),
+.monoLinkButton[data-action="deleteNote"]:hover:not(:disabled),
+.monoLinkButton[data-action="deleteNote"]:focus:not(:disabled),
+.monoLinkButton[data-action="deleteNote"]:focus-visible:not(:disabled) {
+  /* Carbon error color fallback when --cds-support-error isn't defined */
+  color: var(--cds-support-error, #da1e28);
+}
+
+.monoLinkButton[data-action="complete"]:hover:not(:disabled),
+.monoLinkButton[data-action="complete"]:focus:not(:disabled),
+.monoLinkButton[data-action="complete"]:focus-visible:not(:disabled) {
+  /* Carbon success color fallback when --cds-support-success isn't defined */
+  color: var(--cds-support-success, #198038);
+}
+
+.monoLinkButton:active:not(:disabled) {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.monoLinkButton:focus {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.monoLinkButton:focus-visible {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.monoLinkButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.manageTabsMessage {
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.manageTabsAdd {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.manageTabsAdd input {
+  flex: 1;
+}
+
+.manageTabsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.manageTabsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manageTabsName {
+  font-weight: 600;
+}
+
+.headerTitle {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.body {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view[hidden] {
+  display: none !important;
+}
+
+.instructionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+
+.instructionsTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.instructionsContent {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer);
+}
+
+.instructionsContent h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.instructionsContent ul {
+  margin: 0 0 12px;
+}
+
+.instructionsContent kbd {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  white-space: nowrap;
+}
+
+.instructionsContent .keycapSep {
+  display: inline-block;
+  padding: 0 4px;
+}
+
+.create {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: end;
+}
+
+.createButtons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.createButtonsLeft,
+.createButtonsRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.tabs {
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+/* Carbon tabs: make them compact and allow wrapping so they fit popup width */
+.tabs .bx--tabs__nav {
+  display: grid;
+  /* We have 6 boards; keep tabs in a single row. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+}
+
+.tabs .bx--tabs__nav-item {
+  height: auto;
+  width: auto;
+}
+
+.tabs .bx--tabs__nav-link {
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board {
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+@media (max-width: 860px) {
+  .board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create {
+    grid-template-columns: 1fr;
+  }
+
+  .create button {
+    width: auto;
+    justify-self: end;
+  }
+
+  .linkForm {
+    grid-template-columns: 1fr;
+  }
+}
+
+.col {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.colTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+  padding-right: 4px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Card flipping (minimal custom CSS; PatternFly handles base visuals) */
+.noteCard {
+  perspective: 1000px;
+  min-height: 96px;
+  min-width: 0;
+  padding: 0;
+}
+
+/* When showing the back (attachments) side, give the card a stable height so
+   the action buttons row is never pushed out of view. */
+.noteCard.is-flipped {
+  height: 320px;
+}
+
+.noteCardInner {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  transform-style: preserve-3d;
+  transition: transform 160ms ease;
+}
+
+.noteCard.is-flipped .noteCardInner {
+  height: 100%;
+}
+
+.noteCard.is-flipped .noteCardInner {
+  transform: rotateY(180deg);
+}
+
+.noteFace {
+  backface-visibility: hidden;
+  grid-area: 1 / 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.noteBack {
+  transform: rotateY(180deg);
+  min-height: 0;
+}
+
+/* In flipped state, absolutely stack faces to prevent interactions with the
+   underlying front-side buttons (move/notes/etc). */
+.noteCard.is-flipped .noteCardInner {
+  position: relative;
+}
+
+.noteCard.is-flipped .noteFace {
+  position: absolute;
+  inset: 0;
+}
+
+.noteCard.is-flipped .noteBack {
+  z-index: 2;
+}
+
+.noteCard.is-flipped .noteFace:not(.noteBack) {
+  z-index: 1;
+}
+
+.noteCard:not(.is-flipped) .noteBack {
+  pointer-events: none;
+}
+
+.noteCard.is-flipped .noteFace {
+  pointer-events: none;
+}
+
+.noteCard.is-flipped .noteBack {
+  pointer-events: auto;
+}
+
+.linkList {
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.linkRow a {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.linkForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.noteText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 10px;
+}
+
+/* Priority styling (color-code note text)
+   low: black, normal: blue, high: red */
+.noteCard[data-priority="low"] .noteText {
+  color: #161616;
+}
+
+.noteCard[data-priority="normal"] .noteText {
+  color: #0f62fe;
+}
+
+.noteCard[data-priority="high"] .noteText {
+  color: #da1e28;
+}
+
+.noteAttachments {
+  padding: 0 10px 10px;
+  font-size: 12px;
+}
+
+.noteAttachmentsTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+
+/* Front-side attachments preview: compact pills, bounded height so
+   the card action buttons don't get pushed/clipped as links grow. */
+.noteAttachmentsItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 52px;
+  overflow: hidden;
+}
+
+.attachmentPill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 9999px;
+  background: var(--cds-layer);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentPill:hover {
+  text-decoration: underline;
+}
+
+.attachmentPill:focus,
+.attachmentPill:focus-visible {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.noteAttachmentsMore {
+  opacity: 0.8;
+}
+
+.noteEditor {
+  padding: 0 10px 10px;
+}
+
+.noteEditorToolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  align-items: center;
+}
+
+.noteVimIndicator {
+  margin-left: auto;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 3px;
+  background: var(--cds-layer);
+  opacity: 0.85;
+  user-select: none;
+}
+
+.noteVimIndicator.is-normal {
+  font-weight: 600;
+}
+
+.noteLineCheckbox {
+  margin-right: 6px;
+}
+
+.noteEditorArea {
+  min-height: 84px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer);
+}
+
+.noteEditorArea:focus {
+  outline: 2px solid var(--cds-focus);
+  outline-offset: 2px;
+}
+
+/* Make sure rich-text formatting is visually apparent inside the editor */
+.noteEditorArea b,
+.noteEditorArea strong {
+  font-weight: 600;
+}
+
+.noteEditorArea i,
+.noteEditorArea em {
+  font-style: italic;
+}
+
+.noteEditorArea u {
+  text-decoration: underline;
+}
+
+.noteEditorArea ul,
+.noteEditorArea ol {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+
+.noteActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.noteBackBody {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.noteBackBody hr {
+  margin: 6px 0;
+}
+
+/* Keep the add-link controls compact and at the top. */
+.noteBackBody .linkForm {
+  margin-top: 2px;
+}
+
+.noteBackButtonsRow {
+  margin-top: 0;
+}
+
+.noteCard.is-flipped .noteBackBody {
+  flex: 1;
+}
+
+.noteBackButtonsRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+
+/* Make focus state clearly visible on the attachments controls */
+.noteBackButtonsRow .monoLinkButton:focus,
+.noteBackButtonsRow .monoLinkButton:focus-visible {
+  outline: 2px solid currentColor !important;
+  outline-color: var(--cds-focus, currentColor) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 2px var(--cds-focus, currentColor) !important;
+  position: relative;
+  z-index: 1;
+}
+
+.is-dragging {
+  opacity: 0.6;
+}

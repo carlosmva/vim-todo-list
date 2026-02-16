@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notes Kanban</title>
+    <link rel="stylesheet" href="vendor/carbon.min.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body class="bx--body">
+    <div class="app" role="application" aria-label="Notes Kanban">
+      <header class="header" aria-label="Header">
+        <div class="headerRow">
+          <div class="headerTitle">Notes</div>
+          <div class="headerLinks" aria-label="Header links">
+            <a id="manageTabsLink" class="headerLink" href="#" aria-label="Manage Tabs">Manage Tabs</a>
+            <button id="keyLayoutToggle" class="monoLinkButton" type="button" aria-label="Keyboard layout"></button>
+            <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="body">
+        <div id="notesView" class="view" aria-label="Notes view">
+          <form id="createForm" class="create" aria-label="Create note">
+            <div class="bx--form-item">
+              <label class="bx--label" for="noteText">New note</label>
+              <input
+                id="noteText"
+                class="bx--text-input"
+                type="text"
+                placeholder="New note…"
+                maxlength="300"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="createButtons" aria-label="Actions">
+              <div class="createButtonsLeft">
+                <button id="exportDbBtn" class="monoLinkButton" type="button">
+                  Export DB
+                </button>
+                <button id="importDbBtn" class="monoLinkButton" type="button">
+                  Import DB
+                </button>
+                <input id="importDbFile" type="file" accept=".db,.sqlite,.sqlite3,.bin" hidden />
+              </div>
+
+              <div class="createButtonsRight">
+                <button id="exportBtn" class="monoLinkButton" type="button">
+                  Export CSV
+                </button>
+                <button class="monoLinkButton" type="submit">Add</button>
+              </div>
+            </div>
+          </form>
+
+          <nav class="bx--tabs bx--tabs--container tabs" aria-label="Boards">
+            <ul id="boardTabs" class="bx--tabs__nav" role="tablist" aria-label="Boards">
+            </ul>
+          </nav>
+
+          <main class="board" aria-label="Notes board">
+            <section class="col bx--tile" aria-label="Pending column">
+              <div class="colTitle">Pending (<span id="pendingCount">0</span>)</div>
+              <div id="pendingList" class="list" aria-label="Pending notes"></div>
+            </section>
+
+            <section class="col bx--tile" aria-label="Complete column">
+              <div class="colTitle">Complete (<span id="completeCount">0</span>)</div>
+              <div id="completeList" class="list" aria-label="Complete notes"></div>
+            </section>
+          </main>
+        </div>
+
+        <div id="instructionsView" class="view" aria-label="Instructions" hidden>
+          <div class="instructionsHeader">
+            <div class="instructionsTitle">Instructions</div>
+            <button id="closeInstructionsBtn" class="monoLinkButton" type="button">
+              Close
+            </button>
+          </div>
+          <div id="instructionsContent" class="instructionsContent"></div>
+        </div>
+
+        <div id="manageTabsView" class="view" aria-label="Manage Tabs" hidden>
+          <div class="instructionsHeader">
+            <div class="instructionsTitle">Manage Tabs</div>
+            <button id="closeManageTabsBtn" class="monoLinkButton" type="button">
+              Close
+            </button>
+          </div>
+          <div class="instructionsContent">
+            <div id="manageTabsMessage" class="manageTabsMessage" aria-live="polite"></div>
+
+            <form id="addTabForm" class="manageTabsAdd" aria-label="Add tab">
+              <input
+                id="addTabName"
+                class="bx--text-input"
+                type="text"
+                placeholder="New tab name…"
+                maxlength="30"
+                autocomplete="off"
+                required
+              />
+              <button class="monoLinkButton" type="submit">Add</button>
+            </form>
+
+            <div id="tabsList" class="manageTabsList" aria-label="Tabs list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- sql.js (SQLite WASM) will be copied into vendor/ -->
+    <script src="vendor/sql-wasm.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

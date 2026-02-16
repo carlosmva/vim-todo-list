@@ -1,0 +1,18 @@
+{
+  "name": "vim-todo-list",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Chrome extension vim-todo-list persisted with SQLite (sql.js)",
+  "type": "commonjs",
+  "scripts": {
+    "vendor": "node scripts/copy-sqljs.js",
+    "icons": "node scripts/generate-icons.js"
+  },
+  "dependencies": {
+    "carbon-components": "^10.58.12",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.5"
+  }
+}
