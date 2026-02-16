@@ -1002,8 +1002,7 @@ async function main() {
       <h3>Notes editor</h3>
       <ul>
         <li>${keycap(":x")}: close notes editor</li>
-        <li>${combo("Alt", fmt(checkboxKey))}: insert/toggle a checkbox at start of line</li>
-        <li><b>Backspace/Delete</b>: remove a checkbox when at line start</li>
+        <li>${combo("Alt", fmt(checkboxKey))}: toggle crossed-out (strikethrough) text for the line</li>
         <li>${keycap("Esc")}: exit insert mode (then Esc again closes notes)</li>
       </ul>
     `;
@@ -1832,42 +1831,29 @@ async function main() {
       (editor.firstElementChild instanceof HTMLElement ? editor.firstElementChild : null) ||
       editor;
 
-    const firstMeaningfulChild = (() => {
-      for (const n of block.childNodes) {
-        if (n.nodeType === Node.TEXT_NODE) {
-          const t = n.nodeValue || "";
-          if (!/^\s*$/.test(t)) return n;
-          continue;
-        }
-        return n;
+    // Look for the first <s> (strikethrough) element in the block
+    let strike = null;
+    for (let n = block.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === Node.ELEMENT_NODE && n.tagName === "S") {
+        strike = n;
+        break;
       }
-      return null;
-    })();
-
-    if (
-      firstMeaningfulChild instanceof HTMLInputElement &&
-      firstMeaningfulChild.type === "checkbox" &&
-      firstMeaningfulChild.classList.contains("noteLineCheckbox")
-    ) {
-      firstMeaningfulChild.checked = !firstMeaningfulChild.checked;
+    }
+    if (strike) {
+      // Remove strikethrough (replace <s> with its text content)
+      const text = document.createTextNode(strike.textContent || "");
+      block.replaceChild(text, strike);
       editor.dispatchEvent(new Event("input", { bubbles: true }));
       return;
     }
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "noteLineCheckbox";
-    checkbox.setAttribute("aria-label", "Task checkbox");
-    checkbox.setAttribute("contenteditable", "false");
-
-    const space = document.createTextNode(" ");
-
-    // Insert at the beginning of the current block.
-    block.insertBefore(checkbox, block.firstChild);
-    block.insertBefore(space, checkbox.nextSibling);
-
-    // Place caret after the checkbox + space.
-    collapseSelectionToAfterNode(space);
+    // If not found, wrap the entire line in <s>
+    const lineText = block.textContent || "";
+    // Remove all children
+    while (block.firstChild) block.removeChild(block.firstChild);
+    const s = document.createElement("s");
+    s.textContent = lineText;
+    block.appendChild(s);
     editor.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
@@ -2156,7 +2142,13 @@ async function main() {
 
       // Alt+<layout key> (within notes): insert/toggle checkbox at line start.
       const checkboxKey = getNotesCheckboxKey(keyLayout);
-      if (e.altKey && !e.ctrlKey && !e.metaKey && key === checkboxKey) {
+      if (
+        inNotesUi &&
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        key === checkboxKey
+      ) {
         const editor = activeEl instanceof Element ? activeEl.closest(".noteEditorArea") : null;
         if (editor instanceof HTMLElement) {
           e.preventDefault();
@@ -2167,17 +2159,33 @@ async function main() {
         }
       }
 
-      // While in notes, avoid side-to-side Alt navigation.
+      // While in notes, Alt+<nav key> should move caret in insert mode, not trigger navigation
       if (
         inNotesUi &&
         e.altKey &&
         !e.ctrlKey &&
         !e.metaKey &&
-        (key === nav.left || key === nav.right)
+        (key === nav.left || key === nav.right || key === nav.up || key === nav.down)
       ) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
+        // Do not handle navigation if this is the checkbox key (let the checkbox handler above run it)
+        if (key === checkboxKey) return;
+        let noteEditor = activeEl instanceof Element ? activeEl.closest('.noteEditorArea') : null;
+        let noteId = noteEditor ? getNoteIdFromEditor(noteEditor) : null;
+        let mode = noteId !== null ? vimGetMode(noteId) : null;
+        if (mode === 'insert' && noteEditor) {
+          // Move caret in the appropriate direction
+          e.preventDefault();
+          e.stopPropagation();
+          if (key === nav.left) moveSelection('left', 'character');
+          else if (key === nav.right) moveSelection('right', 'character');
+          else if (key === nav.up) moveSelection('up', 'line');
+          else if (key === nav.down) moveSelection('down', 'line');
+          return;
+        } else if (mode !== 'insert') {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
       }
 
       // Notes exit command: :x
@@ -2489,16 +2497,38 @@ async function main() {
         return;
       }
 
-      if (key === nav.left || key === nav.right) {
-        e.preventDefault();
-        e.stopPropagation();
+      // Always allow physical arrow keys to move the cursor in notes editors
+      if (
+        key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown'
+      ) {
         const activeEl = document.activeElement;
-        const card = getCardFromElement(activeEl);
-        if (!card) {
-          moveGlobalFocus(key === nav.left ? -1 : +1);
+        const noteEditor = activeEl instanceof Element ? activeEl.closest('.noteEditorArea') : null;
+        if (noteEditor) {
+          // Never block arrow keys in notes editor
           return;
         }
-        moveButtonFocusWithinCard(card, key === nav.left ? -1 : +1);
+      }
+
+      // Only handle Vim-style navigation keys if not in a notes editor in insert mode
+      if (key === nav.left || key === nav.right || key === nav.up || key === nav.down) {
+        const activeEl = document.activeElement;
+        const noteEditor = activeEl instanceof Element ? activeEl.closest('.noteEditorArea') : null;
+        let noteId = noteEditor ? getNoteIdFromEditor(noteEditor) : null;
+        let mode = noteId !== null ? vimGetMode(noteId) : null;
+        if (noteEditor && mode === 'insert') {
+          // Let browser handle Vim-style navigation keys in insert mode
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        const card = getCardFromElement(activeEl);
+        if (!card) {
+          moveGlobalFocus(
+            key === nav.left ? -1 : key === nav.right ? +1 : key === nav.up ? -1 : +1
+          );
+          return;
+        }
+        moveButtonFocusWithinCard(card, key === nav.left ? -1 : key === nav.right ? +1 : key === nav.up ? -1 : +1);
       }
     },
     true

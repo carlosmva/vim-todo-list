@@ -40,6 +40,13 @@ Chrome extension popup for fast, keyboard-first task notes stored locally in an 
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
 - A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
 
+## Notes Editor Shortcuts
+
+- **Toggle crossed-out (strikethrough) text for the line:**
+   - QWERTY: <kbd>Alt</kbd>+<kbd>H</kbd>
+   - DVORAK: <kbd>Alt</kbd>+<kbd>D</kbd>
+- Other navigation and editing shortcuts are shown in the in-app Instructions view.
+
 ## Data storage
 
 - Notes are stored in a SQLite DB (sql.js) persisted in `chrome.storage.local`.
