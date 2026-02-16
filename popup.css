@@ -42,6 +42,7 @@ body {
 
 .headerLink {
   font-size: 12px;
+  display: inline-block;
   font-family: var(
     --cds-font-family-mono,
     "RedHatMono",
@@ -57,6 +58,15 @@ body {
   );
   text-decoration: none;
   text-underline-offset: 2px;
+
+  /* Allow using this class on <button> as well as <a> */
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
 }
 
 .headerLink:hover {

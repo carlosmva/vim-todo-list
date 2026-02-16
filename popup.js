@@ -2790,15 +2790,19 @@ async function main() {
             boards = queryBoards(db);
           }
 
-          if (!boards.includes(activeBoard)) {
-            activeBoard = boards[0];
-            await saveActiveBoard(activeBoard);
-          }
+          // After import, reset to the first tab so the UI is deterministic.
+          activeBoard = boards[0];
+          await saveActiveBoard(activeBoard);
 
           renderBoardTabs(boards, activeBoard);
           setActiveTabUi(activeBoard);
           await persist();
           await refresh();
+
+          // Keep focus on the first tab after import.
+          const boardTabs = document.getElementById("boardTabs");
+          const firstTab = boardTabs?.querySelector("[role='tab'][data-board]");
+          if (firstTab instanceof HTMLElement) safeFocus(firstTab);
         } catch (err) {
           console.error(err);
           alert("Import failed. Please choose a valid exported .sqlite/.db file.");

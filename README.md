@@ -1,18 +1,26 @@
-# vim-todo-list (Chrome extension + SQLite)
+# vim-todo-list
 
-A minimal Chrome Extension (Manifest V3) that stores notes in a SQLite database (via `sql.js` / WebAssembly) and persists the DB in `chrome.storage.local`.
+Chrome extension popup for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly).
 
-UI styling is provided by IBM Carbon (CSS) vendored locally.
+## Features
 
-## Setup
+- Two columns per board: **Pending** and **Complete**
+- Multiple **boards** via tabs
+- Per-card actions row: **Priority**, **Attachments**, **Notes**, **Delete**, **Mark complete / Move to pending**
+- Priority levels: `low`, `normal`, `high`
+  - Text colors: low = black, normal = blue, high = red
+  - Cards are always ordered by priority (high → normal → low)
+- Export/Import
+  - **Export DB** / **Import DB** for full fidelity
+  - **Export CSV** with readable values (dates as `MM/DD/YYYY`, `notes_html` exported as readable text)
 
-1. Install dependencies (pulls `sql.js`):
+## Install (unpacked)
+
+1. Install dependencies:
    - `npm install`
-
-2. Copy sql.js build artifacts into `vendor/`:
+2. Ensure the sql.js vendor files are present:
    - `npm run vendor`
-
-3. Load unpacked extension in Chrome:
+3. Load the extension:
    - Open `chrome://extensions`
    - Enable **Developer mode**
    - Click **Load unpacked**
@@ -20,13 +28,24 @@ UI styling is provided by IBM Carbon (CSS) vendored locally.
 
 ## Usage
 
-- Add a note in the input.
-- Click **Mark complete** / **Move to pending** to move it between columns.
-- Use the tabs (eQuotes, Signatures, KO, Approvals, Alignments, Tools) as separate boards.
-- Click **Attachments** on a card to flip to the back, and **Back** to return.
-- Add links with a **description** + **URL**; the list shows the description and links to the URL.
-- Use **Delete** to remove a saved link.
+- Type a note in **New note** and click **Add**.
+- Use **Mark complete** / **Move to pending** to move cards between columns.
+- Use **Attachments** to flip the card and manage links.
+- Use **Notes** to open the rich notes editor for that card.
+- Use **Priority** to cycle `normal → high → low → normal`.
 
-## Persistence
+## Keyboard
 
-- The SQLite database is exported as bytes and stored as Base64 under the key `sqliteDb_v1` in `chrome.storage.local`.
+- Open popup: `Alt+P`
+- The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
+- A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
+
+## Data storage
+
+- Notes are stored in a SQLite DB (sql.js) persisted in `chrome.storage.local`.
+- DB bytes are stored as Base64 under `sqliteDb_v1`.
+
+## Development notes
+
+- `vendor/` contains runtime assets used by the popup (e.g. `sql-wasm.js`, CSS) and is intentionally kept in the repo.
+- Icon generation scripts live in `scripts/`.
