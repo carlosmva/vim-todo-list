@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "vim-todo-list",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Simple notes you can move between Pending and Complete, persisted with SQLite (sql.js).",
   "permissions": ["storage"],
   "icons": {
