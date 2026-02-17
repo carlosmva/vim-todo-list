@@ -47,6 +47,9 @@
               </div>
 
               <div class="createButtonsRight">
+                <button id="dashboardBtn" class="monoLinkButton" type="button">
+                  Dashboard
+                </button>
                 <button id="exportBtn" class="monoLinkButton" type="button">
                   Export CSV
                 </button>
@@ -83,6 +86,16 @@
           <div id="instructionsContent" class="instructionsContent"></div>
         </div>
 
+        <div id="dashboardView" class="view" aria-label="Dashboard" hidden>
+          <div class="instructionsHeader">
+            <div class="instructionsTitle">Dashboard</div>
+            <button id="closeDashboardBtn" class="monoLinkButton" type="button">
+              Close
+            </button>
+          </div>
+          <div id="dashboardContent" class="instructionsContent"></div>
+        </div>
+
         <div id="manageTabsView" class="view" aria-label="Manage Tabs" hidden>
           <div class="instructionsHeader">
             <div class="instructionsTitle">Manage Tabs</div>
@@ -112,8 +125,9 @@
       </div>
     </div>
 
-    <!-- sql.js (SQLite WASM) will be copied into vendor/ -->
+    <!-- sql.js (SQLite WASM) and D3 will be copied into vendor/ -->
     <script src="vendor/sql-wasm.js"></script>
+    <script src="vendor/d3.min.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

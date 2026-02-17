@@ -350,6 +350,90 @@ function formatPriorityLabel(p) {
   return v.charAt(0).toUpperCase() + v.slice(1);
 }
 
+function queryDashboardStats(db) {
+  const stats = {
+    pending: {}, // { boardName: { low, normal, high } }
+    complete: {},
+    boards: [],
+    oldestPending: null,
+    newestCreated: null,
+    recentlyCompleted: null
+  };
+
+  try {
+    const gridRes = db.exec(
+      `SELECT board, priority, status, COUNT(*) AS cnt
+       FROM notes
+       WHERE board IS NOT NULL AND board <> ''
+       GROUP BY board, priority, status`
+    );
+    if (gridRes.length) {
+      const boardsSet = new Set();
+      for (const row of gridRes[0].values || []) {
+        const board = String(row[0] || "").trim();
+        const priority = normalizePriority(row[1]);
+        const status = String(row[2] || "").toLowerCase();
+        const cnt = Number(row[3]) || 0;
+        if (!board) continue;
+        boardsSet.add(board);
+        const target = status === "complete" ? stats.complete : stats.pending;
+        if (!target[board]) target[board] = { low: 0, normal: 0, high: 0 };
+        target[board][priority] = cnt;
+      }
+      stats.boards = [...boardsSet].sort();
+    }
+
+    const oldestRes = db.exec(
+      "SELECT created_at FROM notes WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+    );
+    if (oldestRes.length && oldestRes[0].values?.[0]?.[0] != null) {
+      stats.oldestPending = Number(oldestRes[0].values[0][0]);
+    }
+
+    const newestRes = db.exec(
+      "SELECT created_at FROM notes ORDER BY created_at DESC LIMIT 1"
+    );
+    if (newestRes.length && newestRes[0].values?.[0]?.[0] != null) {
+      stats.newestCreated = Number(newestRes[0].values[0][0]);
+    }
+
+    const completedRes = db.exec(
+      "SELECT completed_at FROM notes WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 1"
+    );
+    if (completedRes.length && completedRes[0].values?.[0]?.[0] != null) {
+      stats.recentlyCompleted = Number(completedRes[0].values[0][0]);
+    }
+  } catch {
+    // ignore
+  }
+  return stats;
+}
+
+
+function formatDate(ts) {
+  if (!ts || !Number.isFinite(ts)) return "—";
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${h}:${min}`;
+}
+
+function formatRelative(ts) {
+  if (!ts || !Number.isFinite(ts)) return "—";
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return formatDate(ts);
+}
+
 function queryNotes(db, board) {
   const res = db.exec(
     `
@@ -930,12 +1014,15 @@ async function main() {
 
   const notesView = document.getElementById("notesView");
   const instructionsView = document.getElementById("instructionsView");
+  const dashboardView = document.getElementById("dashboardView");
   const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
   const manageTabsLink = document.getElementById("manageTabsLink");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
+  const closeDashboardBtn = document.getElementById("closeDashboardBtn");
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
   const instructionsContent = document.getElementById("instructionsContent");
+  const dashboardContent = document.getElementById("dashboardContent");
   const manageTabsMessage = document.getElementById("manageTabsMessage");
   const tabsList = document.getElementById("tabsList");
   const addTabForm = document.getElementById("addTabForm");
@@ -944,18 +1031,28 @@ async function main() {
   function showNotesView() {
     if (notesView instanceof HTMLElement) notesView.hidden = false;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function showInstructionsView() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = false;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
+  }
+
+  function showDashboardView() {
+    if (notesView instanceof HTMLElement) notesView.hidden = true;
+    if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = false;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function showManageTabsView() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
 
@@ -976,11 +1073,18 @@ async function main() {
     return l === "dvorak" ? "d" : "h";
   }
 
+  function getFocusNewNoteKey(layout) {
+    const l = layout === "dvorak" ? "dvorak" : "qwerty";
+    // Same physical key: QWERTY P = DVORAK L
+    return l === "dvorak" ? "l" : "p";
+  }
+
   function renderInstructions() {
     if (!(instructionsContent instanceof HTMLElement)) return;
 
     const nav = getNavKeys(keyLayout);
     const checkboxKey = getNotesCheckboxKey(keyLayout);
+    const focusNewNoteKey = getFocusNewNoteKey(keyLayout);
     const layoutLabel = keyLayout === "dvorak" ? "DVORAK" : "QWERTY";
 
     const fmt = (k) => String(k || "").toUpperCase();
@@ -996,6 +1100,7 @@ async function main() {
         <li>${combo("Alt", fmt(nav.up))}: move up</li>
         <li>${combo("Alt", fmt(nav.left))}: move left (not in notes)</li>
         <li>${combo("Alt", fmt(nav.right))}: move right (not in notes)</li>
+        <li>${combo("Alt", fmt(focusNewNoteKey))}: focus new note input</li>
         <li>${keycap("Enter")}: activate the focused button</li>
       </ul>
 
@@ -1006,6 +1111,182 @@ async function main() {
         <li>${keycap("Esc")}: exit insert mode (then Esc again closes notes)</li>
       </ul>
     `;
+  }
+
+  function renderDashboard() {
+    if (!(dashboardContent instanceof HTMLElement)) return;
+    const s = queryDashboardStats(db);
+    const pendingRows = s.boards
+      .map((board) => {
+        const row = s.pending[board] || { low: 0, normal: 0, high: 0 };
+        return `<tr><td>${escapeHtml(board)}</td><td class="dashboardNum">${row.low}</td><td class="dashboardNum">${row.normal}</td><td class="dashboardNum">${row.high}</td></tr>`;
+      })
+      .join("");
+    const completeRows = s.boards
+      .map((board) => {
+        const row = s.complete[board] || { low: 0, normal: 0, high: 0 };
+        return `<tr><td>${escapeHtml(board)}</td><td class="dashboardNum">${row.low}</td><td class="dashboardNum">${row.normal}</td><td class="dashboardNum">${row.high}</td></tr>`;
+      })
+      .join("");
+    const tableHtml = (rows) =>
+      rows
+        ? `<table class="dashboardTable"><thead><tr><th>Tab</th><th style="text-align: center;width:150px;">Low</th><th style="text-align: center; width:150px">Normal</th><th style="text-align: center; width:100px">High</th></tr></thead><tbody>${rows}</tbody></table>`
+        : `<p>No notes yet.</p>`;
+
+    dashboardContent.innerHTML = `
+      <h3 style="font-weight: 600;">Pending</h3>
+      <hr>
+      ${tableHtml(pendingRows)}
+
+      <h3 style="font-weight: 600;">Complete</h3>
+      <hr>
+      ${tableHtml(completeRows)}
+
+      <h3 style="font-weight: 600;">Timing</h3>
+      <hr>
+      <ul>
+        <li><strong>Oldest pending</strong>: ${s.oldestPending ? `${formatRelative(s.oldestPending)} (${formatDate(s.oldestPending)})` : "—"}</li>
+        <li><strong>Newest created</strong>: ${s.newestCreated ? `${formatRelative(s.newestCreated)} (${formatDate(s.newestCreated)})` : "—"}</li>
+        <li><strong>Last completed</strong>: ${s.recentlyCompleted ? `${formatRelative(s.recentlyCompleted)} (${formatDate(s.recentlyCompleted)})` : "—"}</li>
+      </ul>
+
+      <h3 style="font-weight: 600;">Charts</h3>
+      <hr>
+      <div class="dashboardCharts">
+        <div id="dashboardChartPending" class="dashboardChart" aria-label="Pending by tab and priority"></div>
+        <div id="dashboardChartComplete" class="dashboardChart" aria-label="Complete by tab and priority"></div>
+      </div>
+    `;
+
+    if (typeof d3 !== "undefined") {
+      renderDashboardCharts(s);
+    }
+  }
+
+  function renderDashboardCharts(s) {
+    const keys = ["low", "normal", "high"];
+    const colors = { low: "#8d8d8d", normal: "#0f62fe", high: "#da1e28" };
+    const labels = { low: "L", normal: "N", high: "H" };
+    const ariaLabels = { low: "Low", normal: "Normal", high: "High" };
+    const margin = { top: 36, right: 12, bottom: 32, left: 36 };
+    const chartWidth = 280;
+    const chartHeight = 180;
+
+    const renderChart = (containerId, grid, title) => {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      if (!s.boards.length) {
+        el.innerHTML = "<p class=\"dashboardChartEmpty\">No data</p>";
+        return;
+      }
+      el.innerHTML = "";
+
+      const data = s.boards.map((tab) => {
+        const row = grid[tab] || { low: 0, normal: 0, high: 0 };
+        return { tab, low: row.low, normal: row.normal, high: row.high };
+      });
+
+      const totalMax = Math.ceil(d3.max(data, (d) => d.low + d.normal + d.high) || 1);
+      const width = chartWidth - margin.left - margin.right;
+      const height = chartHeight - margin.top - margin.bottom;
+
+      const svg = d3
+        .select(el)
+        .append("svg")
+        .attr("width", chartWidth)
+        .attr("height", chartHeight)
+        .attr("viewBox", `0 0 ${chartWidth} ${chartHeight}`)
+        .attr("preserveAspectRatio", "xMidYMid meet");
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const headerY = 14;
+      svg
+        .append("text")
+        .attr("x", margin.left)
+        .attr("y", headerY)
+        .attr("text-anchor", "start")
+        .attr("class", "dashboardChartTitle")
+        .text(title);
+
+      const legendItemWidth = 28;
+      const legendRightPadding = 22;
+      const legend = svg
+        .append("g")
+        .attr("class", "dashboardChartLegend")
+        .attr("role", "list")
+        .attr("aria-label", "Priority legend: Low, Normal, High")
+        .attr("transform", `translate(${chartWidth - margin.right - legendRightPadding}, ${headerY})`);
+      keys.forEach((key, i) => {
+        const item = legend
+          .append("g")
+          .attr("role", "listitem")
+          .attr("aria-label", `${ariaLabels[key]} priority`)
+          .attr("transform", `translate(${-legendItemWidth * (keys.length - 1 - i)}, -5)`);
+        const rect = item
+          .append("rect")
+          .attr("width", 10)
+          .attr("height", 10)
+          .attr("x", 0)
+          .attr("fill", colors[key]);
+        rect.append("title").text(ariaLabels[key]);
+        item
+          .append("text")
+          .attr("x", 14)
+          .attr("y", 9)
+          .attr("font-size", "11px")
+          .attr("aria-hidden", "true")
+          .text(labels[key]);
+      });
+
+      const x = d3
+        .scaleBand()
+        .domain(s.boards)
+        .range([0, width])
+        .padding(0.2);
+
+      const y = d3.scaleLinear().domain([0, totalMax]).range([height, 0]);
+
+      const stack = d3.stack().keys(keys)(data);
+
+      g.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).tickSizeOuter(0))
+        .selectAll("text")
+        .attr("transform", "rotate(-18)")
+        .style("text-anchor", "end");
+
+      const yTickStep = totalMax <= 5 ? 1 : Math.ceil(totalMax / 5);
+      const yTickValues = [];
+      for (let v = 0; v <= totalMax; v += yTickStep) yTickValues.push(v);
+      if (yTickValues[yTickValues.length - 1] !== totalMax) yTickValues.push(totalMax);
+      g.append("g")
+        .call(d3.axisLeft(y).tickValues(yTickValues).tickFormat(d3.format("d")).tickSizeOuter(0));
+
+      const series = g
+        .selectAll(".series")
+        .data(stack)
+        .join("g")
+        .attr("fill", (d) => colors[d.key] || "#999");
+
+      series
+        .selectAll("rect")
+        .data((d) => d)
+        .join("rect")
+        .attr("x", (d) => x(d.data.tab))
+        .attr("y", (d) => y(d[1]))
+        .attr("height", (d) => y(d[0]) - y(d[1]))
+        .attr("width", x.bandwidth());
+    };
+
+    renderChart("dashboardChartPending", s.pending, "Pending");
+    renderChart("dashboardChartComplete", s.complete, "Complete");
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   function setManageTabsMessage(text) {
@@ -1537,6 +1818,15 @@ async function main() {
       renderManageTabs();
     });
   }
+  const dashboardBtn = document.getElementById("dashboardBtn");
+  if (dashboardBtn instanceof HTMLElement) {
+    dashboardBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      renderDashboard();
+      showDashboardView();
+      if (closeDashboardBtn instanceof HTMLElement) closeDashboardBtn.focus();
+    });
+  }
   if (closeInstructionsBtn instanceof HTMLElement) {
     closeInstructionsBtn.addEventListener("click", () => {
       showNotesView();
@@ -1546,6 +1836,13 @@ async function main() {
   }
   if (closeManageTabsBtn instanceof HTMLElement) {
     closeManageTabsBtn.addEventListener("click", () => {
+      showNotesView();
+      const input = document.getElementById("noteText");
+      if (input instanceof HTMLElement) input.focus();
+    });
+  }
+  if (closeDashboardBtn instanceof HTMLElement) {
+    closeDashboardBtn.addEventListener("click", () => {
       showNotesView();
       const input = document.getElementById("noteText");
       if (input instanceof HTMLElement) input.focus();
@@ -1977,22 +2274,26 @@ async function main() {
 
     const notesView = document.getElementById("notesView");
     const instructionsView = document.getElementById("instructionsView");
+    const dashboardView = document.getElementById("dashboardView");
     const manageTabsView = document.getElementById("manageTabsView");
 
     const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
     const instructionsVisible = instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
+    const dashboardVisible = dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
     const manageTabsVisible = manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
     if (notesVisible) {
       const noteText = document.getElementById("noteText");
       const exportDbBtn = document.getElementById("exportDbBtn");
       const importDbBtn = document.getElementById("importDbBtn");
+      const dashboardBtn = document.getElementById("dashboardBtn");
       const exportBtn = document.getElementById("exportBtn");
       const addBtn = document.querySelector("#createForm button[type='submit']");
 
       if (noteText instanceof HTMLElement) targets.push(noteText);
       if (exportDbBtn instanceof HTMLElement) targets.push(exportDbBtn);
       if (importDbBtn instanceof HTMLElement) targets.push(importDbBtn);
+      if (dashboardBtn instanceof HTMLElement) targets.push(dashboardBtn);
       if (exportBtn instanceof HTMLElement) targets.push(exportBtn);
       if (addBtn instanceof HTMLElement) targets.push(addBtn);
 
@@ -2004,6 +2305,11 @@ async function main() {
 
     if (instructionsVisible) {
       const closeBtn = document.getElementById("closeInstructionsBtn");
+      if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+    }
+
+    if (dashboardVisible) {
+      const closeBtn = document.getElementById("closeDashboardBtn");
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
     }
 
@@ -2037,6 +2343,18 @@ async function main() {
 
     return safeFocus(targets[nextIdx]);
   }
+
+  // Prevent Alt alone from activating browser menu and closing the popup
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Alt" && e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    true
+  );
 
   document.addEventListener(
     "keydown",
@@ -2216,7 +2534,7 @@ async function main() {
           if (key === "x") {
             e.preventDefault();
             e.stopPropagation();
-            setNotesEditorOpen(pending.noteId, false, { focusEditor: false });
+            setNotesEditorOpen(pending.noteId, false, { focusEditor: false, focusToggleOnClose: true });
             return;
           }
 
@@ -2282,6 +2600,20 @@ async function main() {
 
       if (!e.altKey || e.ctrlKey || e.metaKey) return;
 
+      const focusNewNoteKey = getFocusNewNoteKey(keyLayout);
+      if (key === focusNewNoteKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const notesView = document.getElementById("notesView");
+        const notesVisible =
+          notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
+        if (notesVisible) {
+          const noteText = document.getElementById("noteText");
+          if (noteText instanceof HTMLElement) safeFocus(noteText);
+        }
+        return;
+      }
+
       if (key === nav.down) {
         e.preventDefault();
         e.stopPropagation();
@@ -2332,11 +2664,14 @@ async function main() {
         if (inHeaderLinks) {
           const notesView = document.getElementById("notesView");
           const instructionsView = document.getElementById("instructionsView");
+          const dashboardView = document.getElementById("dashboardView");
           const manageTabsView = document.getElementById("manageTabsView");
 
           const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
           const instructionsVisible =
             instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
+          const dashboardVisible =
+            dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
           const manageTabsVisible =
             manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
@@ -2352,6 +2687,12 @@ async function main() {
             return;
           }
 
+          if (dashboardVisible) {
+            const closeBtn = document.getElementById("closeDashboardBtn");
+            if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
+            return;
+          }
+
           if (instructionsVisible) {
             const closeBtn = document.getElementById("closeInstructionsBtn");
             if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
@@ -2362,11 +2703,13 @@ async function main() {
         // If focus is on the create actions row, "down" should go to the tabs.
         const exportDbBtn = document.getElementById("exportDbBtn");
         const importDbBtn = document.getElementById("importDbBtn");
+        const dashboardBtn = document.getElementById("dashboardBtn");
         const exportBtn = document.getElementById("exportBtn");
         const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
         const isCreateActionEl =
           activeEl2 === exportDbBtn ||
           activeEl2 === importDbBtn ||
+          activeEl2 === dashboardBtn ||
           activeEl2 === exportBtn ||
           activeEl2 === createSubmitBtn ||
           (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
@@ -2470,6 +2813,22 @@ async function main() {
           }
         }
 
+        // If focus is on the dashboard close button, Alt+Up closes and focuses Dashboard button.
+        const closeDashboardBtn = document.getElementById("closeDashboardBtn");
+        const dashboardView = document.getElementById("dashboardView");
+        const dashboardVisible =
+          dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
+        if (
+          dashboardVisible &&
+          activeEl2 === closeDashboardBtn &&
+          closeDashboardBtn instanceof HTMLElement
+        ) {
+          showNotesView();
+          const dashboardBtn = document.getElementById("dashboardBtn");
+          if (dashboardBtn instanceof HTMLElement) safeFocus(dashboardBtn);
+          return;
+        }
+
         // If focus is on the board tabs, "up" should return to the create actions row.
         const inBoardTabs =
           activeEl2 instanceof Element &&
@@ -2478,11 +2837,13 @@ async function main() {
         if (inBoardTabs) {
           const exportDbBtn = document.getElementById("exportDbBtn");
           const importDbBtn = document.getElementById("importDbBtn");
+          const dashboardBtn = document.getElementById("dashboardBtn");
           const exportBtn = document.getElementById("exportBtn");
 
           if (
             (exportDbBtn instanceof HTMLElement && safeFocus(exportDbBtn)) ||
             (importDbBtn instanceof HTMLElement && safeFocus(importDbBtn)) ||
+            (dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) ||
             (exportBtn instanceof HTMLElement && safeFocus(exportBtn))
           ) {
             return;
@@ -2669,7 +3030,7 @@ async function main() {
 
       if (k === "x") {
         if (vimPendingIs(noteId, ":", 4000)) {
-          setNotesEditorOpen(noteId, false, { focusEditor: false });
+          setNotesEditorOpen(noteId, false, { focusEditor: false, focusToggleOnClose: true });
         }
         vimClearPending(noteId);
         return;

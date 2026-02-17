@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "carbon-components": "^10.58.12",
+    "d3": "^7.9.0",
     "sql.js": "^1.10.3"
   },
   "devDependencies": {

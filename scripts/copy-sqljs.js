@@ -55,7 +55,14 @@ function main() {
   }
   copyFile(carbonCss, path.join(vendorDir, "carbon.min.css"));
 
-  console.log("Copied sql.js + Carbon CSS -> vendor/");
+  // --- D3.js ---
+  const d3Min = path.join(__dirname, "..", "node_modules", "d3", "dist", "d3.min.js");
+  if (!fs.existsSync(d3Min)) {
+    throw new Error("d3.min.js not found. Run `npm install` first (and ensure d3 is installed).");
+  }
+  copyFile(d3Min, path.join(vendorDir, "d3.min.js"));
+
+  console.log("Copied sql.js + Carbon CSS + D3 -> vendor/");
 }
 
 main();

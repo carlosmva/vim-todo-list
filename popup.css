@@ -164,6 +164,67 @@ body {
   text-decoration: none;
 }
 
+.dashboardTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.dashboardTable th,
+.dashboardTable td {
+  text-align: center;
+  padding: 4px 8px;
+}
+
+.dashboardTable th {
+  font-weight: 600;
+}
+
+.dashboardNum {
+  text-align: center;
+  width: 150px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboardCharts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 12px;
+}
+
+.dashboardChart {
+  flex: 1;
+  min-width: 260px;
+}
+
+.dashboardChart svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.dashboardChartTitle {
+  font-size: 14px;
+  font-weight: 600;
+  fill: currentColor;
+}
+
+.dashboardChartLegend {
+  font-size: 11px;
+  fill: currentColor;
+}
+
+.dashboardChartEmpty {
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  color: var(--cds-text-secondary, #6f6f6f);
+  font-size: 13px;
+}
+
 .manageTabsMessage {
   margin-bottom: 10px;
   font-size: 12px;
