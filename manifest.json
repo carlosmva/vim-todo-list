@@ -13,7 +13,7 @@
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Alt+P"
+        "default": "Alt+R"
       },
       "description": "Open vim-todo-list popup"
     }

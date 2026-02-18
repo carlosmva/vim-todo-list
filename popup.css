@@ -356,6 +356,10 @@ body {
   flex-wrap: nowrap;
 }
 
+.cardFilterRow {
+  margin: 0 0 6px;
+}
+
 .tabs {
   flex-wrap: wrap;
   margin-bottom: 0;

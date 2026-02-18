@@ -36,7 +36,7 @@ Chrome extension popup for fast, keyboard-first task notes stored locally in an 
 
 ## Keyboard
 
-- Open popup: `Alt+P`
+- Open popup: `Alt+R` (same shortcut regardless of in-app QWERTY/DVORAK mode)
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
 - A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
 

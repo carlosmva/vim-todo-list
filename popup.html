@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Notes Kanban</title>
+    <title>Vim Todo List</title>
     <link rel="stylesheet" href="vendor/carbon.min.css" />
     <link rel="stylesheet" href="popup.css" />
     <link rel="stylesheet" href="modern.css" />
@@ -12,8 +12,9 @@
     <div class="app" role="application" aria-label="Notes Kanban">
       <header class="header" aria-label="Header">
         <div class="headerRow">
-          <div class="headerTitle">Notes</div>
+          <div class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
+            <button id="themeToggle" class="headerLink" type="button" aria-label="Theme"></button>
             <a id="manageTabsLink" class="headerLink" href="#" aria-label="Manage Tabs">Manage Tabs</a>
             <button id="keyLayoutToggle" class="headerLink" type="button" aria-label="Keyboard layout"></button>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
@@ -57,6 +58,17 @@
               </div>
             </div>
           </form>
+
+          <div id="cardFilterRow" class="cardFilterRow" aria-label="Card filter" hidden>
+            <input
+              id="cardFilterInput"
+              class="bx--text-input"
+              type="text"
+              placeholder="Filter cards (/)"
+              autocomplete="off"
+              maxlength="120"
+            />
+          </div>
 
           <nav class="bx--tabs bx--tabs--container tabs" aria-label="Boards">
             <ul id="boardTabs" class="bx--tabs__nav" role="tablist" aria-label="Boards">

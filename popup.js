@@ -3,10 +3,12 @@
 const STORAGE_KEY = "sqliteDb_v1";
 const ACTIVE_BOARD_KEY = "activeBoard_v1";
 const KEY_LAYOUT_KEY = "keyLayout_v1";
+const THEME_KEY = "theme_v1";
 const DEFAULT_TAB_NAME = "To Do";
 
 const openNoteEditorIds = new Set();
 const flippedNoteIds = new Set();
+let cardFilterQuery = "";
 
 function bytesToBase64(bytes) {
   let binary = "";
@@ -55,6 +57,17 @@ async function loadKeyLayout() {
 
 async function saveKeyLayout(layout) {
   await chrome.storage.local.set({ [KEY_LAYOUT_KEY]: layout });
+}
+
+async function loadTheme() {
+  const result = await chrome.storage.local.get([THEME_KEY]);
+  const value = result[THEME_KEY];
+  if (value === "light" || value === "dark") return value;
+  return null;
+}
+
+async function saveTheme(theme) {
+  await chrome.storage.local.set({ [THEME_KEY]: theme });
 }
 
 async function saveDbBytes(bytes) {
@@ -592,6 +605,14 @@ function morphCardHeight(card) {
   setTimeout(cleanup, 320);
 }
 
+function noteMatchesFilter(note, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const plainNotes = String(note?.notes_html || "").replace(/<[^>]*>/g, " ");
+  const haystack = `${note?.text || ""} ${plainNotes}`.toLowerCase();
+  return haystack.includes(q);
+}
+
 function renderNotes(db, notes) {
   const pendingList = el("pendingList");
   const completeList = el("completeList");
@@ -600,8 +621,9 @@ function renderNotes(db, notes) {
 
   let pendingCount = 0;
   let completeCount = 0;
+  const visibleNotes = notes.filter((note) => noteMatchesFilter(note, cardFilterQuery));
 
-  for (const note of notes) {
+  for (const note of visibleNotes) {
     const card = document.createElement("div");
     card.className = "bx--tile noteCard";
     card.dataset.noteId = String(note.id);
@@ -1092,15 +1114,29 @@ async function main() {
   const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
   const manageTabsLink = document.getElementById("manageTabsLink");
+  const themeToggle = document.getElementById("themeToggle");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
   const closeDashboardBtn = document.getElementById("closeDashboardBtn");
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
   const instructionsContent = document.getElementById("instructionsContent");
   const dashboardContent = document.getElementById("dashboardContent");
+  const cardFilterRow = document.getElementById("cardFilterRow");
+  const cardFilterInput = document.getElementById("cardFilterInput");
   const manageTabsMessage = document.getElementById("manageTabsMessage");
   const tabsList = document.getElementById("tabsList");
   const addTabForm = document.getElementById("addTabForm");
   const addTabName = document.getElementById("addTabName");
+
+  function setCardFilterVisible(visible) {
+    if (!(cardFilterRow instanceof HTMLElement)) return;
+    cardFilterRow.hidden = !visible;
+  }
+
+  function updateCardFilterVisibility() {
+    const hasQuery = !!String(cardFilterQuery || "").trim();
+    const inputFocused = document.activeElement === cardFilterInput;
+    setCardFilterVisible(hasQuery || inputFocused);
+  }
 
   function showNotesView() {
     if (notesView instanceof HTMLElement) notesView.hidden = false;
@@ -1131,6 +1167,19 @@ async function main() {
   }
 
   const keyLayoutToggle = document.getElementById("keyLayoutToggle");
+  let theme = (await loadTheme()) || "light";
+  if ((await loadTheme()) === null) await saveTheme(theme);
+
+  function applyTheme(t) {
+    const value = t === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", value);
+    if (themeToggle instanceof HTMLElement) {
+      themeToggle.textContent = value === "dark" ? "Dark" : "Light";
+      themeToggle.setAttribute("aria-label", `Theme: ${value}. Click to switch.`);
+    }
+  }
+
+  applyTheme(theme);
 
   function getNavKeys(layout) {
     const l = layout === "dvorak" ? "dvorak" : "qwerty";
@@ -1153,12 +1202,18 @@ async function main() {
     return l === "dvorak" ? "l" : "p";
   }
 
+  function getOpenPopupKey(layout) {
+    void layout;
+    return "r";
+  }
+
   function renderInstructions() {
     if (!(instructionsContent instanceof HTMLElement)) return;
 
     const nav = getNavKeys(keyLayout);
     const checkboxKey = getNotesCheckboxKey(keyLayout);
     const focusNewNoteKey = getFocusNewNoteKey(keyLayout);
+    const openPopupKey = getOpenPopupKey(keyLayout);
     const layoutLabel = keyLayout === "dvorak" ? "DVORAK" : "QWERTY";
 
     const fmt = (k) => String(k || "").toUpperCase();
@@ -1168,13 +1223,14 @@ async function main() {
     instructionsContent.innerHTML = `
       <h3>Navigation</h3>
       <ul>
-        <li>${combo("Alt", "P")}: open the popup</li>
+        <li>${combo("Alt", fmt(openPopupKey))}: open the popup</li>
         <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
         <li>${combo("Alt", fmt(nav.down))}: move down</li>
         <li>${combo("Alt", fmt(nav.up))}: move up</li>
         <li>${combo("Alt", fmt(nav.left))}: move left (not in notes)</li>
         <li>${combo("Alt", fmt(nav.right))}: move right (not in notes)</li>
         <li>${combo("Alt", fmt(focusNewNoteKey))}: focus new note input</li>
+        <li>${keycap("/")}: focus card filter for current tab</li>
         <li>${keycap("Enter")}: activate the focused button</li>
       </ul>
 
@@ -1430,6 +1486,14 @@ async function main() {
   }
 
   updateKeyLayoutToggleUi();
+
+  if (themeToggle instanceof HTMLElement) {
+    themeToggle.addEventListener("click", async () => {
+      theme = theme === "dark" ? "light" : "dark";
+      applyTheme(theme);
+      await saveTheme(theme);
+    });
+  }
 
   if (keyLayoutToggle instanceof HTMLElement) {
     keyLayoutToggle.addEventListener("click", async () => {
@@ -1852,6 +1916,30 @@ async function main() {
   await persist();
   setActiveTabUi(activeBoard);
   await refresh();
+  updateCardFilterVisibility();
+
+  if (cardFilterInput instanceof HTMLInputElement) {
+    cardFilterInput.addEventListener("input", () => {
+      cardFilterQuery = cardFilterInput.value.trim();
+      updateCardFilterVisibility();
+      void refresh();
+    });
+
+    cardFilterInput.addEventListener("blur", () => {
+      if (!cardFilterQuery) updateCardFilterVisibility();
+    });
+
+    cardFilterInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      cardFilterInput.value = "";
+      cardFilterQuery = "";
+      updateCardFilterVisibility();
+      void refresh();
+      const noteText = document.getElementById("noteText");
+      if (noteText instanceof HTMLElement) safeFocus(noteText);
+    });
+  }
 
   // Initial focus: start on the last-selected board tab when the popup opens.
   // Only do this if nothing meaningful is focused yet.
@@ -2347,9 +2435,11 @@ async function main() {
   function getGlobalNavTargets() {
     const targets = [];
 
+    const themeToggle = document.getElementById("themeToggle");
     const manageTabsLink = document.getElementById("manageTabsLink");
     const keyLayoutToggle = document.getElementById("keyLayoutToggle");
     const instructionsLink = document.getElementById("instructionsLink");
+    if (themeToggle instanceof HTMLElement) targets.push(themeToggle);
     if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
     if (keyLayoutToggle instanceof HTMLElement) targets.push(keyLayoutToggle);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
@@ -2371,6 +2461,7 @@ async function main() {
       const dashboardBtn = document.getElementById("dashboardBtn");
       const exportBtn = document.getElementById("exportBtn");
       const addBtn = document.querySelector("#createForm button[type='submit']");
+      const cardFilterInput = document.getElementById("cardFilterInput");
 
       if (noteText instanceof HTMLElement) targets.push(noteText);
       if (exportDbBtn instanceof HTMLElement) targets.push(exportDbBtn);
@@ -2378,6 +2469,7 @@ async function main() {
       if (dashboardBtn instanceof HTMLElement) targets.push(dashboardBtn);
       if (exportBtn instanceof HTMLElement) targets.push(exportBtn);
       if (addBtn instanceof HTMLElement) targets.push(addBtn);
+      if (cardFilterInput instanceof HTMLElement) targets.push(cardFilterInput);
 
       const tabLinks = [...document.querySelectorAll("#boardTabs .bx--tabs__nav-link")].filter(
         (n) => n instanceof HTMLElement
@@ -2926,6 +3018,9 @@ async function main() {
           (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
 
         if (isCreateActionEl) {
+          const cardFilterInput = document.getElementById("cardFilterInput");
+          if (cardFilterInput instanceof HTMLElement && safeFocus(cardFilterInput)) return;
+
           const activeTab = document.querySelector(
             "#boardTabs [role='tab'][aria-selected='true']"
           );
@@ -3065,6 +3160,9 @@ async function main() {
           activeEl2.closest("#boardTabs") !== null;
 
         if (inBoardTabs) {
+          const cardFilterInput = document.getElementById("cardFilterInput");
+          if (cardFilterInput instanceof HTMLElement && safeFocus(cardFilterInput)) return;
+
           const exportDbBtn = document.getElementById("exportDbBtn");
           const importDbBtn = document.getElementById("importDbBtn");
           const dashboardBtn = document.getElementById("dashboardBtn");
@@ -3160,6 +3258,35 @@ async function main() {
     if (e.altKey) lastBoardShortcutAt = Date.now();
     void activateBoard(board, { persistSelection: true });
   });
+
+  // "/" focuses the card filter in Notes view (when not typing in another input/editor).
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "/" || e.altKey || e.ctrlKey || e.metaKey) return;
+      const active = document.activeElement;
+      const isTypingTarget =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable);
+      if (isTypingTarget) return;
+
+      const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
+      if (!notesVisible) return;
+      if (!(cardFilterInput instanceof HTMLInputElement)) return;
+
+      e.preventDefault();
+      setCardFilterVisible(true);
+      if (safeFocus(cardFilterInput)) {
+        try {
+          cardFilterInput.select();
+        } catch {
+          // ignore
+        }
+      }
+    },
+    true
+  );
 
   // Vim-style keybindings for Notes editors.
   // In normal mode, keys are commands (not text). Insert mode behaves normally.
