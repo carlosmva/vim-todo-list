@@ -358,33 +358,72 @@ body {
 
 .tabs {
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 0;
+  min-height: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  position: relative;
+  overflow: visible;
+}
+
+.tabs.bx--tabs,
+.tabs.bx--tabs--container {
+  min-height: 26px !important;
+  height: 26px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: relative;
 }
 
 /* Carbon tabs: make them compact and allow wrapping so they fit popup width */
 .tabs .bx--tabs__nav {
-  display: grid;
-  /* We have 6 boards; keep tabs in a single row. */
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  align-items: end;
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 22px !important;
+  height: 22px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-bottom: 0 !important;
+  position: static !important;
 }
 
 .tabs .bx--tabs__nav-item {
-  height: auto;
+  height: 24px;
+  min-height: 24px;
+  margin: 0 !important;
+  padding: 0 !important;
   width: auto;
 }
 
+.tabs .bx--tabs__nav-item::before,
+.tabs .bx--tabs__nav-item::after {
+  display: none !important;
+  height: 0 !important;
+}
+
 .tabs .bx--tabs__nav-link {
-  padding: 6px 10px;
-  font-size: 12px;
-  line-height: 1.2;
+  min-height: 22px !important;
+  height: 22px !important;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px !important;
+  margin: 0 !important;
+  font-size: 11px;
+  line-height: 1 !important;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.tabs .bx--tabs__nav-link::before,
+.tabs .bx--tabs__nav-link::after {
+  display: none !important;
+  height: 0 !important;
+}
+
 .board {
-  margin-top: 0;
+  margin-top: 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
@@ -419,7 +458,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 10px;
+  padding: 6px 10px 10px;
 }
 
 .colTitle {
@@ -440,16 +479,33 @@ body {
 
 /* Card flipping (minimal custom CSS; PatternFly handles base visuals) */
 .noteCard {
+  --note-expanded-max: min(380px, calc(100vh - 220px));
   perspective: 1000px;
   min-height: 96px;
   min-width: 0;
   padding: 0;
+  overflow: hidden;
+  transition:
+    max-height var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease),
+    min-height var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease);
 }
 
-/* When showing the back (attachments) side, give the card a stable height so
-   the action buttons row is never pushed out of view. */
+.noteCard.is-notes-open {
+  min-height: 220px;
+  max-height: var(--note-expanded-max);
+}
+
+/* Expanded card while attachments panel is open. */
 .noteCard.is-flipped {
-  height: 320px;
+  min-height: 260px;
+  max-height: var(--note-expanded-max);
+}
+
+.noteCard.is-morphing {
+  transition:
+    height var(--motion-slow, 220ms) var(--motion-ease-standard, ease),
+    max-height var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease),
+    min-height var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease);
 }
 
 .noteCardInner {
@@ -457,15 +513,13 @@ body {
   display: grid;
   grid-template-columns: 1fr;
   transform-style: preserve-3d;
-  transition: transform 160ms ease;
+  transition: transform var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease);
+  min-height: 100%;
 }
 
 .noteCard.is-flipped .noteCardInner {
   height: 100%;
-}
-
-.noteCard.is-flipped .noteCardInner {
-  transform: rotateY(180deg);
+  transform: none;
 }
 
 .noteFace {
@@ -478,39 +532,18 @@ body {
 }
 
 .noteBack {
-  transform: rotateY(180deg);
+  transform: none;
   min-height: 0;
-}
-
-/* In flipped state, absolutely stack faces to prevent interactions with the
-   underlying front-side buttons (move/notes/etc). */
-.noteCard.is-flipped .noteCardInner {
-  position: relative;
-}
-
-.noteCard.is-flipped .noteFace {
-  position: absolute;
-  inset: 0;
+  display: none;
 }
 
 .noteCard.is-flipped .noteBack {
-  z-index: 2;
+  display: flex;
+  animation: noteBackReveal var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease);
 }
 
 .noteCard.is-flipped .noteFace:not(.noteBack) {
-  z-index: 1;
-}
-
-.noteCard:not(.is-flipped) .noteBack {
-  pointer-events: none;
-}
-
-.noteCard.is-flipped .noteFace {
-  pointer-events: none;
-}
-
-.noteCard.is-flipped .noteBack {
-  pointer-events: auto;
+  display: none;
 }
 
 .linkList {
@@ -646,7 +679,7 @@ body {
 
 .noteEditorArea {
   min-height: 84px;
-  max-height: 180px;
+  max-height: 190px;
   overflow: auto;
   padding: 8px;
   border: 1px solid var(--cds-border-subtle);
@@ -692,6 +725,7 @@ body {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  overflow: auto;
 }
 
 .noteBackBody hr {
@@ -731,4 +765,15 @@ body {
 
 .is-dragging {
   opacity: 0.6;
+}
+
+@keyframes noteBackReveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

@@ -519,6 +519,79 @@ function el(id) {
   return node;
 }
 
+function keepCardInView(card) {
+  if (!(card instanceof HTMLElement)) return;
+  try {
+    card.scrollIntoView({ block: "nearest" });
+  } catch {
+    // ignore
+  }
+}
+
+function getVisibleCardFace(card) {
+  if (!(card instanceof HTMLElement)) return null;
+  if (card.classList.contains("is-flipped")) {
+    const back = card.querySelector(".noteBack");
+    return back instanceof HTMLElement ? back : null;
+  }
+  const front = card.querySelector(".noteFace:not(.noteBack)");
+  return front instanceof HTMLElement ? front : null;
+}
+
+function measureCardTargetHeight(card) {
+  const face = getVisibleCardFace(card);
+  const computed = window.getComputedStyle(card);
+  const minRaw = parseFloat(computed.minHeight || "");
+  const maxRaw = parseFloat(computed.maxHeight || "");
+  const minH = Number.isFinite(minRaw) ? minRaw : 96;
+  const maxH = Number.isFinite(maxRaw) ? maxRaw : Number.POSITIVE_INFINITY;
+
+  let target = 96;
+  if (!(face instanceof HTMLElement)) {
+    const h = Math.ceil(card.getBoundingClientRect().height);
+    target = Number.isFinite(h) && h > 0 ? h : 96;
+  } else {
+    const measured = Math.ceil(face.scrollHeight);
+    target = Number.isFinite(measured) ? measured : 96;
+  }
+
+  target = Math.max(minH, target);
+  target = Math.min(maxH, target);
+  return Math.max(96, target);
+}
+
+function morphCardHeight(card) {
+  if (!(card instanceof HTMLElement)) return;
+
+  const start = Math.ceil(card.getBoundingClientRect().height);
+  const target = measureCardTargetHeight(card);
+  if (!Number.isFinite(start) || start <= 0) return;
+  if (Math.abs(target - start) < 2) return;
+
+  card.classList.add("is-morphing");
+  card.style.height = `${start}px`;
+  // Force style flush before applying target height so transition always runs.
+  void card.offsetHeight;
+  card.style.height = `${target}px`;
+
+  let done = false;
+  const cleanup = () => {
+    if (done) return;
+    done = true;
+    card.classList.remove("is-morphing");
+    card.style.height = "";
+    card.removeEventListener("transitionend", onEnd);
+  };
+
+  const onEnd = (e) => {
+    if (e.target !== card || e.propertyName !== "height") return;
+    cleanup();
+  };
+
+  card.addEventListener("transitionend", onEnd);
+  setTimeout(cleanup, 320);
+}
+
 function renderNotes(db, notes) {
   const pendingList = el("pendingList");
   const completeList = el("completeList");
@@ -608,6 +681,7 @@ function renderNotes(db, notes) {
     moveBtn.className = "monoLinkButton";
 
     const editorOpen = openNoteEditorIds.has(note.id);
+    if (editorOpen) card.classList.add("is-notes-open");
 
     if (note.status === "pending") {
       moveBtn.textContent = "Mark complete";
@@ -1106,7 +1180,7 @@ async function main() {
 
       <h3>Notes editor</h3>
       <ul>
-        <li>${keycap(":x")}: close notes editor</li>
+        <li>${keycap(":x")}: close notes editor or close flipped attachments</li>
         <li>${combo("Alt", fmt(checkboxKey))}: toggle crossed-out (strikethrough) text for the line</li>
         <li>${keycap("Esc")}: exit insert mode (then Esc again closes notes)</li>
       </ul>
@@ -1710,6 +1784,8 @@ async function main() {
     editorWrap.hidden = !open;
     if (open) openNoteEditorIds.add(noteId);
     else openNoteEditorIds.delete(noteId);
+    card.classList.toggle("is-notes-open", !!open);
+    requestAnimationFrame(() => morphCardHeight(card));
 
     // Pending cards are draggable for reordering, except when the rich editor is open.
     const status = card.dataset.status;
@@ -1731,6 +1807,8 @@ async function main() {
       const editor = card.querySelector(".noteEditorArea");
       if (editor instanceof HTMLElement) editor.focus();
     }
+
+    keepCardInView(card);
   }
 
   function closeCardOverlays(card) {
@@ -1749,6 +1827,8 @@ async function main() {
       card.classList.remove("is-flipped");
       flippedNoteIds.delete(noteId);
     }
+
+    requestAnimationFrame(() => morphCardHeight(card));
   }
 
   function exportDbFile() {
@@ -2236,8 +2316,10 @@ async function main() {
   // - Alt+H: previous action button (left)
   // - Alt+N: next action button (right)
   // - :x (while focused in notes editor): close notes
+  // - :x (while focused in flipped attachments UI): close attachments
   // - Escape: let Chrome close popup
   let notesExitPending = null;
+  let attachmentsExitPending = null;
   let lastBoardShortcutAt = 0;
 
   function isElementInVisibleView(node) {
@@ -2344,6 +2426,69 @@ async function main() {
     return safeFocus(targets[nextIdx]);
   }
 
+  function tryScrollBeforeSectionMove(delta) {
+    const active = document.activeElement;
+    const dir = delta < 0 ? -1 : 1;
+    const seen = new Set();
+    const containers = [];
+
+    const pushContainer = (node) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (!isElementInVisibleView(node)) return;
+      if (seen.has(node)) return;
+      seen.add(node);
+      containers.push(node);
+    };
+
+    if (active instanceof Element) {
+      pushContainer(active.closest(".noteEditorArea"));
+      pushContainer(active.closest(".linkList"));
+      pushContainer(active.closest(".noteBackBody"));
+      pushContainer(active.closest(".list"));
+      pushContainer(active.closest(".board"));
+      pushContainer(active.closest(".instructionsContent"));
+    }
+
+    pushContainer(document.querySelector(".list"));
+    pushContainer(document.querySelector(".board"));
+    pushContainer(document.getElementById("dashboardContent"));
+
+    for (const container of containers) {
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      if (maxScroll <= 0) continue;
+
+      const before = container.scrollTop;
+      const step = Math.max(40, Math.floor(container.clientHeight * 0.35));
+      const next = Math.max(0, Math.min(maxScroll, before + dir * step));
+      if (next === before) continue;
+
+      container.scrollTop = next;
+      if (container.scrollTop !== before) {
+        const activeCard = active instanceof Element ? getCardFromElement(active) : null;
+        if (activeCard instanceof HTMLElement) {
+          const cards = getAllCardsInDomOrder();
+          const idx = cards.indexOf(activeCard);
+          if (idx !== -1) {
+            const nextIdx = Math.max(0, Math.min(cards.length - 1, idx + dir));
+            const targetCard = cards[nextIdx];
+            if (targetCard instanceof HTMLElement) {
+              focusCardPrimaryAction(targetCard);
+            }
+          }
+        } else if (
+          active instanceof HTMLElement &&
+          !isEditableElement(active) &&
+          isElementInVisibleView(active)
+        ) {
+          safeFocus(active);
+        }
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   // Prevent Alt alone from activating browser menu and closing the popup
   document.addEventListener(
     "keydown",
@@ -2413,6 +2558,48 @@ async function main() {
           focusCardPrimaryAction(card);
         }
         return;
+      }
+
+      // Attachments exit command: :x (non-typing contexts)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && inAttachmentsUi) {
+        const typingTarget = activeEl && isEditableElement(activeEl);
+
+        if (attachmentsExitPending) {
+          const pending = attachmentsExitPending;
+          attachmentsExitPending = null;
+          clearTimeout(pending.timer);
+
+          if (key === "x") {
+            e.preventDefault();
+            e.stopPropagation();
+            const card = document.querySelector(
+              `.noteCard[data-note-id="${CSS.escape(String(pending.noteId))}"]`
+            );
+            if (card instanceof HTMLElement) {
+              card.classList.remove("is-flipped");
+              flippedNoteIds.delete(pending.noteId);
+              requestAnimationFrame(() => morphCardHeight(card));
+              const flipBtn = card.querySelector("button[data-action='flip']");
+              if (flipBtn instanceof HTMLElement) safeFocus(flipBtn);
+            }
+            return;
+          }
+        }
+
+        if (!typingTarget && key === ":") {
+          const card = flippedCard instanceof HTMLElement ? flippedCard : activeCard;
+          const noteId = card ? Number(card.dataset.noteId) : NaN;
+          if (Number.isFinite(noteId)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const timer = setTimeout(() => {
+              if (!attachmentsExitPending) return;
+              attachmentsExitPending = null;
+            }, 700);
+            attachmentsExitPending = { noteId, timer };
+            return;
+          }
+        }
       }
 
       // Attachments navigation (flipped card)
@@ -2494,14 +2681,19 @@ async function main() {
           // Move caret in the appropriate direction
           e.preventDefault();
           e.stopPropagation();
-          if (key === nav.left) moveSelection('left', 'character');
-          else if (key === nav.right) moveSelection('right', 'character');
-          else if (key === nav.up) moveSelection('up', 'line');
-          else if (key === nav.down) moveSelection('down', 'line');
+          if (key === nav.left) moveSelection('backward', 'character');
+          else if (key === nav.right) moveSelection('forward', 'character');
+          else if (key === nav.up) moveSelection('backward', 'line');
+          else if (key === nav.down) moveSelection('forward', 'line');
           return;
         } else if (mode !== 'insert') {
           e.preventDefault();
           e.stopPropagation();
+          if (noteEditor instanceof HTMLElement) noteEditor.focus();
+          if (key === nav.left) moveSelection('backward', 'character');
+          else if (key === nav.right) moveSelection('forward', 'character');
+          else if (key === nav.up) moveSelection('backward', 'line');
+          else if (key === nav.down) moveSelection('forward', 'line');
           return;
         }
       }
@@ -2618,6 +2810,25 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
         const activeEl2 = document.activeElement;
+        const dashboardViewForScroll = document.getElementById("dashboardView");
+        const dashboardVisibleForScroll =
+          dashboardViewForScroll instanceof HTMLElement && !dashboardViewForScroll.hasAttribute("hidden");
+        const inDashboard =
+          dashboardVisibleForScroll &&
+          activeEl2 instanceof Element &&
+          activeEl2.closest("#dashboardView") !== null;
+
+        const belowTabs =
+          activeEl2 instanceof Element &&
+          (
+            activeEl2.closest(".board") !== null ||
+            activeEl2.closest(".col") !== null ||
+            activeEl2.closest(".list") !== null ||
+            activeEl2.closest(".noteCard") !== null ||
+            activeEl2.closest(".noteEditor") !== null ||
+            activeEl2.closest(".noteBackBody") !== null
+          );
+        if ((belowTabs || inDashboard) && tryScrollBeforeSectionMove(+1)) return;
 
         // If the user just switched boards via Alt+1..Alt+9, "down" should enter
         // the cards area (first card) rather than stepping through global UI.
@@ -2751,6 +2962,25 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
         const activeEl2 = document.activeElement;
+        const dashboardViewForScroll = document.getElementById("dashboardView");
+        const dashboardVisibleForScroll =
+          dashboardViewForScroll instanceof HTMLElement && !dashboardViewForScroll.hasAttribute("hidden");
+        const inDashboard =
+          dashboardVisibleForScroll &&
+          activeEl2 instanceof Element &&
+          activeEl2.closest("#dashboardView") !== null;
+
+        const belowTabs =
+          activeEl2 instanceof Element &&
+          (
+            activeEl2.closest(".board") !== null ||
+            activeEl2.closest(".col") !== null ||
+            activeEl2.closest(".list") !== null ||
+            activeEl2.closest(".noteCard") !== null ||
+            activeEl2.closest(".noteEditor") !== null ||
+            activeEl2.closest(".noteBackBody") !== null
+          );
+        if ((belowTabs || inDashboard) && tryScrollBeforeSectionMove(-1)) return;
         const card = getCardFromElement(activeEl2);
         if (card) {
           // If this card has front-side attachment links, "up" should highlight
@@ -3418,9 +3648,26 @@ async function main() {
       if (action === "flip") {
         card.classList.add("is-flipped");
         flippedNoteIds.add(noteId);
+        requestAnimationFrame(() => morphCardHeight(card));
+        keepCardInView(card);
+        const descInput = card.querySelector(".linkForm input[name='description']");
+        const urlInput = card.querySelector(".linkForm input[name='url']");
+        const firstLink = card.querySelector(".linkList a");
+        const closeBtn = card.querySelector("button[data-action='unflip']");
+        if (
+          !(descInput instanceof HTMLElement && safeFocus(descInput)) &&
+          !(urlInput instanceof HTMLElement && safeFocus(urlInput)) &&
+          !(firstLink instanceof HTMLElement && safeFocus(firstLink)) &&
+          closeBtn instanceof HTMLElement
+        ) {
+          safeFocus(closeBtn);
+        }
       } else {
         card.classList.remove("is-flipped");
         flippedNoteIds.delete(noteId);
+        requestAnimationFrame(() => morphCardHeight(card));
+        const flipBtn = card.querySelector("button[data-action='flip']");
+        if (flipBtn instanceof HTMLElement) safeFocus(flipBtn);
       }
       return;
     }
