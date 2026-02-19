@@ -3019,6 +3019,20 @@ async function main() {
     return any ? safeFocus(any) : false;
   }
 
+  function restoreManageTabsFocus(boardName, action) {
+    const list = document.getElementById("tabsList");
+    if (!(list instanceof HTMLElement)) return false;
+    const row = list.querySelector(
+      `.manageTabsRow[data-board="${CSS.escape(String(boardName || ""))}"]`
+    );
+    if (row instanceof HTMLElement) return focusManageTabsRowAction(row, action);
+
+    // Fallback: focus the first available row action.
+    const rows = getManageTabsRows();
+    if (!rows.length) return false;
+    return focusManageTabsRowAction(rows[0], action);
+  }
+
   function moveFocusWithinManageTabsRow(delta) {
     const activeEl = document.activeElement;
     if (!(activeEl instanceof Element)) return false;
@@ -3076,6 +3090,7 @@ async function main() {
       const b = currentBoards[idx];
       const row = document.createElement("div");
       row.className = "manageTabsRow";
+      row.dataset.board = b;
 
       const name = document.createElement("div");
       name.className = "manageTabsName";
@@ -3099,6 +3114,7 @@ async function main() {
         next[i] = tmp;
         await persistBoardOrder(next);
         renderManageTabs();
+        requestAnimationFrame(() => restoreManageTabsFocus(b, "up"));
       });
 
       const down = document.createElement("button");
@@ -3116,6 +3132,7 @@ async function main() {
         next[i] = tmp;
         await persistBoardOrder(next);
         renderManageTabs();
+        requestAnimationFrame(() => restoreManageTabsFocus(b, "down"));
       });
 
       const del = document.createElement("button");
