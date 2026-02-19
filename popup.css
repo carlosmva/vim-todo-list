@@ -230,6 +230,12 @@ body {
   gap: 10px;
 }
 
+.manageTabsActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .manageTabsName {
   font-weight: 600;
 }

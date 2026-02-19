@@ -289,7 +289,8 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
   db.run(`
     CREATE TABLE IF NOT EXISTS boards (
       name TEXT PRIMARY KEY,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -322,6 +323,13 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
   // Migrate older DBs that predate note link descriptions
   try {
     db.run("ALTER TABLE note_links ADD COLUMN description TEXT");
+  } catch {
+    // ignore (already exists)
+  }
+
+  // Migrate older DBs that predate board sort ordering
+  try {
+    db.run("ALTER TABLE boards ADD COLUMN sort_order INTEGER");
   } catch {
     // ignore (already exists)
   }
@@ -390,6 +398,13 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
   // Backfill notes_html
   db.run("UPDATE notes SET notes_html = '' WHERE notes_html IS NULL");
 
+  // Ensure boards have a non-null sort_order (used for tab ordering).
+  try {
+    db.run("UPDATE boards SET sort_order = 0 WHERE sort_order IS NULL");
+  } catch {
+    // ignore
+  }
+
   // Backfill any NULL sort_order values per board to preserve existing ordering.
   const boardsRes = db.exec("SELECT DISTINCT board FROM notes WHERE board IS NOT NULL AND board <> '' ORDER BY board ASC");
   const boards = boardsRes.length ? boardsRes[0].values.map((r) => r[0]) : [];
@@ -424,19 +439,51 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
   // Ensure the boards table contains any boards referenced by notes.
   try {
     const noteBoards = db.exec(
-      "SELECT DISTINCT board FROM notes WHERE board IS NOT NULL AND board <> ''"
+      "SELECT DISTINCT board FROM notes WHERE board IS NOT NULL AND board <> '' ORDER BY board ASC"
     );
     const names = noteBoards.length ? noteBoards[0].values.map((r) => r[0]) : [];
     if (names.length) {
-      db.run("BEGIN");
-      const ins = db.prepare(
-        "INSERT OR IGNORE INTO boards(name, created_at) VALUES(?, ?)"
+      const existingRes = db.exec("SELECT name FROM boards");
+      const existing = new Set(
+        existingRes.length
+          ? existingRes[0].values.map((r) => String(r[0] || "").toLowerCase()).filter(Boolean)
+          : []
       );
-      try {
-        for (const n of names) ins.run([String(n), Date.now()]);
-      } finally {
-        ins.free();
-        db.run("COMMIT");
+
+      const missing = [];
+      for (const n of names) {
+        const s = String(n || "");
+        if (!s) continue;
+        const k = s.toLowerCase();
+        if (existing.has(k)) continue;
+        existing.add(k);
+        missing.push(s);
+      }
+
+      if (missing.length) {
+        // Append any missing boards to the end of the tab order.
+        let nextSortOrder = 0;
+        try {
+          const maxRes = db.exec("SELECT COALESCE(MAX(sort_order), -1) AS m FROM boards");
+          const m = maxRes.length ? Number(maxRes[0].values?.[0]?.[0]) : -1;
+          nextSortOrder = (Number.isFinite(m) ? m : -1) + 1;
+        } catch {
+          nextSortOrder = 0;
+        }
+
+        db.run("BEGIN");
+        const ins = db.prepare(
+          "INSERT OR IGNORE INTO boards(name, created_at, sort_order) VALUES(?, ?, ?)"
+        );
+        try {
+          for (const n of missing) {
+            ins.run([String(n), Date.now(), nextSortOrder]);
+            nextSortOrder++;
+          }
+        } finally {
+          ins.free();
+          db.run("COMMIT");
+        }
       }
     }
   } catch {
@@ -449,9 +496,9 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
     const count = c.length ? Number(c[0].values?.[0]?.[0]) : 0;
     if (!Number.isFinite(count) || count <= 0) {
       const stmt = db.prepare(
-        "INSERT OR IGNORE INTO boards(name, created_at) VALUES(?, ?)"
+        "INSERT OR IGNORE INTO boards(name, created_at, sort_order) VALUES(?, ?, ?)"
       );
-      stmt.run([defaultBoard, Date.now()]);
+      stmt.run([defaultBoard, Date.now(), 0]);
       stmt.free();
     }
   } catch {
@@ -461,7 +508,7 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
 
 function queryBoards(db) {
   const res = db.exec(
-    "SELECT name FROM boards ORDER BY created_at ASC, name ASC"
+    "SELECT name FROM boards ORDER BY sort_order ASC, created_at ASC, name ASC"
   );
   if (!res.length) return [];
   return res[0].values.map((r) => String(r[0])).filter(Boolean);
@@ -474,11 +521,29 @@ function normalizeBoardName(name) {
 function addBoard(db, name) {
   const n = normalizeBoardName(name);
   if (!n) return false;
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO boards(name, created_at) VALUES(?, ?)"
-  );
-  stmt.run([n, Date.now()]);
-  stmt.free();
+  let nextSortOrder = 0;
+  try {
+    const maxRes = db.exec("SELECT COALESCE(MAX(sort_order), -1) AS m FROM boards");
+    const m = maxRes.length ? Number(maxRes[0].values?.[0]?.[0]) : -1;
+    nextSortOrder = (Number.isFinite(m) ? m : -1) + 1;
+  } catch {
+    nextSortOrder = 0;
+  }
+
+  try {
+    const stmt = db.prepare(
+      "INSERT OR IGNORE INTO boards(name, created_at, sort_order) VALUES(?, ?, ?)"
+    );
+    stmt.run([n, Date.now(), nextSortOrder]);
+    stmt.free();
+  } catch {
+    // Backward compatible fallback (should be rare, but keep safe)
+    const stmt = db.prepare(
+      "INSERT OR IGNORE INTO boards(name, created_at) VALUES(?, ?)"
+    );
+    stmt.run([n, Date.now()]);
+    stmt.free();
+  }
   return true;
 }
 
@@ -2887,6 +2952,117 @@ async function main() {
     });
   }
 
+  async function persistBoardOrder(orderedBoards) {
+    const list = Array.isArray(orderedBoards) ? orderedBoards.filter(Boolean) : [];
+    if (!list.length) return;
+
+    try {
+      db.run("BEGIN");
+      const stmt = db.prepare("UPDATE boards SET sort_order = ? WHERE name = ?");
+      try {
+        for (let i = 0; i < list.length; i++) {
+          stmt.run([i, String(list[i])]);
+        }
+      } finally {
+        stmt.free();
+        db.run("COMMIT");
+      }
+    } catch (err) {
+      try {
+        db.run("COMMIT");
+      } catch {
+        // ignore
+      }
+      console.error(err);
+      return;
+    }
+
+    boards = list;
+    renderBoardTabs(boards, activeBoard);
+    setActiveTabUi(activeBoard);
+    await persist();
+  }
+
+  function getManageTabsRows() {
+    const list = document.getElementById("tabsList");
+    if (!(list instanceof HTMLElement)) return [];
+    return [...list.querySelectorAll(".manageTabsRow")].filter((r) => r instanceof HTMLElement);
+  }
+
+  function getManageTabsButtonsInRow(rowEl) {
+    if (!(rowEl instanceof HTMLElement)) return [];
+    return [...rowEl.querySelectorAll("button.monoLinkButton[data-manage-tabs-action]")].filter(
+      (b) => b instanceof HTMLButtonElement
+    );
+  }
+
+  function getManageTabsActionFromActiveElement(activeEl) {
+    if (!(activeEl instanceof Element)) return "remove";
+    const btn = activeEl.closest("button[data-manage-tabs-action]");
+    if (!(btn instanceof HTMLButtonElement)) return "remove";
+    const a = String(btn.dataset.manageTabsAction || "");
+    if (a === "up" || a === "down" || a === "remove") return a;
+    return "remove";
+  }
+
+  function focusManageTabsRowAction(rowEl, action) {
+    if (!(rowEl instanceof HTMLElement)) return false;
+    const preferred = rowEl.querySelector(
+      `button[data-manage-tabs-action="${CSS.escape(String(action))}"]`
+    );
+    if (preferred instanceof HTMLButtonElement && !preferred.disabled && safeFocus(preferred)) return true;
+
+    const remove = rowEl.querySelector('button[data-manage-tabs-action="remove"]');
+    if (remove instanceof HTMLButtonElement && !remove.disabled && safeFocus(remove)) return true;
+
+    const any = getManageTabsButtonsInRow(rowEl).find((b) => b instanceof HTMLButtonElement && !b.disabled);
+    return any ? safeFocus(any) : false;
+  }
+
+  function moveFocusWithinManageTabsRow(delta) {
+    const activeEl = document.activeElement;
+    if (!(activeEl instanceof Element)) return false;
+    const row = activeEl.closest(".manageTabsRow");
+    if (!(row instanceof HTMLElement)) return false;
+
+    const btns = getManageTabsButtonsInRow(row).filter((b) => b instanceof HTMLButtonElement && !b.disabled);
+    if (!btns.length) return false;
+
+    const activeBtn = activeEl.closest("button[data-manage-tabs-action]");
+    const idx = activeBtn instanceof HTMLButtonElement ? btns.indexOf(activeBtn) : -1;
+    const nextIdx = idx === -1 ? (delta < 0 ? btns.length - 1 : 0) : Math.min(btns.length - 1, Math.max(0, idx + delta));
+    return safeFocus(btns[nextIdx]);
+  }
+
+  function moveFocusAcrossManageTabsRows(deltaRows) {
+    const rows = getManageTabsRows();
+    if (!rows.length) return false;
+
+    const activeEl = document.activeElement;
+    const currentRow = activeEl instanceof Element ? activeEl.closest(".manageTabsRow") : null;
+    const currentIdx = currentRow instanceof HTMLElement ? rows.indexOf(currentRow) : -1;
+
+    // Only handle row movement if the user is currently focused within a row.
+    // (Don't hijack navigation when focus is on Add/Close controls.)
+    if (currentIdx === -1) return false;
+
+    // Allow exiting the rows area back to the Add controls.
+    if (currentIdx === 0 && deltaRows < 0) {
+      const addBtn = document.querySelector("#addTabForm button[type='submit']");
+      const addTabName = document.getElementById("addTabName");
+      if (addBtn instanceof HTMLElement && safeFocus(addBtn)) return true;
+      if (addTabName instanceof HTMLElement && safeFocus(addTabName)) return true;
+      const closeBtn = document.getElementById("closeManageTabsBtn");
+      if (closeBtn instanceof HTMLElement && safeFocus(closeBtn)) return true;
+      return false;
+    }
+
+    const fromIdx = currentIdx === -1 ? (deltaRows < 0 ? rows.length - 1 : 0) : currentIdx;
+    const nextIdx = Math.min(rows.length - 1, Math.max(0, fromIdx + deltaRows));
+    const action = getManageTabsActionFromActiveElement(activeEl);
+    return focusManageTabsRowAction(rows[nextIdx], action);
+  }
+
   function renderManageTabs() {
     if (!(tabsList instanceof HTMLElement)) return;
     tabsList.textContent = "";
@@ -2896,7 +3072,8 @@ async function main() {
       setManageTabsMessage("At least one tab should exist.");
     }
 
-    for (const b of currentBoards) {
+    for (let idx = 0; idx < currentBoards.length; idx++) {
+      const b = currentBoards[idx];
       const row = document.createElement("div");
       row.className = "manageTabsRow";
 
@@ -2904,10 +3081,48 @@ async function main() {
       name.className = "manageTabsName";
       name.textContent = b;
 
+      const actions = document.createElement("div");
+      actions.className = "manageTabsActions";
+
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "monoLinkButton";
+      up.textContent = "Up";
+      up.dataset.manageTabsAction = "up";
+      up.disabled = idx <= 0;
+      up.addEventListener("click", async () => {
+        const next = boards.slice();
+        const i = next.indexOf(b);
+        if (i <= 0) return;
+        const tmp = next[i - 1];
+        next[i - 1] = next[i];
+        next[i] = tmp;
+        await persistBoardOrder(next);
+        renderManageTabs();
+      });
+
+      const down = document.createElement("button");
+      down.type = "button";
+      down.className = "monoLinkButton";
+      down.textContent = "Down";
+      down.dataset.manageTabsAction = "down";
+      down.disabled = idx >= currentBoards.length - 1;
+      down.addEventListener("click", async () => {
+        const next = boards.slice();
+        const i = next.indexOf(b);
+        if (i < 0 || i >= next.length - 1) return;
+        const tmp = next[i + 1];
+        next[i + 1] = next[i];
+        next[i] = tmp;
+        await persistBoardOrder(next);
+        renderManageTabs();
+      });
+
       const del = document.createElement("button");
       del.type = "button";
       del.className = "monoLinkButton";
       del.textContent = "Remove";
+      del.dataset.manageTabsAction = "remove";
       del.disabled = currentBoards.length <= 1;
       del.addEventListener("click", async () => {
         if (boards.length <= 1) {
@@ -2937,8 +3152,12 @@ async function main() {
         renderManageTabs();
       });
 
+      actions.appendChild(up);
+      actions.appendChild(down);
+      actions.appendChild(del);
+
       row.appendChild(name);
-      row.appendChild(del);
+      row.appendChild(actions);
       tabsList.appendChild(row);
     }
   }
@@ -3478,10 +3697,16 @@ async function main() {
       if (addTabName instanceof HTMLElement) targets.push(addTabName);
       if (addBtn instanceof HTMLElement) targets.push(addBtn);
 
-      const removeButtons = [...document.querySelectorAll(".manageTabsRow button")].filter(
-        (n) => n instanceof HTMLButtonElement
-      );
-      targets.push(...removeButtons);
+      // Treat each tab row as a single vertical step for global navigation.
+      // Within a row, left/right navigation can move between the row's buttons.
+      const rows = getManageTabsRows();
+      for (const row of rows) {
+        if (!(row instanceof HTMLElement)) continue;
+        const primary =
+          row.querySelector('button[data-manage-tabs-action="remove"]:not(:disabled)') ||
+          row.querySelector('button[data-manage-tabs-action]:not(:disabled)');
+        if (primary instanceof HTMLButtonElement) targets.push(primary);
+      }
     }
 
     return targets.filter((t) => isElementInVisibleView(t));
@@ -3956,6 +4181,27 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
         const activeEl2 = document.activeElement;
+
+        // Manage Tabs: down moves to next tab row (not across row buttons).
+        {
+          const manageTabsView = document.getElementById("manageTabsView");
+          const manageTabsVisible =
+            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
+          const inManageTabs =
+            manageTabsVisible && activeEl2 instanceof Element && activeEl2.closest("#manageTabsView") !== null;
+          if (inManageTabs) {
+            // If we're on the header links row, existing behavior enters the primary control.
+            // Otherwise, move between tab rows.
+            const inHeaderLinks =
+              activeEl2 instanceof Element &&
+              activeEl2.closest(".headerLinks") !== null;
+            const inManageTabsRow = activeEl2 instanceof Element && activeEl2.closest(".manageTabsRow") !== null;
+            if (!inHeaderLinks && inManageTabsRow) {
+              if (moveFocusAcrossManageTabsRows(+1)) return;
+            }
+          }
+        }
+
         const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
         if (activeCard2 instanceof HTMLElement) {
           const inFrontAttachments2 =
@@ -4145,6 +4391,25 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
         const activeEl2 = document.activeElement;
+
+        // Manage Tabs: up moves to previous tab row (not across row buttons).
+        {
+          const manageTabsView = document.getElementById("manageTabsView");
+          const manageTabsVisible =
+            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
+          const inManageTabs =
+            manageTabsVisible && activeEl2 instanceof Element && activeEl2.closest("#manageTabsView") !== null;
+          if (inManageTabs) {
+            const inHeaderLinks =
+              activeEl2 instanceof Element &&
+              activeEl2.closest(".headerLinks") !== null;
+            const inManageTabsRow = activeEl2 instanceof Element && activeEl2.closest(".manageTabsRow") !== null;
+            if (!inHeaderLinks && inManageTabsRow) {
+              if (moveFocusAcrossManageTabsRows(-1)) return;
+            }
+          }
+        }
+
         const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
         if (activeCard2 instanceof HTMLElement) {
           const inFrontAttachments2 =
@@ -4295,6 +4560,29 @@ async function main() {
         }
         e.preventDefault();
         e.stopPropagation();
+
+        // Manage Tabs: left/right navigates within a row, up/down navigates rows.
+        {
+          const manageTabsView = document.getElementById("manageTabsView");
+          const manageTabsVisible =
+            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
+          const inManageTabs =
+            manageTabsVisible && activeEl instanceof Element && activeEl.closest("#manageTabsView") !== null;
+          if (inManageTabs) {
+            const inManageTabsRow = activeEl instanceof Element && activeEl.closest(".manageTabsRow") !== null;
+            if (key === nav.left) {
+              if (inManageTabsRow && moveFocusWithinManageTabsRow(-1)) return;
+            } else if (key === nav.right) {
+              if (inManageTabsRow && moveFocusWithinManageTabsRow(+1)) return;
+            } else if (key === nav.up) {
+              if (inManageTabsRow && moveFocusAcrossManageTabsRows(-1)) return;
+            } else if (key === nav.down) {
+              if (inManageTabsRow && moveFocusAcrossManageTabsRows(+1)) return;
+            }
+            // Fall through to generic global nav if needed.
+          }
+        }
+
         const card = getCardFromElement(activeEl);
         if (!card) {
           moveGlobalFocus(
