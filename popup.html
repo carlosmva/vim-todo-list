@@ -15,6 +15,7 @@
           <div class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
             <button id="themeToggle" class="headerLink" type="button" aria-label="Theme"></button>
+            <a id="aiSettingsLink" class="headerLink" href="#" aria-label="AI Settings">AI Settings</a>
             <a id="manageTabsLink" class="headerLink" href="#" aria-label="Manage Tabs">Manage Tabs</a>
             <button id="keyLayoutToggle" class="headerLink" type="button" aria-label="Keyboard layout"></button>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
@@ -36,6 +37,9 @@
                 required
               />
             </div>
+
+            <div id="noteAutocomplete" class="noteAutocomplete" aria-label="Autocomplete suggestions" hidden></div>
+
             <div class="createButtons" aria-label="Actions">
               <div class="createButtonsLeft">
                 <button id="exportDbBtn" class="monoLinkButton" type="button">
@@ -106,6 +110,44 @@
             </button>
           </div>
           <div id="dashboardContent" class="instructionsContent"></div>
+        </div>
+
+        <div id="aiSettingsView" class="view" aria-label="AI Settings" hidden>
+          <div class="instructionsHeader">
+            <div class="instructionsTitle">AI Settings</div>
+            <button id="closeAiSettingsBtn" class="monoLinkButton" type="button">
+              Close
+            </button>
+          </div>
+          <div class="instructionsContent">
+            <div id="aiSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+            <form id="aiSettingsForm" class="aiSettingsForm" aria-label="AI settings">
+              <div class="aiSettingsRow">
+                <label for="aiEndpointBaseUrl">Endpoint base URL</label>
+                <input
+                  id="aiEndpointBaseUrl"
+                  class="bx--text-input"
+                  type="url"
+                  inputmode="url"
+                  placeholder="http://localhost:11434"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="aiSettingsRow">
+                <label for="aiCustomWords">Custom words (one per line)</label>
+                <textarea
+                  id="aiCustomWords"
+                  class="bx--text-input"
+                  rows="3"
+                  placeholder="One word per line"
+                  autocomplete="off"
+                ></textarea>
+              </div>
+              <div class="aiSettingsActions">
+                <button id="saveAiSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <div id="manageTabsView" class="view" aria-label="Manage Tabs" hidden>

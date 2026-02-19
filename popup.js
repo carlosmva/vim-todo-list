@@ -4,13 +4,165 @@ const STORAGE_KEY = "sqliteDb_v1";
 const ACTIVE_BOARD_KEY = "activeBoard_v1";
 const KEY_LAYOUT_KEY = "keyLayout_v1";
 const THEME_KEY = "theme_v1";
+const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
+const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
 
 const openNoteEditorIds = new Set();
 const flippedNoteIds = new Set();
 let cardFilterQuery = "";
 
+// English dictionary fallback completion tries to suggest a *common* word.
+// The bundled word list is broad (many rare/technical terms), so we apply a
+// lightweight heuristic to avoid noisy recommendations.
+const EN_DICT_COMMON_BIGRAM_SCORES = Object.freeze({
+  th: 8,
+  he: 7,
+  in: 6,
+  er: 6,
+  an: 6,
+  re: 6,
+  un: 6,
+  on: 5,
+  at: 5,
+  en: 5,
+  nd: 5,
+  ti: 5,
+  es: 5,
+  or: 5,
+  te: 5,
+  is: 5,
+  it: 5,
+  of: 5,
+  st: 4,
+  to: 4,
+  nt: 4,
+  ng: 4,
+  se: 4,
+  ch: 4,
+  sh: 4,
+  wh: 4,
+  qu: 4,
+  be: 4,
+  ha: 3,
+  as: 3,
+  ou: 3,
+  io: 3,
+  le: 3,
+  ve: 3,
+  co: 3,
+  me: 3,
+  de: 3,
+  hi: 3,
+  ri: 3,
+  ro: 3,
+  ra: 3,
+  li: 3,
+  il: 3,
+  us: 3,
+  go: 3,
+  el: 3,
+  la: 3,
+  ea: 3,
+  al: 3,
+  ar: 3,
+  ck: 3,
+  na: 3,
+  og: 2,
+  ma: 2,
+  up: 2,
+  oo: 2
+});
+
+const EN_DICT_RARE_BIGRAM_PENALTIES = Object.freeze({
+  aa: -6,
+  ae: -4,
+  oe: -4,
+  ii: -4,
+  uu: -4,
+  yy: -4,
+  qj: -8,
+  jq: -8,
+  zx: -8,
+  xq: -8
+});
+
+function englishBigramScoreLowercase(word) {
+  const w = String(word || "");
+  if (w.length < 2) return 0;
+
+  let score = 0;
+  for (let i = 0; i < w.length - 1; i++) {
+    const bg = w.slice(i, i + 2);
+    const penalty = EN_DICT_RARE_BIGRAM_PENALTIES[bg];
+    if (typeof penalty === "number") {
+      score += penalty;
+      continue;
+    }
+
+    const v = EN_DICT_COMMON_BIGRAM_SCORES[bg];
+    if (typeof v === "number") score += v;
+    else score -= 0.35; // unknown bigram: slight penalty
+  }
+
+  return score;
+}
+
+function scoreEnglishTokenShapeLowercase(token) {
+  const t = String(token || "");
+  if (!t) return -Infinity;
+  if (!/^[a-z]+$/.test(t)) return -Infinity;
+
+  let score = englishBigramScoreLowercase(t);
+
+  // Penalize 'q' not followed by 'u' (rare in common English).
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== "q") continue;
+    if (t[i + 1] !== "u") score -= 12;
+  }
+
+  const vowels = (t.match(/[aeiouy]/g) || []).length;
+  if (vowels === 0) score -= 12;
+  const ratio = vowels / t.length;
+  if (ratio < 0.2 || ratio > 0.85) score -= 3;
+
+  if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(t)) score -= 4;
+  if (/^(aa|ae|oe|ii|uu)/.test(t)) score -= 6;
+
+  return score;
+}
+
+function scoreEnglishDictionaryCandidateWordLowercase(word, prefixLen) {
+  const w = String(word || "");
+  if (!w) return -Infinity;
+  if (!/^[a-z]+$/.test(w)) return -Infinity;
+  if (w.length > 24) return -Infinity;
+
+  const completionLen = Math.max(0, w.length - Number(prefixLen || 0));
+
+  let score = scoreEnglishTokenShapeLowercase(w);
+  // Prefer shorter completions and shorter words.
+  score += 12 - completionLen * 2;
+  score += 10 - w.length;
+
+  // Common suffixes in everyday English.
+  if (w.endsWith("s")) score += 1.25;
+  if (w.endsWith("ed")) score += 0.75;
+  if (w.endsWith("ing")) score += 1.5;
+  if (w.endsWith("ly")) score += 0.5;
+  if (w.endsWith("tion") || w.endsWith("ment") || w.endsWith("ness")) score += 0.75;
+
+  // Penalize some technical/rare endings.
+  if (/(aceae|idae|inae|itis|osis|emia|genic|gynous|phyte|phyll|taxis|metry|graphy|omics)$/.test(w)) score -= 8;
+
+  // Extra penalty for very long words.
+  if (w.length > 12) score -= (w.length - 12) * 1.25;
+
+  return score;
+}
+
 function bytesToBase64(bytes) {
+  if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes || []);
   let binary = "";
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -30,7 +182,7 @@ function base64ToBytes(b64) {
 async function loadDbBytes() {
   const result = await chrome.storage.local.get([STORAGE_KEY]);
   const b64 = result[STORAGE_KEY];
-  if (!b64) return null;
+  if (typeof b64 !== "string" || !b64) return null;
   try {
     return base64ToBytes(b64);
   } catch {
@@ -68,6 +220,60 @@ async function loadTheme() {
 
 async function saveTheme(theme) {
   await chrome.storage.local.set({ [THEME_KEY]: theme });
+}
+
+function normalizeEndpointBaseUrl(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  let url;
+  try {
+    url = new URL(v);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+
+  // Base URL only (strip path/query/hash).
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+
+  let out = url.toString();
+  if (out.endsWith("/")) out = out.slice(0, -1);
+  return out;
+}
+
+async function loadAiEndpointBaseUrl() {
+  const result = await chrome.storage.local.get([AI_ENDPOINT_BASE_URL_KEY]);
+  const value = result[AI_ENDPOINT_BASE_URL_KEY];
+  return typeof value === "string" ? value : null;
+}
+
+async function saveAiEndpointBaseUrl(baseUrl) {
+  const normalized = normalizeEndpointBaseUrl(baseUrl);
+  if (normalized === null) throw new Error("Invalid endpoint URL");
+  if (!normalized) {
+    await chrome.storage.local.remove([AI_ENDPOINT_BASE_URL_KEY]);
+    return "";
+  }
+  await chrome.storage.local.set({ [AI_ENDPOINT_BASE_URL_KEY]: normalized });
+  return normalized;
+}
+
+async function loadAiCustomWords() {
+  const result = await chrome.storage.local.get([AI_CUSTOM_WORDS_KEY]);
+  const value = result[AI_CUSTOM_WORDS_KEY];
+  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+}
+
+async function saveAiCustomWords(words) {
+  const list = Array.isArray(words) ? words.filter((w) => typeof w === "string" && w.trim()) : [];
+  if (!list.length) {
+    await chrome.storage.local.remove([AI_CUSTOM_WORDS_KEY]);
+    return [];
+  }
+  await chrome.storage.local.set({ [AI_CUSTOM_WORDS_KEY]: list });
+  return list;
 }
 
 async function saveDbBytes(bytes) {
@@ -782,8 +988,14 @@ function renderNotes(db, notes) {
     editor.dataset.noteId = String(note.id);
     editor.innerHTML = typeof note.notes_html === "string" ? note.notes_html : "";
 
+    const editorAutocomplete = document.createElement("div");
+    editorAutocomplete.className = "noteAutocomplete noteEditorAutocomplete";
+    editorAutocomplete.hidden = true;
+    editorAutocomplete.dataset.noteId = String(note.id);
+
     editorWrap.appendChild(toolbar);
     editorWrap.appendChild(editor);
+    editorWrap.appendChild(editorAutocomplete);
     front.appendChild(body);
     if (links.length) front.appendChild(attachments);
     front.appendChild(editorWrap);
@@ -1111,21 +1323,62 @@ async function main() {
   const notesView = document.getElementById("notesView");
   const instructionsView = document.getElementById("instructionsView");
   const dashboardView = document.getElementById("dashboardView");
+  const aiSettingsView = document.getElementById("aiSettingsView");
   const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
+  const aiSettingsLink = document.getElementById("aiSettingsLink");
   const manageTabsLink = document.getElementById("manageTabsLink");
   const themeToggle = document.getElementById("themeToggle");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
   const closeDashboardBtn = document.getElementById("closeDashboardBtn");
+  const closeAiSettingsBtn = document.getElementById("closeAiSettingsBtn");
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
   const instructionsContent = document.getElementById("instructionsContent");
   const dashboardContent = document.getElementById("dashboardContent");
+  const aiSettingsMessage = document.getElementById("aiSettingsMessage");
+  const aiSettingsForm = document.getElementById("aiSettingsForm");
+  const aiEndpointBaseUrlInput = document.getElementById("aiEndpointBaseUrl");
+  const aiCustomWordsInput = document.getElementById("aiCustomWords");
   const cardFilterRow = document.getElementById("cardFilterRow");
   const cardFilterInput = document.getElementById("cardFilterInput");
   const manageTabsMessage = document.getElementById("manageTabsMessage");
   const tabsList = document.getElementById("tabsList");
   const addTabForm = document.getElementById("addTabForm");
   const addTabName = document.getElementById("addTabName");
+  const noteAutocomplete = document.getElementById("noteAutocomplete");
+
+  const textareaMinHeights = new WeakMap();
+
+  function autosizeTextarea(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+
+    let minHeight = textareaMinHeights.get(textarea);
+    if (!Number.isFinite(minHeight) || minHeight <= 0) {
+      const prev = textarea.style.height;
+      textarea.style.height = "";
+      const measured = Math.ceil(textarea.getBoundingClientRect().height);
+      textarea.style.height = prev;
+      if (Number.isFinite(measured) && measured > 0) {
+        minHeight = measured;
+        textareaMinHeights.set(textarea, minHeight);
+      } else {
+        minHeight = 0;
+      }
+    }
+
+    textarea.style.height = "auto";
+    const target = Math.max(minHeight || 0, textarea.scrollHeight || 0);
+    if (target > 0) textarea.style.height = `${target}px`;
+  }
+
+  function queueAutosizeTextarea(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+    requestAnimationFrame(() => autosizeTextarea(textarea));
+  }
+
+  if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
+    aiCustomWordsInput.addEventListener("input", () => autosizeTextarea(aiCustomWordsInput));
+  }
 
   function setCardFilterVisible(visible) {
     if (!(cardFilterRow instanceof HTMLElement)) return;
@@ -1142,6 +1395,7 @@ async function main() {
     if (notesView instanceof HTMLElement) notesView.hidden = false;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1149,6 +1403,7 @@ async function main() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = false;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1156,6 +1411,15 @@ async function main() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = false;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
+  }
+
+  function showAiSettingsView() {
+    if (notesView instanceof HTMLElement) notesView.hidden = true;
+    if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = false;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1163,6 +1427,7 @@ async function main() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
 
@@ -1225,6 +1490,7 @@ async function main() {
       <ul>
         <li>${combo("Alt", fmt(openPopupKey))}: open the popup</li>
         <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
+        <li><b>AI Settings</b>: focus the AI Settings header link and press Enter</li>
         <li>${combo("Alt", fmt(nav.down))}: move down</li>
         <li>${combo("Alt", fmt(nav.up))}: move up</li>
         <li>${combo("Alt", fmt(nav.left))}: move left (not in notes)</li>
@@ -1239,6 +1505,13 @@ async function main() {
         <li>${keycap(":x")}: close notes editor or close flipped attachments</li>
         <li>${combo("Alt", fmt(checkboxKey))}: toggle crossed-out (strikethrough) text for the line</li>
         <li>${keycap("Esc")}: exit insert mode (then Esc again closes notes)</li>
+      </ul>
+
+      <h3>Autocomplete</h3>
+      <ul>
+        <li>Local suggestions appear while typing in the new note input</li>
+        <li>${keycap("Tab")}: accept the “Complete:” recommendation when shown (otherwise stays in the New note field)</li>
+        <li>${combo("Alt", fmt(nav.down))}/${combo("Alt", fmt(nav.up))}: move through visible suggestions</li>
       </ul>
     `;
   }
@@ -1423,6 +1696,10 @@ async function main() {
     if (manageTabsMessage instanceof HTMLElement) manageTabsMessage.textContent = text || "";
   }
 
+  function setAiSettingsMessage(text) {
+    if (aiSettingsMessage instanceof HTMLElement) aiSettingsMessage.textContent = text || "";
+  }
+
   function getNoteIdFromCardElement(card) {
     if (!(card instanceof HTMLElement)) return null;
     const id = Number(card.dataset.noteId);
@@ -1474,6 +1751,44 @@ async function main() {
   let keyLayout = (await loadKeyLayout()) || "qwerty";
   // Persist default if missing/invalid.
   if ((await loadKeyLayout()) === null) await saveKeyLayout(keyLayout);
+
+  // AI endpoint base URL: empty/missing means AI disabled.
+  let aiEndpointBaseUrl = (await loadAiEndpointBaseUrl()) || "";
+  let aiCustomWords = await loadAiCustomWords();
+
+  // Shared caches for autocomplete (new note + notes editor).
+  let ollamaModel = null;
+  let englishDictWords = null; // lowercased, sorted
+  let englishDictLoadPromise = null;
+
+  function parseCustomWords(raw) {
+    const lines = String(raw || "")
+      .split(/\r?\n/)
+      .map((s) => String(s || "").trim())
+      .filter(Boolean);
+
+    const valid = [];
+    const invalid = [];
+    const seenLower = new Set();
+
+    for (const w of lines) {
+      // "Single word or acronym": allow letters/digits and internal hyphens/underscores, no spaces.
+      // Keep the user's casing (e.g., eQuote, pre-eQuote, pre_eQuote).
+      const ok =
+        /^[A-Za-z](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$/.test(w) &&
+        !/(--|__|_-|-_)/.test(w);
+      if (!ok) {
+        invalid.push(w);
+        continue;
+      }
+      const k = w.toLowerCase();
+      if (seenLower.has(k)) continue;
+      seenLower.add(k);
+      valid.push(w);
+    }
+
+    return { valid, invalid };
+  }
 
   function updateKeyLayoutToggleUi() {
     if (!(keyLayoutToggle instanceof HTMLElement)) return;
@@ -1826,7 +2141,488 @@ async function main() {
   async function refresh() {
     const notes = queryNotes(db, activeBoard);
     renderNotes(db, notes);
+    wireNotesEditorAutocomplete();
     updateVimIndicatorsInDom();
+  }
+
+  function wireNotesEditorAutocomplete() {
+    const editors = document.querySelectorAll(".noteEditorArea[data-note-id]");
+    for (const editor of editors) {
+      if (!(editor instanceof HTMLElement)) continue;
+      if (editor.dataset.autocompleteWired === "1") continue;
+
+      const wrap = editor.closest(".noteEditor");
+      const container = wrap ? wrap.querySelector(".noteEditorAutocomplete") : null;
+      if (!(container instanceof HTMLElement)) continue;
+
+      editor.dataset.autocompleteWired = "1";
+      setupNotesEditorAutocomplete(editor, container);
+    }
+  }
+
+  function setupNotesEditorAutocomplete(editor, container) {
+    let localTimer = null;
+    let aiTimer = null;
+    let aiAbort = null;
+
+    let localCompletion = null; // { baseText, completion }
+    let aiSuggestion = null; // { baseText, completion }
+
+    const endsWithWhitespace = (s) => /\s$/.test(String(s || ""));
+    const getLastToken = (s) => {
+      const m = String(s || "").match(/(\S+)$/);
+      return m ? m[1] : "";
+    };
+    const getLastTokenInfo = (s) => {
+      const str = String(s || "");
+      const m = str.match(/(\S+)$/);
+      if (!m) return { token: "", index: str.length };
+      const token = m[1] || "";
+      const index = Math.max(0, str.length - token.length);
+      return { token, index };
+    };
+    const getLeadingWord = (s) => {
+      const m = String(s || "").match(/^([A-Za-z0-9_-]+)/);
+      return m ? m[1] : "";
+    };
+
+    const getCaretPrefixText = () => {
+      try {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return String(editor.textContent || "");
+        const r = sel.getRangeAt(0);
+        const endNode = r.endContainer;
+        if (!(endNode instanceof Node) || !editor.contains(endNode)) {
+          return String(editor.textContent || "");
+        }
+        const pre = document.createRange();
+        pre.selectNodeContents(editor);
+        pre.setEnd(r.endContainer, r.endOffset);
+        return pre.toString();
+      } catch {
+        return String(editor.textContent || "");
+      }
+    };
+
+    const ensureEnglishDictionaryLoaded = async () => {
+      if (Array.isArray(englishDictWords)) return englishDictWords;
+      if (englishDictLoadPromise) return englishDictLoadPromise;
+
+      englishDictLoadPromise = (async () => {
+        try {
+          const url = chrome?.runtime?.getURL
+            ? chrome.runtime.getURL("vendor/words-en.txt")
+            : "vendor/words-en.txt";
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Dictionary fetch failed: ${res.status}`);
+          const txt = await res.text();
+          const out = [];
+          for (const line of txt.split(/\r?\n/)) {
+            const w = String(line || "").trim();
+            if (!w) continue;
+            if (w.length > 40) continue;
+            if (!/^[A-Za-z]+$/.test(w)) continue;
+            out.push(w.toLowerCase());
+          }
+          out.sort();
+          englishDictWords = out;
+          return englishDictWords;
+        } finally {
+          if (!Array.isArray(englishDictWords)) englishDictLoadPromise = null;
+        }
+      })();
+
+      return englishDictLoadPromise;
+    };
+
+    const findBestDictionaryWordCompletion = (baseText) => {
+      if (!Array.isArray(englishDictWords) || !englishDictWords.length) return null;
+
+      const base = String(baseText || "");
+      if (!base.trim()) return null;
+      if (endsWithWhitespace(base)) return null;
+
+      const { token } = getLastTokenInfo(base);
+      if (!token) return null;
+      if (token.length < 4) return null;
+
+      const prefix = token.toLowerCase();
+      // If the typed prefix itself is very unlikely in common English, skip
+      // dictionary suggestions (avoids recommending obscure terms).
+      if (scoreEnglishTokenShapeLowercase(prefix) < 0.75) return null;
+      const words = englishDictWords;
+
+      let lo = 0;
+      let hi = words.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (words[mid] < prefix) lo = mid + 1;
+        else hi = mid;
+      }
+
+      let best = "";
+      let bestScore = -Infinity;
+      let bestCompletionLen = Infinity;
+
+      // Scan a small window of matches; rank by commonness + short completion.
+      for (let i = lo; i < words.length; i++) {
+        const w = words[i];
+        if (!w.startsWith(prefix)) break;
+        if (w.length <= token.length) continue;
+
+        const completionLen = w.length - token.length;
+        const score = scoreEnglishDictionaryCandidateWordLowercase(w, token.length);
+        const betterScore = score > bestScore;
+        const betterLen = score === bestScore && completionLen < bestCompletionLen;
+        const betterWordLen =
+          score === bestScore && completionLen === bestCompletionLen && (!best || w.length < best.length);
+
+        if (betterScore || betterLen || betterWordLen) {
+          best = w;
+          bestScore = score;
+          bestCompletionLen = completionLen;
+        }
+
+        if (i - lo > 240) break;
+      }
+
+      // Require a minimally good score to avoid noisy/rare completions.
+      if (!best || !(bestScore >= 9)) return null;
+      return { baseText: base, completion: best.slice(token.length) };
+    };
+
+    const findBestCustomWordCompletion = (baseText) => {
+      const base = String(baseText || "");
+      if (!base.trim()) return null;
+      if (endsWithWhitespace(base)) return null;
+
+      const { token } = getLastTokenInfo(base);
+      if (!token) return null;
+      if (token.length < 2) return null;
+
+      const prefix = token.toLowerCase();
+      const words = Array.isArray(aiCustomWords) ? aiCustomWords : [];
+
+      let best = "";
+      for (const w0 of words) {
+        const w = String(w0 || "").trim();
+        if (!w) continue;
+        if (w.length <= token.length) continue;
+        if (w.slice(0, token.length).toLowerCase() !== prefix) continue;
+        if (!best || w.length < best.length) best = w;
+      }
+
+      if (!best) return null;
+      return { baseText: base, completion: best.slice(token.length) };
+    };
+
+    const queryBestLocalCompletion = (baseText) => {
+      const base = String(baseText || "");
+      if (!base.trim()) return null;
+      if (endsWithWhitespace(base)) return null;
+
+      const { token } = getLastTokenInfo(base);
+      if (!token) return null;
+      const tokenLower = token.toLowerCase();
+
+      try {
+        const stmt = db.prepare(
+          "SELECT text, updated_at FROM notes WHERE text LIKE ? ORDER BY updated_at DESC LIMIT ?"
+        );
+        stmt.bind([`%${token}%`, 40]);
+
+        let bestWord = "";
+        let bestUpdatedAt = -1;
+        while (stmt.step()) {
+          const row = stmt.getAsObject();
+          const t = String(row.text || "");
+          const updatedAt = Number(row.updated_at);
+
+          const words = t.match(/[A-Za-z0-9_-]+/g) || [];
+          for (const w of words) {
+            if (!w) continue;
+            if (w.length <= token.length) continue;
+            if (w.slice(0, token.length).toLowerCase() !== tokenLower) continue;
+
+            const isBetterLength = !bestWord || w.length < bestWord.length;
+            const isBetterRecency = updatedAt > bestUpdatedAt;
+            if (isBetterLength || (!isBetterLength && isBetterRecency)) {
+              bestWord = w;
+              bestUpdatedAt = Number.isFinite(updatedAt) ? updatedAt : bestUpdatedAt;
+            }
+          }
+        }
+        stmt.free();
+
+        if (!bestWord) return null;
+        return { baseText: base, completion: bestWord.slice(token.length) };
+      } catch (err) {
+        console.error(err);
+        return null;
+      }
+    };
+
+    const computeAiWordCompletion = (baseText, aiResponse) => {
+      const base = String(baseText || "");
+      if (!base.trim()) return null;
+      if (endsWithWhitespace(base)) return null;
+
+      let r = String(aiResponse || "");
+      if (!r || /^\s/.test(r)) return null;
+
+      const token = getLastToken(base);
+      if (token && r.slice(0, token.length).toLowerCase() === token.toLowerCase()) {
+        r = r.slice(token.length);
+      }
+
+      const w = getLeadingWord(r);
+      return w ? { baseText: base, completion: w } : null;
+    };
+
+    const fetchOllamaDefaultModel = async (baseUrl, signal) => {
+      const url = new URL("/api/tags", baseUrl).toString();
+      const res = await fetch(url, { signal });
+      if (!res.ok) throw new Error(`Ollama tags failed: ${res.status}`);
+      const data = await res.json();
+      const name = data?.models?.[0]?.name;
+      if (typeof name !== "string" || !name) throw new Error("No Ollama models found");
+      return name;
+    };
+
+    const fetchOllamaCompletion = async (baseUrl, prompt, signal) => {
+      const model = ollamaModel || (await fetchOllamaDefaultModel(baseUrl, signal));
+      ollamaModel = model;
+      const url = new URL("/api/generate", baseUrl).toString();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, prompt: String(prompt || ""), stream: false }),
+        signal
+      });
+      if (!res.ok) throw new Error(`Ollama generate failed: ${res.status}`);
+      const data = await res.json();
+      const r = typeof data?.response === "string" ? data.response : "";
+      return r;
+    };
+
+    const hide = () => {
+      container.textContent = "";
+      container.hidden = true;
+    };
+
+    const render = () => {
+      container.textContent = "";
+      const hasLocalCompletion = !!(localCompletion && localCompletion.completion);
+      const hasAi = !!(aiSuggestion && aiSuggestion.completion);
+      if (!hasLocalCompletion && !hasAi) {
+        container.hidden = true;
+        return;
+      }
+
+      container.hidden = false;
+
+      const label = document.createElement("span");
+      label.className = "noteAutocompleteLabel";
+      label.textContent = "Suggestions:";
+      container.appendChild(label);
+
+      const addBtn = (text, kind, payload) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "monoLinkButton";
+        btn.textContent = text;
+        btn.dataset.autocompleteKind = kind;
+        if (payload) {
+          for (const [k, v] of Object.entries(payload)) btn.dataset[k] = String(v);
+        }
+        btn.addEventListener("click", () => {
+          const kind2 = btn.dataset.autocompleteKind;
+          const base = btn.dataset.baseText || "";
+          const completion = btn.dataset.completion || "";
+          if (!completion) return;
+          if (getCaretPrefixText() !== base) {
+            editor.focus();
+            return;
+          }
+          if (kind2 === "localCompletion" || kind2 === "ai") {
+            try {
+              editor.focus();
+              document.execCommand("insertText", false, completion);
+            } catch {
+              // ignore
+            }
+          }
+          editor.focus();
+        });
+        container.appendChild(btn);
+      };
+
+      if (hasLocalCompletion) {
+        const baseToken = getLastToken(localCompletion.baseText);
+        const preview = `${baseToken}${String(localCompletion.completion || "")}`;
+        const short = preview.length > 70 ? preview.slice(0, 67) + "…" : preview;
+        addBtn(`Complete: ${short}`, "localCompletion", {
+          baseText: localCompletion.baseText,
+          completion: localCompletion.completion
+        });
+      }
+
+      if (hasAi) {
+        const baseToken = getLastToken(aiSuggestion.baseText);
+        const preview = `${baseToken}${String(aiSuggestion.completion || "")}`;
+        const short = preview.length > 70 ? preview.slice(0, 67) + "…" : preview;
+        addBtn(`AI: ${short}`, "ai", { baseText: aiSuggestion.baseText, completion: aiSuggestion.completion });
+      }
+    };
+
+    const clearAi = () => {
+      aiSuggestion = null;
+      if (aiAbort) {
+        try {
+          aiAbort.abort();
+        } catch {
+          // ignore
+        }
+        aiAbort = null;
+      }
+    };
+
+    const clearAll = () => {
+      localCompletion = null;
+      clearAi();
+      hide();
+    };
+
+    const scheduleRefresh = () => {
+      if (localTimer) clearTimeout(localTimer);
+      if (aiTimer) clearTimeout(aiTimer);
+
+      const noteId = getNoteIdFromEditor(editor);
+      if (noteId !== null && vimGetMode(noteId) !== "insert") {
+        clearAll();
+        return;
+      }
+
+      const value = getCaretPrefixText();
+      const trimmed = String(value || "").trim();
+      if (!trimmed) {
+        clearAll();
+        return;
+      }
+
+      localTimer = setTimeout(() => {
+        const baseText = getCaretPrefixText();
+        const dbCompletion = queryBestLocalCompletion(baseText);
+        const customCompletion = findBestCustomWordCompletion(baseText);
+        if (customCompletion && dbCompletion) {
+          const dbLen = getLastToken(dbCompletion.baseText).length + String(dbCompletion.completion || "").length;
+          const cwLen = getLastToken(customCompletion.baseText).length + String(customCompletion.completion || "").length;
+          localCompletion = cwLen <= dbLen ? customCompletion : dbCompletion;
+        } else {
+          localCompletion = customCompletion || dbCompletion;
+        }
+        render();
+
+        if (!localCompletion) {
+          const { token } = getLastTokenInfo(baseText);
+          if (token && token.length >= 4) {
+            void ensureEnglishDictionaryLoaded()
+              .then(() => {
+                if (getCaretPrefixText() !== baseText) return;
+                if (localCompletion) return;
+                const dictC = findBestDictionaryWordCompletion(baseText);
+                if (!dictC) return;
+                localCompletion = dictC;
+                render();
+              })
+              .catch((err) => {
+                console.error(err);
+              });
+          }
+        }
+      }, 140);
+
+      clearAi();
+      if (!aiEndpointBaseUrl) {
+        render();
+        return;
+      }
+
+      if (trimmed.length < 3) {
+        render();
+        return;
+      }
+
+      aiTimer = setTimeout(async () => {
+        try {
+          aiAbort = new AbortController();
+          const baseText = getCaretPrefixText();
+          const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, baseText, aiAbort.signal);
+          const c = computeAiWordCompletion(baseText, raw);
+          if (!c) {
+            aiSuggestion = null;
+            render();
+            return;
+          }
+
+          if (getCaretPrefixText() !== baseText) return;
+          aiSuggestion = c;
+          render();
+        } catch (err) {
+          if (String(err?.name || "").toLowerCase().includes("abort")) return;
+          console.error(err);
+          aiSuggestion = null;
+          render();
+        } finally {
+          aiAbort = null;
+        }
+      }, 750);
+    };
+
+    editor.addEventListener("input", scheduleRefresh);
+    editor.addEventListener("keyup", scheduleRefresh);
+    editor.addEventListener("mouseup", scheduleRefresh);
+
+    editor.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+
+      // Prefer local "Complete:" recommendation; fall back to AI.
+      const prefix = getCaretPrefixText();
+      if (localCompletion && localCompletion.completion && prefix === localCompletion.baseText) {
+        e.preventDefault();
+        try {
+          document.execCommand("insertText", false, localCompletion.completion);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      if (aiSuggestion && aiSuggestion.completion && prefix === aiSuggestion.baseText) {
+        e.preventDefault();
+        try {
+          document.execCommand("insertText", false, aiSuggestion.completion);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      // No completion available: keep focus in the editor.
+      e.preventDefault();
+    });
+
+    editor.addEventListener("blur", () => {
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (active instanceof Element && container.contains(active)) return;
+        hide();
+      }, 0);
+    });
+
+    editor.addEventListener("focus", () => {
+      scheduleRefresh();
+    });
   }
 
   async function persist() {
@@ -1977,6 +2773,30 @@ async function main() {
       if (closeInstructionsBtn instanceof HTMLElement) closeInstructionsBtn.focus();
     });
   }
+
+  // AI Settings view toggle
+  if (aiSettingsLink instanceof HTMLElement) {
+    aiSettingsLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      setAiSettingsMessage("");
+      showAiSettingsView();
+      if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
+        aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
+        aiEndpointBaseUrlInput.focus();
+        try {
+          aiEndpointBaseUrlInput.select();
+        } catch {
+          // ignore
+        }
+        if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
+          aiCustomWordsInput.value = Array.isArray(aiCustomWords) ? aiCustomWords.join("\n") : "";
+          queueAutosizeTextarea(aiCustomWordsInput);
+        }
+      } else if (closeAiSettingsBtn instanceof HTMLElement) {
+        closeAiSettingsBtn.focus();
+      }
+    });
+  }
   if (manageTabsLink instanceof HTMLElement) {
     manageTabsLink.addEventListener("click", (e) => {
       e.preventDefault();
@@ -2002,6 +2822,13 @@ async function main() {
       if (input instanceof HTMLElement) input.focus();
     });
   }
+  if (closeAiSettingsBtn instanceof HTMLElement) {
+    closeAiSettingsBtn.addEventListener("click", () => {
+      showNotesView();
+      const input = document.getElementById("noteText");
+      if (input instanceof HTMLElement) input.focus();
+    });
+  }
   if (closeManageTabsBtn instanceof HTMLElement) {
     closeManageTabsBtn.addEventListener("click", () => {
       showNotesView();
@@ -2014,6 +2841,49 @@ async function main() {
       showNotesView();
       const input = document.getElementById("noteText");
       if (input instanceof HTMLElement) input.focus();
+    });
+  }
+
+  if (aiSettingsForm instanceof HTMLFormElement) {
+    aiSettingsForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setAiSettingsMessage("");
+      const raw = aiEndpointBaseUrlInput instanceof HTMLInputElement ? aiEndpointBaseUrlInput.value : "";
+      const normalized = normalizeEndpointBaseUrl(raw);
+      if (normalized === null) {
+        setAiSettingsMessage("Please enter a valid http(s) URL (or leave empty to disable). ");
+        return;
+      }
+
+      const rawWords = aiCustomWordsInput instanceof HTMLTextAreaElement ? aiCustomWordsInput.value : "";
+      const parsed = parseCustomWords(rawWords);
+      if (parsed.invalid.length) {
+        setAiSettingsMessage(
+          `Some custom words were ignored (must be a single word/acronym; letters/digits/hyphens/underscores; no spaces): ${parsed.invalid.join(", ")}`
+        );
+      }
+
+      try {
+        aiEndpointBaseUrl = await saveAiEndpointBaseUrl(normalized);
+        aiCustomWords = await saveAiCustomWords(parsed.valid);
+
+        if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
+          queueAutosizeTextarea(aiCustomWordsInput);
+        }
+
+        if (aiEndpointBaseUrl) {
+          setAiSettingsMessage(
+            `Saved. Custom words: ${Array.isArray(aiCustomWords) ? aiCustomWords.length : 0}.`
+          );
+        } else {
+          setAiSettingsMessage(
+            `AI disabled. Custom words: ${Array.isArray(aiCustomWords) ? aiCustomWords.length : 0}.`
+          );
+        }
+      } catch (err) {
+        console.error(err);
+        setAiSettingsMessage("Could not save settings.");
+      }
     });
   }
 
@@ -2534,10 +3404,12 @@ async function main() {
     const targets = [];
 
     const themeToggle = document.getElementById("themeToggle");
+    const aiSettingsLink = document.getElementById("aiSettingsLink");
     const manageTabsLink = document.getElementById("manageTabsLink");
     const keyLayoutToggle = document.getElementById("keyLayoutToggle");
     const instructionsLink = document.getElementById("instructionsLink");
     if (themeToggle instanceof HTMLElement) targets.push(themeToggle);
+    if (aiSettingsLink instanceof HTMLElement) targets.push(aiSettingsLink);
     if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
     if (keyLayoutToggle instanceof HTMLElement) targets.push(keyLayoutToggle);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
@@ -2545,11 +3417,13 @@ async function main() {
     const notesView = document.getElementById("notesView");
     const instructionsView = document.getElementById("instructionsView");
     const dashboardView = document.getElementById("dashboardView");
+    const aiSettingsView = document.getElementById("aiSettingsView");
     const manageTabsView = document.getElementById("manageTabsView");
 
     const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
     const instructionsVisible = instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
     const dashboardVisible = dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
+    const aiSettingsVisible = aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
     const manageTabsVisible = manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
     if (notesVisible) {
@@ -2578,6 +3452,17 @@ async function main() {
     if (instructionsVisible) {
       const closeBtn = document.getElementById("closeInstructionsBtn");
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+    }
+
+    if (aiSettingsVisible) {
+      const closeBtn = document.getElementById("closeAiSettingsBtn");
+      const endpoint = document.getElementById("aiEndpointBaseUrl");
+      const customWords = document.getElementById("aiCustomWords");
+      const saveBtn = document.getElementById("saveAiSettingsBtn");
+      if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+      if (endpoint instanceof HTMLElement) targets.push(endpoint);
+      if (customWords instanceof HTMLElement) targets.push(customWords);
+      if (saveBtn instanceof HTMLElement) targets.push(saveBtn);
     }
 
     if (dashboardVisible) {
@@ -2679,6 +3564,78 @@ async function main() {
     (e) => {
       const key = (e.key || "").toLowerCase();
       const nav = getNavKeys(keyLayout);
+
+      // Autocomplete suggestion navigation (capture-phase):
+      // When suggestions are visible for the New note input, Alt+Up/Alt+Down should
+      // traverse the suggestion buttons rather than moving global focus.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === nav.down || key === nav.up)) {
+        const activeEl0 = document.activeElement;
+        const noteTextInput = document.getElementById("noteText");
+
+        const inNewNoteInput = activeEl0 instanceof Element && noteTextInput instanceof Element && activeEl0 === noteTextInput;
+        const inAutocomplete =
+          activeEl0 instanceof Element &&
+          noteAutocomplete instanceof HTMLElement &&
+          noteAutocomplete.contains(activeEl0);
+
+        if (inNewNoteInput || inAutocomplete) {
+          const btns =
+            noteAutocomplete instanceof HTMLElement && !noteAutocomplete.hidden
+              ? Array.from(noteAutocomplete.querySelectorAll("button.monoLinkButton")).filter(
+                  (b) => b instanceof HTMLButtonElement
+                )
+              : [];
+
+          if (btns.length) {
+            let idx = activeEl0 instanceof HTMLElement ? btns.indexOf(activeEl0) : -1;
+            // If we're on the last suggestion and moving "down", exit suggestions to the next row.
+            if (idx === btns.length - 1 && key === nav.down) {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                e.stopImmediatePropagation();
+              } catch {
+                // ignore
+              }
+              for (const b of btns) b.removeAttribute("aria-current");
+              const exportDbBtn = document.getElementById("exportDbBtn");
+              if (exportDbBtn instanceof HTMLElement) safeFocus(exportDbBtn);
+              return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            // Ensure no other capture listeners process this navigation key.
+            try {
+              e.stopImmediatePropagation();
+            } catch {
+              // ignore
+            }
+
+            // If we're on the first suggestion and moving "up", go back to the input.
+            if (idx === 0 && key === nav.up && noteTextInput instanceof HTMLElement) {
+              for (const b of btns) b.removeAttribute("aria-current");
+              safeFocus(noteTextInput);
+              return;
+            }
+
+            if (idx < 0) {
+              idx = key === nav.down ? 0 : btns.length - 1;
+            } else {
+              idx = idx + (key === nav.down ? +1 : -1);
+              if (idx < 0) idx = btns.length - 1;
+              if (idx >= btns.length) idx = 0;
+            }
+
+            for (let j = 0; j < btns.length; j++) {
+              if (j === idx) btns[j].setAttribute("aria-current", "true");
+              else btns[j].removeAttribute("aria-current");
+            }
+            safeFocus(btns[idx]);
+            return;
+          }
+        }
+      }
 
       const activeEl = document.activeElement;
       const inNotesUi =
@@ -3072,6 +4029,7 @@ async function main() {
           const notesView = document.getElementById("notesView");
           const instructionsView = document.getElementById("instructionsView");
           const dashboardView = document.getElementById("dashboardView");
+          const aiSettingsView = document.getElementById("aiSettingsView");
           const manageTabsView = document.getElementById("manageTabsView");
 
           const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
@@ -3079,6 +4037,8 @@ async function main() {
             instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
           const dashboardVisible =
             dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
+          const aiSettingsVisible =
+            aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
           const manageTabsVisible =
             manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
@@ -3091,6 +4051,12 @@ async function main() {
           if (manageTabsVisible) {
             const addTabName = document.getElementById("addTabName");
             if (addTabName instanceof HTMLElement) safeFocus(addTabName);
+            return;
+          }
+
+          if (aiSettingsVisible) {
+            const endpoint = document.getElementById("aiEndpointBaseUrl");
+            if (endpoint instanceof HTMLElement) safeFocus(endpoint);
             return;
           }
 
@@ -3754,6 +4720,594 @@ async function main() {
     });
   }
 
+  // Autocomplete (new note input): local DB + optional AI completion
+  let clearNewNoteAutocomplete = () => {};
+  {
+    const input = document.getElementById("noteText");
+    const container = noteAutocomplete;
+    if (input instanceof HTMLInputElement && container instanceof HTMLElement) {
+      let localTimer = null;
+      let aiTimer = null;
+      let aiAbort = null;
+
+      let focusedSuggestionIndex = -1;
+
+      let localSuggestions = [];
+      let localCompletion = null; // { baseText, completion }
+      let aiSuggestion = null; // { baseText, completion }
+
+      const endsWithWhitespace = (s) => /\s$/.test(String(s || ""));
+      const getLastToken = (s) => {
+        const m = String(s || "").match(/(\S+)$/);
+        return m ? m[1] : "";
+      };
+      const getLastTokenInfo = (s) => {
+        const str = String(s || "");
+        const m = str.match(/(\S+)$/);
+        if (!m) return { token: "", index: str.length };
+        const token = m[1] || "";
+        const index = Math.max(0, str.length - token.length);
+        return { token, index };
+      };
+      const getLeadingWord = (s) => {
+        const m = String(s || "").match(/^([A-Za-z0-9_-]+)/);
+        return m ? m[1] : "";
+      };
+
+      const ensureEnglishDictionaryLoaded = async () => {
+        if (Array.isArray(englishDictWords)) return englishDictWords;
+        if (englishDictLoadPromise) return englishDictLoadPromise;
+
+        englishDictLoadPromise = (async () => {
+          try {
+            const url = chrome?.runtime?.getURL
+              ? chrome.runtime.getURL("vendor/words-en.txt")
+              : "vendor/words-en.txt";
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Dictionary fetch failed: ${res.status}`);
+            const txt = await res.text();
+            const out = [];
+            for (const line of txt.split(/\r?\n/)) {
+              const w = String(line || "").trim();
+              if (!w) continue;
+              if (w.length > 40) continue;
+              if (!/^[A-Za-z]+$/.test(w)) continue;
+              out.push(w.toLowerCase());
+            }
+            out.sort();
+            englishDictWords = out;
+            return englishDictWords;
+          } finally {
+            // Keep the promise cached, but allow retries if load failed.
+            if (!Array.isArray(englishDictWords)) englishDictLoadPromise = null;
+          }
+        })();
+
+        return englishDictLoadPromise;
+      };
+
+      const findBestDictionaryWordCompletion = (baseText) => {
+        if (!Array.isArray(englishDictWords) || !englishDictWords.length) return null;
+
+        const base = String(baseText || "");
+        if (!base.trim()) return null;
+        if (endsWithWhitespace(base)) return null;
+
+        const { token } = getLastTokenInfo(base);
+        if (!token) return null;
+        if (token.length < 4) return null; // avoid noisy single-letter/short completions
+
+        const prefix = token.toLowerCase();
+        if (scoreEnglishTokenShapeLowercase(prefix) < 0.75) return null;
+        const words = englishDictWords;
+
+        // Binary search for first word >= prefix.
+        let lo = 0;
+        let hi = words.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (words[mid] < prefix) lo = mid + 1;
+          else hi = mid;
+        }
+
+        let best = "";
+        let bestScore = -Infinity;
+        let bestCompletionLen = Infinity;
+
+        for (let i = lo; i < words.length; i++) {
+          const w = words[i];
+          if (!w.startsWith(prefix)) break;
+          if (w.length <= token.length) continue;
+
+          const completionLen = w.length - token.length;
+          const score = scoreEnglishDictionaryCandidateWordLowercase(w, token.length);
+          const betterScore = score > bestScore;
+          const betterLen = score === bestScore && completionLen < bestCompletionLen;
+          const betterWordLen =
+            score === bestScore && completionLen === bestCompletionLen && (!best || w.length < best.length);
+
+          if (betterScore || betterLen || betterWordLen) {
+            best = w;
+            bestScore = score;
+            bestCompletionLen = completionLen;
+          }
+
+          if (i - lo > 240) break;
+        }
+
+        if (!best || !(bestScore >= 9)) return null;
+        return { baseText: base, completion: best.slice(token.length) };
+      };
+
+      const findBestCustomWordCompletion = (baseText) => {
+        const base = String(baseText || "");
+        if (!base.trim()) return null;
+        if (endsWithWhitespace(base)) return null;
+
+        const { token } = getLastTokenInfo(base);
+        if (!token) return null;
+        if (token.length < 2) return null;
+
+        const prefix = token.toLowerCase();
+        const words = Array.isArray(aiCustomWords) ? aiCustomWords : [];
+
+        let best = "";
+        for (const w0 of words) {
+          const w = String(w0 || "").trim();
+          if (!w) continue;
+          if (w.length <= token.length) continue;
+          if (w.slice(0, token.length).toLowerCase() !== prefix) continue;
+          if (!best || w.length < best.length) best = w;
+        }
+
+        if (!best) return null;
+        return { baseText: base, completion: best.slice(token.length) };
+      };
+      const computeLocalWordCompletion = (baseText, fullText) => {
+        const base = String(baseText || "");
+        const full = String(fullText || "");
+        if (!base.trim()) return null;
+        if (endsWithWhitespace(base)) return null;
+        const head = full.slice(0, base.length);
+        if (head.toLowerCase() !== base.toLowerCase()) return null;
+        const suffix = full.slice(base.length);
+        if (!suffix || /^\s/.test(suffix)) return null;
+        const w = getLeadingWord(suffix);
+        return w ? { baseText: base, completion: w } : null;
+      };
+      const computeAiWordCompletion = (baseText, aiResponse) => {
+        const base = String(baseText || "");
+        if (!base.trim()) return null;
+        if (endsWithWhitespace(base)) return null;
+
+        let r = String(aiResponse || "");
+        if (!r || /^\s/.test(r)) return null;
+
+        const token = getLastToken(base);
+        if (token && r.slice(0, token.length).toLowerCase() === token.toLowerCase()) {
+          r = r.slice(token.length);
+        }
+
+        const w = getLeadingWord(r);
+        return w ? { baseText: base, completion: w } : null;
+      };
+
+      const hide = () => {
+        container.textContent = "";
+        container.hidden = true;
+        focusedSuggestionIndex = -1;
+      };
+
+      const getSuggestionButtons = () =>
+        Array.from(container.querySelectorAll("button.monoLinkButton")).filter((b) => b instanceof HTMLButtonElement);
+
+      const syncFocusedIndexFromActiveElement = () => {
+        const btns = getSuggestionButtons();
+        const active = document.activeElement;
+        if (!(active instanceof HTMLElement) || !container.contains(active)) return;
+        const idx = btns.indexOf(active);
+        if (idx >= 0) focusedSuggestionIndex = idx;
+      };
+
+      const focusSuggestionByIndex = (idx) => {
+        const btns = getSuggestionButtons();
+        if (!btns.length) return false;
+        const n = btns.length;
+        const i = ((idx % n) + n) % n;
+        focusedSuggestionIndex = i;
+        for (let j = 0; j < btns.length; j++) {
+          if (j === i) btns[j].setAttribute("aria-current", "true");
+          else btns[j].removeAttribute("aria-current");
+        }
+        return safeFocus(btns[i]);
+      };
+
+      const render = () => {
+        container.textContent = "";
+        const hasLocal = Array.isArray(localSuggestions) && localSuggestions.length > 0;
+        const hasLocalCompletion = !!(localCompletion && localCompletion.completion);
+        const hasAi = !!(aiSuggestion && aiSuggestion.completion);
+        if (!hasLocal && !hasLocalCompletion && !hasAi) {
+          container.hidden = true;
+          focusedSuggestionIndex = -1;
+          return;
+        }
+
+        container.hidden = false;
+
+        const label = document.createElement("span");
+        label.className = "noteAutocompleteLabel";
+        label.textContent = "Suggestions:";
+        container.appendChild(label);
+
+        const addBtn = (text, kind, payload) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "monoLinkButton";
+          btn.textContent = text;
+          btn.dataset.autocompleteKind = kind;
+          if (payload) {
+            for (const [k, v] of Object.entries(payload)) {
+              btn.dataset[k] = String(v);
+            }
+          }
+          btn.addEventListener("click", () => {
+            if (!(input instanceof HTMLInputElement)) return;
+            const kind2 = btn.dataset.autocompleteKind;
+
+            if (kind2 === "local") {
+              const value = btn.dataset.value || "";
+              input.value = value;
+              input.focus();
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+              return;
+            }
+
+            if (kind2 === "localCompletion") {
+              const base = btn.dataset.baseText || "";
+              const completion = btn.dataset.completion || "";
+              if (!completion) return;
+              if (input.value === base) {
+                input.value = base + completion;
+                input.focus();
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+              return;
+            }
+
+            if (kind2 === "ai") {
+              const base = btn.dataset.baseText || "";
+              const completion = btn.dataset.completion || "";
+              if (!completion) return;
+              if (input.value === base) {
+                input.value = base + completion;
+                input.focus();
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+              return;
+            }
+          });
+          container.appendChild(btn);
+        };
+
+        for (const s of localSuggestions) {
+          addBtn(s, "local", { value: s });
+        }
+
+        if (hasLocalCompletion) {
+          const baseToken = getLastToken(localCompletion.baseText);
+          const preview = `${baseToken}${String(localCompletion.completion || "")}`;
+          const short = preview.length > 70 ? preview.slice(0, 67) + "…" : preview;
+          addBtn(`Complete: ${short}`, "localCompletion", {
+            baseText: localCompletion.baseText,
+            completion: localCompletion.completion
+          });
+        }
+
+        if (hasAi) {
+          const baseToken = getLastToken(aiSuggestion.baseText);
+          const preview = `${baseToken}${String(aiSuggestion.completion || "")}`;
+          const short = preview.length > 70 ? preview.slice(0, 67) + "…" : preview;
+          addBtn(`AI: ${short}`, "ai", { baseText: aiSuggestion.baseText, completion: aiSuggestion.completion });
+        }
+
+        // Keep the focus index consistent if focus is already in the container.
+        syncFocusedIndexFromActiveElement();
+        const btns = getSuggestionButtons();
+        if (focusedSuggestionIndex >= btns.length) focusedSuggestionIndex = btns.length - 1;
+        for (let j = 0; j < btns.length; j++) {
+          if (j === focusedSuggestionIndex) btns[j].setAttribute("aria-current", "true");
+          else btns[j].removeAttribute("aria-current");
+        }
+      };
+
+      const clearAi = () => {
+        aiSuggestion = null;
+        if (aiAbort) {
+          try {
+            aiAbort.abort();
+          } catch {
+            // ignore
+          }
+          aiAbort = null;
+        }
+      };
+
+      const clearAll = () => {
+        localSuggestions = [];
+        localCompletion = null;
+        clearAi();
+        hide();
+      };
+
+      clearNewNoteAutocomplete = clearAll;
+
+      const queryLocalSuggestions = (query, limit = 6) => {
+        const p = String(query || "").trim();
+        if (!p) return [];
+        try {
+          const contains = `%${p}%`;
+          const prefix = `${p}%`;
+          const stmt = db.prepare(
+            "SELECT text, MAX(updated_at) AS u, CASE WHEN text LIKE ? THEN 0 ELSE 1 END AS np " +
+            "FROM notes WHERE text LIKE ? GROUP BY text ORDER BY np ASC, u DESC LIMIT ?"
+          );
+          // Order by: prefix matches first, then most recently updated.
+          stmt.bind([prefix, contains, limit]);
+          const out = [];
+          while (stmt.step()) {
+            const row = stmt.getAsObject();
+            const t = String(row.text || "");
+            if (t && t.toLowerCase() !== p.toLowerCase()) out.push(t);
+          }
+          stmt.free();
+          return out;
+        } catch (err) {
+          console.error(err);
+          return [];
+        }
+      };
+
+      const queryBestLocalCompletion = (baseText) => {
+        const base = String(baseText || "");
+        if (!base.trim()) return null;
+        if (endsWithWhitespace(base)) return null;
+
+        const { token } = getLastTokenInfo(base);
+        if (!token) return null;
+        const tokenLower = token.toLowerCase();
+
+        // Search for a word that starts with the last token anywhere in existing notes.
+        // This enables sentence-style typing like "Get Plan" -> "Get Planview".
+        try {
+          const stmt = db.prepare(
+            "SELECT text, updated_at FROM notes WHERE text LIKE ? ORDER BY updated_at DESC LIMIT ?"
+          );
+          stmt.bind([`%${token}%`, 40]);
+
+          let bestWord = "";
+          let bestUpdatedAt = -1;
+          while (stmt.step()) {
+            const row = stmt.getAsObject();
+            const t = String(row.text || "");
+            const updatedAt = Number(row.updated_at);
+
+            const words = t.match(/[A-Za-z0-9_-]+/g) || [];
+            for (const w of words) {
+              if (!w) continue;
+              if (w.length <= token.length) continue;
+              if (w.slice(0, token.length).toLowerCase() !== tokenLower) continue;
+
+              const isBetterLength = !bestWord || w.length < bestWord.length;
+              const isBetterRecency = updatedAt > bestUpdatedAt;
+              if (isBetterLength || (!isBetterLength && isBetterRecency)) {
+                bestWord = w;
+                bestUpdatedAt = Number.isFinite(updatedAt) ? updatedAt : bestUpdatedAt;
+              }
+            }
+          }
+          stmt.free();
+
+          if (!bestWord) return null;
+          return { baseText: base, completion: bestWord.slice(token.length) };
+        } catch (err) {
+          console.error(err);
+          return null;
+        }
+      };
+
+      const fetchOllamaDefaultModel = async (baseUrl, signal) => {
+        const url = new URL("/api/tags", baseUrl).toString();
+        const res = await fetch(url, { signal });
+        if (!res.ok) throw new Error(`Ollama tags failed: ${res.status}`);
+        const data = await res.json();
+        const name = data?.models?.[0]?.name;
+        if (typeof name !== "string" || !name) throw new Error("No Ollama models found");
+        return name;
+      };
+
+      const fetchOllamaCompletion = async (baseUrl, prompt, signal) => {
+        const model = ollamaModel || (await fetchOllamaDefaultModel(baseUrl, signal));
+        ollamaModel = model;
+        const url = new URL("/api/generate", baseUrl).toString();
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model, prompt: String(prompt || ""), stream: false }),
+          signal
+        });
+        if (!res.ok) throw new Error(`Ollama generate failed: ${res.status}`);
+        const data = await res.json();
+        const r = typeof data?.response === "string" ? data.response : "";
+        return r;
+      };
+
+      const scheduleRefresh = () => {
+        if (localTimer) clearTimeout(localTimer);
+        if (aiTimer) clearTimeout(aiTimer);
+
+        const value = input.value;
+        const trimmed = String(value || "").trim();
+
+        if (!trimmed) {
+          clearAll();
+          return;
+        }
+
+        // Suggestions are most useful for the current word when typing sentences.
+        const suggestionsQuery = trimmed.includes(" ") ? getLastToken(trimmed) : trimmed;
+
+        localTimer = setTimeout(() => {
+          localSuggestions = queryLocalSuggestions(suggestionsQuery, 6);
+          const baseText = input.value;
+          const dbCompletion = queryBestLocalCompletion(baseText);
+          const customCompletion = findBestCustomWordCompletion(baseText);
+          // Prefer whichever produces the shortest completed word; tie-breaker prefers custom.
+          if (customCompletion && dbCompletion) {
+            const dbLen = getLastToken(dbCompletion.baseText).length + String(dbCompletion.completion || "").length;
+            const cwLen = getLastToken(customCompletion.baseText).length + String(customCompletion.completion || "").length;
+            localCompletion = cwLen <= dbLen ? customCompletion : dbCompletion;
+          } else {
+            localCompletion = customCompletion || dbCompletion;
+          }
+          render();
+
+          // If local DB didn't yield a completion, try the English dictionary (lazy-loaded).
+          if (!localCompletion) {
+            const { token } = getLastTokenInfo(baseText);
+            if (token && token.length >= 4) {
+              void ensureEnglishDictionaryLoaded()
+                .then(() => {
+                  if (input.value !== baseText) return;
+                  if (localCompletion) return;
+                  const dictC = findBestDictionaryWordCompletion(baseText);
+                  if (!dictC) return;
+                  localCompletion = dictC;
+                  render();
+                })
+                .catch((err) => {
+                  console.error(err);
+                });
+            }
+          }
+        }, 140);
+
+        clearAi();
+        if (!aiEndpointBaseUrl) {
+          render();
+          return;
+        }
+
+        // Require a small amount of text before calling AI.
+        if (trimmed.length < 3) {
+          render();
+          return;
+        }
+
+        aiTimer = setTimeout(async () => {
+          try {
+            aiAbort = new AbortController();
+            const baseText = input.value;
+            const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, baseText, aiAbort.signal);
+            const c = computeAiWordCompletion(baseText, raw);
+            if (!c) {
+              aiSuggestion = null;
+              render();
+              return;
+            }
+
+            // Only keep if input hasn't changed since request started.
+            if (input.value !== baseText) return;
+            aiSuggestion = c;
+            render();
+          } catch (err) {
+            if (String(err?.name || "").toLowerCase().includes("abort")) return;
+            console.error(err);
+            aiSuggestion = null;
+            render();
+          } finally {
+            aiAbort = null;
+          }
+        }, 750);
+      };
+
+      input.addEventListener("input", scheduleRefresh);
+
+      input.addEventListener("keydown", (e) => {
+        // Navigate suggestions using existing Alt+Up/Alt+Down keybindings.
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+          const nav = getNavKeys(keyLayout);
+          const key = (e.key || "").toLowerCase();
+          const btns = getSuggestionButtons();
+          const hasSuggestions = !container.hidden && btns.length > 0;
+          if (hasSuggestions && (key === nav.down || key === nav.up)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (focusedSuggestionIndex < 0) {
+              // First jump from the input selects either first (down) or last (up).
+              focusSuggestionByIndex(key === nav.down ? 0 : btns.length - 1);
+            } else {
+              focusSuggestionByIndex(focusedSuggestionIndex + (key === nav.down ? +1 : -1));
+            }
+            return;
+          }
+        }
+
+        if (e.key !== "Tab") return;
+        // Prefer local "Complete:" recommendation; fall back to AI.
+        if (localCompletion && localCompletion.completion && input.value === localCompletion.baseText) {
+          e.preventDefault();
+          input.value = localCompletion.baseText + localCompletion.completion;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return;
+        }
+
+        if (aiSuggestion && aiSuggestion.completion && input.value === aiSuggestion.baseText) {
+          e.preventDefault();
+          input.value = aiSuggestion.baseText + aiSuggestion.completion;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return;
+        }
+
+        // No completion available: keep focus in the New note input.
+        e.preventDefault();
+      });
+
+      // Allow Alt+Up/Alt+Down to continue navigating while focus is on a suggestion button.
+      container.addEventListener("keydown", (e) => {
+        if (!e.altKey || e.ctrlKey || e.metaKey) return;
+        const nav = getNavKeys(keyLayout);
+        const key = (e.key || "").toLowerCase();
+        if (key !== nav.down && key !== nav.up) return;
+
+        const active = document.activeElement;
+        if (!(active instanceof HTMLElement) || !container.contains(active)) return;
+
+        const btns = getSuggestionButtons();
+        if (!btns.length) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        syncFocusedIndexFromActiveElement();
+        if (focusedSuggestionIndex < 0) focusedSuggestionIndex = 0;
+        focusSuggestionByIndex(focusedSuggestionIndex + (key === nav.down ? +1 : -1));
+      });
+
+      input.addEventListener("blur", () => {
+        // Keep suggestions visible if the user is interacting with them.
+        setTimeout(() => {
+          const active = document.activeElement;
+          if (active instanceof Element && container.contains(active)) return;
+          hide();
+        }, 0);
+      });
+
+      input.addEventListener("focus", () => {
+        scheduleRefresh();
+      });
+    }
+  }
+
 
   el("createForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -3763,6 +5317,7 @@ async function main() {
 
     insertNote(db, activeBoard, text);
     input.value = "";
+    clearNewNoteAutocomplete();
     await persist();
     await refresh();
   });

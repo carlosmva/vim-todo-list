@@ -184,6 +184,28 @@ button,
   box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.22);
 }
 
+.aiSettingsRow label {
+  color: var(--modern-text-subtle);
+}
+
+.aiSettingsForm .bx--text-input {
+  border-radius: var(--modern-radius-sm);
+  border-color: var(--modern-border-strong);
+  background: var(--modern-surface-2);
+}
+
+.aiSettingsForm textarea.bx--text-input {
+  field-sizing: content;
+  max-height: 40vh;
+  overflow-y: auto;
+  resize: vertical;
+}
+
+.aiSettingsForm .bx--text-input:focus {
+  border-color: var(--modern-focus);
+  box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.22);
+}
+
 .linkForm .bx--text-input {
   border-radius: var(--modern-radius-sm);
   border-color: var(--modern-border-strong);

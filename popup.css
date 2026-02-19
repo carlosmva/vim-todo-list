@@ -316,6 +316,45 @@ body {
   align-items: end;
 }
 
+.noteAutocomplete {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer);
+  border-radius: 4px;
+}
+
+.noteAutocomplete[hidden] {
+  display: none !important;
+}
+
+.noteAutocompleteLabel {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-right: 4px;
+}
+
+.aiSettingsForm {
+  display: grid;
+  gap: 10px;
+}
+
+.aiSettingsRow {
+  display: grid;
+  gap: 6px;
+}
+
+.aiSettingsRow label {
+  font-size: 12px;
+}
+
+.aiSettingsActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .createButtons {
   display: flex;
   justify-content: space-between;

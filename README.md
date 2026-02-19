@@ -41,6 +41,8 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 - Open popup: `Alt+R` (same shortcut regardless of in-app QWERTY/DVORAK mode)
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
 - A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
+- **AI Settings** is available in the header links row (configure an optional local AI endpoint like Ollama).
+- When a word-completion suggestion is shown while typing a new note, press `Tab` to accept it.
 
 ## Notes Editor Shortcuts
 
