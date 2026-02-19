@@ -2,6 +2,8 @@
 
 Chrome extension popup for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly).
 
+Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
+
 ## Features
 
 - Two columns per board: **Pending** and **Complete**
