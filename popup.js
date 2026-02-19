@@ -2195,6 +2195,45 @@ async function main() {
     return safeFocus(links[nextIdx]);
   }
 
+  function focusAdjacentCardFrontAttachment(card, delta) {
+    if (!(card instanceof HTMLElement)) return false;
+    const cards = getAllCardsInDomOrder();
+    const idx = cards.indexOf(card);
+    if (idx < 0) return false;
+    const nextIdx = idx + (delta < 0 ? -1 : 1);
+    if (nextIdx < 0 || nextIdx >= cards.length) return false;
+    const targetCard = cards[nextIdx];
+    if (!(targetCard instanceof HTMLElement)) return false;
+    const links = getFrontAttachmentLinks(targetCard);
+    if (links.length) {
+      const target = delta < 0 ? links[links.length - 1] : links[0];
+      return safeFocus(target);
+    }
+    focusCardPrimaryAction(targetCard);
+    return true;
+  }
+
+  function focusCardFrontAttachmentsOrPrimary(card) {
+    if (!(card instanceof HTMLElement)) return false;
+    const links = getFrontAttachmentLinks(card);
+    if (links.length && safeFocus(links[0])) return true;
+    focusCardPrimaryAction(card);
+    return true;
+  }
+
+  function focusAdjacentCardPrimaryAction(card, delta) {
+    if (!(card instanceof HTMLElement)) return false;
+    const cards = getAllCardsInDomOrder();
+    const idx = cards.indexOf(card);
+    if (idx < 0) return false;
+    const nextIdx = idx + (delta < 0 ? -1 : 1);
+    if (nextIdx < 0 || nextIdx >= cards.length) return false;
+    const targetCard = cards[nextIdx];
+    if (!(targetCard instanceof HTMLElement)) return false;
+    focusCardPrimaryAction(targetCard);
+    return true;
+  }
+
   function moveButtonFocusWithinCard(card, delta) {
     if (!(card instanceof HTMLElement)) return;
     const footer = card.querySelector(".noteActions");
@@ -2286,6 +2325,39 @@ async function main() {
     buttons[nextIdx].focus({ preventScroll: true });
     ensureCardFullyVisible(card);
     return true;
+  }
+
+  function moveFocusWithinAttachmentsLinkRows(card, deltaRows) {
+    if (!(card instanceof HTMLElement)) return false;
+    const active = document.activeElement;
+    if (!(active instanceof Element)) return false;
+
+    const currentRow = active.closest(".linkRow");
+    if (!(currentRow instanceof HTMLElement)) return false;
+
+    const rows = [...card.querySelectorAll(".linkList .linkRow")].filter(
+      (r) => r instanceof HTMLElement
+    );
+    if (!rows.length) return false;
+
+    const currentIdx = rows.indexOf(currentRow);
+    if (currentIdx < 0) return false;
+
+    const nextIdx = Math.min(rows.length - 1, Math.max(0, currentIdx + deltaRows));
+    if (nextIdx === currentIdx) return false;
+
+    const activeIsDeleteButton = active instanceof HTMLButtonElement;
+    const targetRow = rows[nextIdx];
+    const preferred = activeIsDeleteButton
+      ? targetRow.querySelector("button")
+      : targetRow.querySelector("a[href]");
+    const fallback = targetRow.querySelector("a[href], button");
+    const target = preferred instanceof HTMLElement ? preferred : fallback;
+    if (!(target instanceof HTMLElement)) return false;
+
+    const ok = safeFocus(target);
+    ensureCardFullyVisible(card);
+    return ok;
   }
 
   function toggleOrInsertLineCheckbox(editor) {
@@ -2556,24 +2628,7 @@ async function main() {
 
       container.scrollTop = next;
       if (container.scrollTop !== before) {
-        const activeCard = active instanceof Element ? getCardFromElement(active) : null;
-        if (activeCard instanceof HTMLElement) {
-          const cards = getAllCardsInDomOrder();
-          const idx = cards.indexOf(activeCard);
-          if (idx !== -1) {
-            const nextIdx = Math.max(0, Math.min(cards.length - 1, idx + dir));
-            const targetCard = cards[nextIdx];
-            if (targetCard instanceof HTMLElement) {
-              focusCardPrimaryAction(targetCard);
-            }
-          }
-        } else if (
-          active instanceof HTMLElement &&
-          !isEditableElement(active) &&
-          isElementInVisibleView(active)
-        ) {
-          safeFocus(active);
-        }
+        if (active instanceof HTMLElement && !isEditableElement(active)) safeFocus(active);
         return true;
       }
     }
@@ -2697,10 +2752,10 @@ async function main() {
       // Attachments navigation (flipped card)
       // Allow the same directional mappings to traverse back-side controls.
       if (inAttachmentsUi && e.altKey && !e.ctrlKey && !e.metaKey) {
-        const isLeft = key === nav.left || key === "d";
-        const isRight = key === nav.right;
-        const isDown = key === nav.down;
         const isUp = key === nav.up;
+        const isDown = key === nav.down;
+        const isLeft = key === nav.left;
+        const isRight = key === nav.right;
 
         if (isLeft || isRight || isDown || isUp) {
           e.preventDefault();
@@ -2711,6 +2766,32 @@ async function main() {
               document.activeElement instanceof Element &&
               document.activeElement.closest(".noteBackButtonsRow") !== null;
 
+            if (isUp) {
+              const inLinkRow =
+                document.activeElement instanceof Element &&
+                document.activeElement.closest(".linkRow") !== null;
+              if (inLinkRow) {
+                moveFocusWithinAttachmentsLinkRows(card, -1);
+                return;
+              }
+              if (moveFocusWithinAttachmentsLinkRows(card, -1)) return;
+              moveFocusWithinAttachments(card, -1);
+              return;
+            }
+
+            if (isDown) {
+              const inLinkRow =
+                document.activeElement instanceof Element &&
+                document.activeElement.closest(".linkRow") !== null;
+              if (inLinkRow) {
+                moveFocusWithinAttachmentsLinkRows(card, +1);
+                return;
+              }
+              if (moveFocusWithinAttachmentsLinkRows(card, +1)) return;
+              moveFocusWithinAttachments(card, +1);
+              return;
+            }
+
             if (isLeft) {
               if (inButtonsRow && moveFocusWithinAttachmentsButtonsRow(card, -1)) return;
               moveFocusWithinAttachments(card, -1);
@@ -2720,16 +2801,6 @@ async function main() {
             if (isRight) {
               if (inButtonsRow && moveFocusWithinAttachmentsButtonsRow(card, +1)) return;
               moveFocusWithinAttachments(card, +1);
-              return;
-            }
-
-            if (isDown) {
-              moveFocusWithinAttachments(card, +1);
-              return;
-            }
-
-            if (isUp) {
-              moveFocusWithinAttachments(card, -1);
               return;
             }
           }
@@ -2902,6 +2973,24 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
         const activeEl2 = document.activeElement;
+        const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
+        if (activeCard2 instanceof HTMLElement) {
+          const inFrontAttachments2 =
+            activeEl2 instanceof Element && activeEl2.closest(".noteAttachmentsItems") !== null;
+          const inCardActions2 =
+            activeEl2 instanceof Element && activeEl2.closest(".noteActions") !== null;
+
+          // Vertical levels:
+          // attachments row -> same card action row -> next card attachments/action row
+          if (inFrontAttachments2) {
+            focusCardPrimaryAction(activeCard2);
+            return;
+          }
+          if (inCardActions2 || activeEl2 instanceof Element) {
+            if (focusAdjacentCardFrontAttachment(activeCard2, +1)) return;
+            if (focusAdjacentCardPrimaryAction(activeCard2, +1)) return;
+          }
+        }
         const dashboardViewForScroll = document.getElementById("dashboardView");
         const dashboardVisibleForScroll =
           dashboardViewForScroll instanceof HTMLElement && !dashboardViewForScroll.hasAttribute("hidden");
@@ -2916,7 +3005,6 @@ async function main() {
             activeEl2.closest(".board") !== null ||
             activeEl2.closest(".col") !== null ||
             activeEl2.closest(".list") !== null ||
-            activeEl2.closest(".noteCard") !== null ||
             activeEl2.closest(".noteEditor") !== null ||
             activeEl2.closest(".noteBackBody") !== null
           );
@@ -2934,7 +3022,7 @@ async function main() {
             if (notesVisible) {
               const cards = getAllCardsInDomOrder();
               if (cards.length) {
-                focusCardPrimaryAction(cards[0]);
+                focusCardFrontAttachmentsOrPrimary(cards[0]);
                 return;
               }
             }
@@ -2945,16 +3033,6 @@ async function main() {
 
         const card = getCardFromElement(activeEl2);
         if (card) {
-          // If focus is currently on a front-side attachment link, "down" should
-          // return to the card actions instead of moving between cards.
-          if (
-            activeEl2 instanceof Element &&
-            activeEl2.closest(".noteAttachmentsItems") !== null
-          ) {
-            focusCardPrimaryAction(card);
-            return;
-          }
-
           moveCardFocus(+1);
           return;
         }
@@ -3030,7 +3108,7 @@ async function main() {
           if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
           // If tabs are missing for some reason, fall back to entering the cards.
           const cards = getAllCardsInDomOrder();
-          if (cards.length) focusCardPrimaryAction(cards[0]);
+          if (cards.length) focusCardFrontAttachmentsOrPrimary(cards[0]);
           return;
         }
 
@@ -3041,7 +3119,7 @@ async function main() {
 
         if (inBoardTabs) {
           const cards = getAllCardsInDomOrder();
-          if (cards.length) focusCardPrimaryAction(cards[0]);
+          if (cards.length) focusCardFrontAttachmentsOrPrimary(cards[0]);
           else {
             const noteText = document.getElementById("noteText");
             if (noteText instanceof HTMLElement) safeFocus(noteText);
@@ -3057,6 +3135,27 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
         const activeEl2 = document.activeElement;
+        const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
+        if (activeCard2 instanceof HTMLElement) {
+          const inFrontAttachments2 =
+            activeEl2 instanceof Element && activeEl2.closest(".noteAttachmentsItems") !== null;
+          const inCardActions2 =
+            activeEl2 instanceof Element && activeEl2.closest(".noteActions") !== null;
+
+          // Vertical levels:
+          // next card action row <- same card action row <- same card attachments row
+          if (inCardActions2) {
+            const links = getFrontAttachmentLinks(activeCard2);
+            if (links.length) {
+              const target = links[links.length - 1];
+              if (safeFocus(target)) return;
+            }
+            if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
+          }
+          if (inFrontAttachments2) {
+            if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
+          }
+        }
         const dashboardViewForScroll = document.getElementById("dashboardView");
         const dashboardVisibleForScroll =
           dashboardViewForScroll instanceof HTMLElement && !dashboardViewForScroll.hasAttribute("hidden");
@@ -3071,36 +3170,12 @@ async function main() {
             activeEl2.closest(".board") !== null ||
             activeEl2.closest(".col") !== null ||
             activeEl2.closest(".list") !== null ||
-            activeEl2.closest(".noteCard") !== null ||
             activeEl2.closest(".noteEditor") !== null ||
             activeEl2.closest(".noteBackBody") !== null
           );
         if ((belowTabs || inDashboard) && tryScrollBeforeSectionMove(-1)) return;
         const card = getCardFromElement(activeEl2);
         if (card) {
-          // If this card has front-side attachment links, "up" should highlight
-          // those first (instead of jumping to the previous card/tabs).
-          const frontLinks = getFrontAttachmentLinks(card);
-          if (frontLinks.length) {
-            const inFrontAttachments =
-              activeEl2 instanceof Element &&
-              activeEl2.closest(".noteAttachmentsItems") !== null;
-
-            if (inFrontAttachments) {
-              const idx = frontLinks.indexOf(activeEl2);
-              // Move within attachments, but if we're already at the first link,
-              // allow Alt+Up to escape to the previous card/tabs.
-              if (idx > 0) {
-                safeFocus(frontLinks[idx - 1]);
-                return;
-              }
-              // idx <= 0 falls through to normal card navigation.
-            } else {
-              safeFocus(frontLinks[frontLinks.length - 1]);
-              return;
-            }
-          }
-
           const cards = getAllCardsInDomOrder();
           const currentIdx = card instanceof HTMLElement ? cards.indexOf(card) : -1;
           if (currentIdx <= 0) {
@@ -3216,6 +3291,12 @@ async function main() {
             key === nav.left ? -1 : key === nav.right ? +1 : key === nav.up ? -1 : +1
           );
           return;
+        }
+        const inFrontAttachments =
+          activeEl instanceof Element &&
+          activeEl.closest(".noteAttachmentsItems") !== null;
+        if (inFrontAttachments && (key === nav.left || key === nav.right)) {
+          if (moveFocusWithinFrontAttachments(card, key === nav.left ? -1 : +1)) return;
         }
         moveButtonFocusWithinCard(card, key === nav.left ? -1 : key === nav.right ? +1 : key === nav.up ? -1 : +1);
       }
@@ -3941,6 +4022,22 @@ async function main() {
     urlInput.value = "";
     await persist();
     await refresh();
+
+    // Refresh re-renders cards and replaces form nodes; restore focus
+    // to the same flipped card's add-link flow.
+    const refreshedCard = document.querySelector(
+      `.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`
+    );
+    if (refreshedCard instanceof HTMLElement) {
+      const nextDescInput = refreshedCard.querySelector(".linkForm input[name='description']");
+      const nextUrlInput = refreshedCard.querySelector(".linkForm input[name='url']");
+      if (
+        !(nextDescInput instanceof HTMLElement && safeFocus(nextDescInput)) &&
+        nextUrlInput instanceof HTMLElement
+      ) {
+        safeFocus(nextUrlInput);
+      }
+    }
   });
 }
 

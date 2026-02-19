@@ -43,19 +43,7 @@ body {
 .headerLink {
   font-size: 12px;
   display: inline-block;
-  font-family: var(
-    --cds-font-family-mono,
-    "RedHatMono",
-    "Red Hat Mono",
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    "Liberation Mono",
-    "Courier New",
-    monospace
-  );
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   text-decoration: none;
   text-underline-offset: 2px;
 
@@ -92,19 +80,7 @@ body {
   margin: 0;
   color: inherit;
   font: inherit;
-  font-family: var(
-    --cds-font-family-mono,
-    "RedHatMono",
-    "Red Hat Mono",
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    "Liberation Mono",
-    "Courier New",
-    monospace
-  );
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   cursor: pointer;
   text-decoration: none;
   text-underline-offset: 2px;

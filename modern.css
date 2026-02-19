@@ -1,11 +1,5 @@
 :root {
-  --modern-font-sans:
-    "IBM Plex Sans",
-    "Avenir Next",
-    "Segoe UI",
-    system-ui,
-    -apple-system,
-    sans-serif;
+  --modern-font-sans: "IBM Plex Sans", sans-serif;
   --modern-bg: linear-gradient(160deg, #eaf1ff 0%, #f7fbff 55%, #f1f7f4 100%);
   --modern-surface-1: rgba(255, 255, 255, 0.86);
   --modern-surface-2: #ffffff;
@@ -53,6 +47,22 @@ body {
   font-family: var(--modern-font-sans);
   background: var(--modern-bg);
   color: var(--modern-text);
+}
+
+/* Default all non-mono UI typography to IBM Plex Sans. */
+body,
+.app,
+input,
+textarea,
+select,
+button,
+.bx--tabs__nav-link,
+.instructionsContent,
+.dashboardTable,
+.noteText,
+.manageTabsName,
+.manageTabsMessage {
+  font-family: var(--modern-font-sans);
 }
 
 [data-theme="dark"] body,
@@ -163,6 +173,28 @@ body {
   box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.22);
 }
 
+.manageTabsAdd .bx--text-input {
+  border-radius: var(--modern-radius-sm);
+  border-color: var(--modern-border-strong);
+  background: var(--modern-surface-2);
+}
+
+.manageTabsAdd .bx--text-input:focus {
+  border-color: var(--modern-focus);
+  box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.22);
+}
+
+.linkForm .bx--text-input {
+  border-radius: var(--modern-radius-sm);
+  border-color: var(--modern-border-strong);
+  background: var(--modern-surface-2);
+}
+
+.linkForm .bx--text-input:focus {
+  border-color: var(--modern-focus);
+  box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.22);
+}
+
 [data-theme="dark"] .bx--text-input,
 [data-theme="dark"] input,
 [data-theme="dark"] textarea {
@@ -220,106 +252,214 @@ body {
 }
 
 .tabs {
+  --tab-girth: 12px;
+  --tab-bg: #dbe6f2;
+  --tab-text: #1f3654;
+  --tab-bg-active: #f5f9ff;
+  --tab-text-active: #10253f;
+  --tab-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
   margin-bottom: 0;
   min-height: 26px !important;
-  height: 26px !important;
+  height: auto !important;
   padding: 0 !important;
   position: relative;
   overflow: visible;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
 }
 
 .tabs.bx--tabs,
 .tabs.bx--tabs--container {
   min-height: 26px !important;
-  height: 26px !important;
+  height: auto !important;
   margin: 0 !important;
   padding: 0 !important;
   position: relative;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
 }
 
 .tabs .bx--tabs__nav {
-  gap: 4px;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
   min-height: 22px !important;
-  height: 22px !important;
+  height: auto !important;
   margin: 0 !important;
-  padding: 0 !important;
+  margin-inline-start: 1rem !important;
+  padding: 8px 8px 0 8px !important;
   border-bottom: 0 !important;
   position: static !important;
+  overflow-x: auto !important;
+  overflow-y: clip !important;
+  scrollbar-width: thin;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .tabs .bx--tabs__nav-item {
+  flex: 0 0 auto;
+  width: 104px;
+  min-width: 104px;
+  max-width: 104px;
   height: 24px;
   min-height: 24px;
   margin: 0 !important;
   padding: 0 !important;
-  border: 1px solid transparent;
-  border-radius: var(--modern-radius-sm);
-  background: var(--modern-surface-muted);
-  transition:
-    background-color var(--motion-base) var(--motion-ease-standard),
-    border-color var(--motion-base) var(--motion-ease-standard),
-    box-shadow var(--motion-base) var(--motion-ease-standard),
-    transform var(--motion-fast) var(--motion-ease-standard);
+  border: 0;
+  background: transparent;
+  filter: none;
+  position: relative;
+  z-index: 1;
+}
+
+/* Carbon adds separator-like edges in some tab variants; force them off. */
+.tabs .bx--tabs__nav-item,
+.tabs .bx--tabs__nav-item + .bx--tabs__nav-item,
+.tabs .bx--tabs__nav-link {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+  background-image: none !important;
+}
+
+/* Subpixel seam guard: overlap neighboring tabs by 1px. */
+.tabs .bx--tabs__nav-item + .bx--tabs__nav-item .bx--tabs__nav-link {
+  margin-inline-start: -1px !important;
 }
 
 .tabs .bx--tabs__nav-item:hover {
-  transform: translateY(-1px);
-  border-color: var(--modern-border-strong);
-  box-shadow: var(--modern-shadow-sm);
+  z-index: 1;
 }
 
 .tabs .bx--tabs__nav-item::before,
 .tabs .bx--tabs__nav-item::after {
   display: none !important;
   height: 0 !important;
+  width: 0 !important;
+  border: 0 !important;
+  content: none !important;
 }
 
 .tabs .bx--tabs__nav-item--selected {
-  background: #dce8ff;
-  border-color: #89a8de;
-  box-shadow: inset 0 -2px 0 #0f62fe;
-}
-
-[data-theme="dark"] .tabs .bx--tabs__nav-item--selected {
-  background: #2a3a52;
-  border-color: #60799f;
+  z-index: 2;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .tabs .bx--tabs__nav-link {
-  min-height: 22px !important;
-  height: 22px !important;
-  display: inline-flex;
+  min-height: 30px !important;
+  height: 30px !important;
+  display: flex;
   align-items: center;
-  padding: 0 7px !important;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0 0.6rem !important;
   margin: 0 !important;
   font-size: 11px;
-  line-height: 1 !important;
-  color: #264162;
-  transition: color var(--motion-fast) var(--motion-ease-standard);
+  line-height: 1.1 !important;
+  text-align: center;
+  color: var(--tab-text);
+  background: var(--tab-bg);
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  position: relative;
+  border: 0 !important;
+  border-inline-end: 0 !important;
+  box-shadow: none !important;
+  transition:
+    transform var(--motion-fast) var(--motion-ease-standard),
+    color var(--motion-fast) var(--motion-ease-standard),
+    background-color var(--motion-fast) var(--motion-ease-standard);
+
+  /* Fallback when shape() clip-path is unavailable. */
+  border-start-start-radius: var(--tab-girth);
+  border-start-end-radius: var(--tab-girth);
 }
 
-[data-theme="dark"] .tabs .bx--tabs__nav-link {
-  color: #cfdef4;
+@supports (clip-path: shape(from top left, hline to 0)) {
+  .tabs .bx--tabs__nav-link {
+    border-start-start-radius: var(--tab-girth);
+    border-start-end-radius: var(--tab-girth);
+    clip-path: none !important;
+  }
 }
 
 .tabs .bx--tabs__nav-link::before,
 .tabs .bx--tabs__nav-link::after {
   display: none !important;
   height: 0 !important;
+  width: 0 !important;
+  border: 0 !important;
+  content: none !important;
 }
 
 .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link {
-  color: #10345e;
-  font-weight: 600;
+  background: var(--tab-bg-active) !important;
+  color: var(--tab-text-active) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(23, 34, 56, 0.2) !important;
+  border: 0 !important;
 }
 
-[data-theme="dark"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link {
-  color: #ffffff;
+[data-theme="dark"] .tabs {
+  --tab-bg: #2d3e56;
+  --tab-text: #d6e4f8;
+  --tab-bg-active: #3d5472;
+  --tab-text-active: #f4f8ff;
 }
 
+.tabs .bx--tabs__nav-link:focus,
 .tabs .bx--tabs__nav-link:focus-visible {
   outline: 2px solid var(--modern-focus);
-  outline-offset: 2px;
+  outline-offset: -4px;
+  border: 0 !important;
+  border-inline-end: 0 !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+}
+
+.tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:focus,
+.tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:focus-visible {
+  background: var(--tab-bg-active) !important;
+  color: var(--tab-text-active) !important;
+}
+
+.tabs .bx--tabs__nav-link[aria-selected="true"],
+.tabs .bx--tabs__nav-link[aria-selected="true"]:focus,
+.tabs .bx--tabs__nav-link[aria-selected="true"]:focus-visible {
+  background: var(--tab-bg-active) !important;
+  color: var(--tab-text-active) !important;
+}
+
+.tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:hover {
+  transform: translateY(-2px);
+}
+
+.tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:active {
+  transform: translateY(0);
+}
+
+.tabs .bx--tabs__nav-item .bx--tabs__nav-link:hover,
+.tabs .bx--tabs__nav-item .bx--tabs__nav-link:active,
+.tabs .bx--tabs__nav-item .bx--tabs__nav-link:focus,
+.tabs .bx--tabs__nav-item .bx--tabs__nav-link:focus-visible {
+  text-decoration: none !important;
+}
+
+.tabs .bx--tabs__nav-link:hover {
+  transform: translateY(2px);
+}
+
+.tabs .bx--tabs__nav-link:active {
+  transform: translateY(4px);
 }
 
 .board {
