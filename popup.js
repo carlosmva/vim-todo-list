@@ -2126,30 +2126,51 @@ async function main() {
 
   function ensureCardFullyVisible(card) {
     if (!(card instanceof HTMLElement)) return;
+    const margin = 12;
+    const containers = [];
+    const seen = new Set();
 
-    const list = card.closest(".list");
-    if (!(list instanceof HTMLElement)) {
+    const pushContainer = (node) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (seen.has(node)) return;
+      if (node.scrollHeight <= node.clientHeight) return;
+      seen.add(node);
+      containers.push(node);
+    };
+
+    // Preferred known containers in this UI.
+    pushContainer(card.closest(".list"));
+    pushContainer(card.closest(".board"));
+
+    // Fallback: any scrollable ancestor.
+    let p = card.parentElement;
+    while (p) {
+      pushContainer(p);
+      p = p.parentElement;
+    }
+
+    if (!containers.length) {
       card.scrollIntoView({ block: "nearest" });
       return;
     }
 
-    const margin = 12;
-    const listRect = list.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
+    for (const container of containers) {
+      const containerRect = container.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
 
-    // If the card is taller than the visible area, bias to showing the top.
-    const listVisibleHeight = Math.max(0, listRect.height - margin * 2);
-    if (cardRect.height > listVisibleHeight) {
-      const topDelta = cardRect.top - (listRect.top + margin);
-      if (topDelta < 0 || topDelta > margin) list.scrollTop += topDelta;
-      return;
+      const visibleHeight = Math.max(0, containerRect.height - margin * 2);
+      if (cardRect.height > visibleHeight) {
+        const topDelta = cardRect.top - (containerRect.top + margin);
+        if (topDelta < 0 || topDelta > margin) container.scrollTop += topDelta;
+        continue;
+      }
+
+      const topOverflow = (containerRect.top + margin) - cardRect.top;
+      const bottomOverflow = cardRect.bottom - (containerRect.bottom - margin);
+
+      if (topOverflow > 0) container.scrollTop -= topOverflow;
+      else if (bottomOverflow > 0) container.scrollTop += bottomOverflow;
     }
-
-    const topOverflow = (listRect.top + margin) - cardRect.top;
-    const bottomOverflow = cardRect.bottom - (listRect.bottom - margin);
-
-    if (topOverflow > 0) list.scrollTop -= topOverflow;
-    else if (bottomOverflow > 0) list.scrollTop += bottomOverflow;
   }
 
   function focusCardPrimaryAction(card) {
@@ -2195,6 +2216,16 @@ async function main() {
     return safeFocus(links[nextIdx]);
   }
 
+  function focusFrontAttachmentInCard(card, preferLast = false) {
+    if (!(card instanceof HTMLElement)) return false;
+    const links = getFrontAttachmentLinks(card);
+    if (!links.length) return false;
+    const target = preferLast ? links[links.length - 1] : links[0];
+    const ok = safeFocus(target);
+    ensureCardFullyVisible(card);
+    return ok;
+  }
+
   function focusAdjacentCardFrontAttachment(card, delta) {
     if (!(card instanceof HTMLElement)) return false;
     const cards = getAllCardsInDomOrder();
@@ -2204,19 +2235,14 @@ async function main() {
     if (nextIdx < 0 || nextIdx >= cards.length) return false;
     const targetCard = cards[nextIdx];
     if (!(targetCard instanceof HTMLElement)) return false;
-    const links = getFrontAttachmentLinks(targetCard);
-    if (links.length) {
-      const target = delta < 0 ? links[links.length - 1] : links[0];
-      return safeFocus(target);
-    }
+    if (focusFrontAttachmentInCard(targetCard, delta < 0)) return true;
     focusCardPrimaryAction(targetCard);
     return true;
   }
 
   function focusCardFrontAttachmentsOrPrimary(card) {
     if (!(card instanceof HTMLElement)) return false;
-    const links = getFrontAttachmentLinks(card);
-    if (links.length && safeFocus(links[0])) return true;
+    if (focusFrontAttachmentInCard(card, false)) return true;
     focusCardPrimaryAction(card);
     return true;
   }
