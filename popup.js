@@ -3153,6 +3153,24 @@ async function main() {
           return;
         }
 
+        // From search/filter input, move down to the currently active board tab
+        // (not the first tab), so tab context/search stays consistent.
+        const cardFilterInput = document.getElementById("cardFilterInput");
+        if (activeEl2 === cardFilterInput) {
+          const activeBoardTab = document.querySelector(
+            `#boardTabs [role='tab'][data-board="${CSS.escape(String(activeBoard))}"]`
+          );
+          if (activeBoardTab instanceof HTMLElement && safeFocus(activeBoardTab)) return;
+
+          const selectedTab = document.querySelector(
+            "#boardTabs [role='tab'][aria-selected='true']"
+          );
+          if (selectedTab instanceof HTMLElement && safeFocus(selectedTab)) return;
+
+          const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+          if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+        }
+
         moveGlobalFocus(+1);
         return;
       }
