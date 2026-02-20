@@ -109,56 +109,92 @@ function englishBigramScoreLowercase(word) {
 }
 
 function scoreEnglishTokenShapeLowercase(token) {
-  const t = String(token || "");
-  if (!t) return -Infinity;
-  if (!/^[a-z]+$/.test(t)) return -Infinity;
+  const t0 = String(token || "");
+  const letters = t0.toLowerCase().replace(/[^a-z]/g, "");
+  if (!letters) return -Infinity;
 
-  let score = englishBigramScoreLowercase(t);
+  let score = englishBigramScoreLowercase(letters);
 
   // Penalize 'q' not followed by 'u' (rare in common English).
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] !== "q") continue;
-    if (t[i + 1] !== "u") score -= 12;
+  for (let i = 0; i < letters.length; i++) {
+    if (letters[i] !== "q") continue;
+    if (letters[i + 1] !== "u") score -= 12;
   }
 
-  const vowels = (t.match(/[aeiouy]/g) || []).length;
+  const vowels = (letters.match(/[aeiouy]/g) || []).length;
   if (vowels === 0) score -= 12;
-  const ratio = vowels / t.length;
+  const ratio = vowels / letters.length;
   if (ratio < 0.2 || ratio > 0.85) score -= 3;
 
-  if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(t)) score -= 4;
-  if (/^(aa|ae|oe|ii|uu)/.test(t)) score -= 6;
+  if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(letters)) score -= 4;
+  if (/^(aa|ae|oe|ii|uu)/.test(letters)) score -= 6;
 
   return score;
 }
 
 function scoreEnglishDictionaryCandidateWordLowercase(word, prefixLen) {
-  const w = String(word || "");
+  const w = String(word || "").toLowerCase();
   if (!w) return -Infinity;
-  if (!/^[a-z]+$/.test(w)) return -Infinity;
-  if (w.length > 24) return -Infinity;
+  if (!/^[a-z'-]+$/.test(w)) return -Infinity;
+
+  const lettersLen = w.replace(/[^a-z]/g, "").length;
+  if (lettersLen <= 0) return -Infinity;
+  if (lettersLen > 24) return -Infinity;
 
   const completionLen = Math.max(0, w.length - Number(prefixLen || 0));
 
   let score = scoreEnglishTokenShapeLowercase(w);
   // Prefer shorter completions and shorter words.
   score += 12 - completionLen * 2;
-  score += 10 - w.length;
+  score += 10 - lettersLen;
 
   // Common suffixes in everyday English.
-  if (w.endsWith("s")) score += 1.25;
+  // Prefer singular over plural when both exist.
+  // Avoid penalizing common non-plural endings like "is"/"us" and double-s.
+  if (w.endsWith("s") && w.length > 3 && !w.endsWith("ss") && !w.endsWith("is") && !w.endsWith("us")) {
+    score -= 0.9;
+  }
   if (w.endsWith("ed")) score += 0.75;
   if (w.endsWith("ing")) score += 1.5;
   if (w.endsWith("ly")) score += 0.5;
   if (w.endsWith("tion") || w.endsWith("ment") || w.endsWith("ness")) score += 0.75;
 
   // Penalize some technical/rare endings.
-  if (/(aceae|idae|inae|itis|osis|emia|genic|gynous|phyte|phyll|taxis|metry|graphy|omics)$/.test(w)) score -= 8;
+  if (/(aceae|idae|inae|itis|osis|emia|genic|gynous|phyte|phyll|taxis|metry|graphy|omics|atores|atrix|atrices|atorium|atoria)$/.test(w)) score -= 8;
 
   // Extra penalty for very long words.
-  if (w.length > 12) score -= (w.length - 12) * 1.25;
+  if (lettersLen > 12) score -= (lettersLen - 12) * 1.25;
 
   return score;
+}
+
+// Filter profanity from the 5k word list so it won't be suggested.
+// Stored as base64 to avoid embedding the raw words in-source.
+const EN_DICT_PROFANE_WORDS = (() => {
+  const b64 = [
+    "ZnVjaw==", // fuck
+    "ZnVja2Vy", // fucker
+    "ZnVja2Vycw==", // fuckers
+    "ZnVja2luZw==", // fucking
+    "c2hpdA==", // shit
+    "c2hpdHM=", // shits
+    "c2hpdHR5" // shitty
+  ];
+  const out = new Set();
+  for (const s of b64) {
+    try {
+      const w = atob(String(s || ""));
+      if (w) out.add(String(w).toLowerCase());
+    } catch {
+      // ignore
+    }
+  }
+  return out;
+})();
+
+function isEnglishDictionaryProfaneWordLowercase(word) {
+  const w = String(word || "").toLowerCase();
+  return !!w && EN_DICT_PROFANE_WORDS.has(w);
 }
 
 function bytesToBase64(bytes) {
@@ -317,6 +353,14 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
       description TEXT,
       created_at INTEGER NOT NULL,
       FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     );
   `);
 
@@ -1038,12 +1082,6 @@ function renderNotes(db, notes) {
     toolbar.appendChild(mkToolBtn("1.", "insertOrderedList"));
     toolbar.appendChild(mkToolBtn("Link", "createLink"));
 
-    const vimIndicator = document.createElement("div");
-    vimIndicator.className = "noteVimIndicator";
-    vimIndicator.dataset.noteId = String(note.id);
-    vimIndicator.textContent = "";
-    toolbar.appendChild(vimIndicator);
-
     const editor = document.createElement("div");
     editor.className = "noteEditorArea";
     editor.setAttribute("contenteditable", "true");
@@ -1058,9 +1096,24 @@ function renderNotes(db, notes) {
     editorAutocomplete.hidden = true;
     editorAutocomplete.dataset.noteId = String(note.id);
 
+    const vimToast = document.createElement("div");
+    vimToast.className = "noteVimToast";
+    vimToast.dataset.noteId = String(note.id);
+    vimToast.setAttribute("role", "status");
+    vimToast.setAttribute("aria-live", "polite");
+    vimToast.hidden = true;
+
+    const vimStatus = document.createElement("div");
+    vimStatus.className = "noteVimStatus";
+    vimStatus.dataset.noteId = String(note.id);
+    vimStatus.setAttribute("aria-label", "Vim status");
+    vimStatus.textContent = "";
+
     editorWrap.appendChild(toolbar);
     editorWrap.appendChild(editor);
     editorWrap.appendChild(editorAutocomplete);
+    editorWrap.appendChild(vimToast);
+    editorWrap.appendChild(vimStatus);
     front.appendChild(body);
     if (links.length) front.appendChild(attachments);
     front.appendChild(editorWrap);
@@ -1569,7 +1622,16 @@ async function main() {
       <ul>
         <li>${keycap(":x")}: close notes editor or close flipped attachments</li>
         <li>${combo("Alt", fmt(checkboxKey))}: toggle crossed-out (strikethrough) text for the line</li>
-        <li>${keycap("Esc")}: exit insert mode (then Esc again closes notes)</li>
+        <li>${keycap("Esc")}: insert → normal, visual → normal, normal → close notes</li>
+        <li>${keycap("u")}: (normal mode) undo last change</li>
+        <li>${keycap("v")}: (normal mode) enter visual selection mode</li>
+        <li>${keycap("y")}: (visual mode) yank selection to a register</li>
+        <li>${keycap("c")}: (visual mode) cut selection (yank + delete) and enter insert mode</li>
+        <li>${keycap("↑")}/${keycap("↓")}/${keycap("←")}/${keycap("→")}: (visual mode) extend selection without Shift</li>
+        <li>${combo("Alt", fmt(nav.up))}/${combo("Alt", fmt(nav.down))}/${combo("Alt", fmt(nav.left))}/${combo("Alt", fmt(nav.right))}: (visual mode) extend selection (layout-dependent keys)</li>
+        <li>${keycap('"')} + ${keycap("1")}/${keycap("2")}/${keycap("3")}/${keycap("4")}: choose register for the next yank/paste</li>
+        <li>${keycap('"')} + ${keycap("+")}: use the system clipboard register for the next yank/cut</li>
+        <li>${keycap("p")}: (normal mode) paste register at caret and enter insert mode</li>
       </ul>
 
       <h3>Autocomplete</h3>
@@ -1817,9 +1879,85 @@ async function main() {
   // Persist default if missing/invalid.
   if ((await loadKeyLayout()) === null) await saveKeyLayout(keyLayout);
 
+  const APP_SETTING_AI_ENDPOINT_BASE_URL = "ai.endpointBaseUrl";
+  const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
+
+  function dbGetAppSettingString(key) {
+    const k = String(key || "");
+    if (!k) return null;
+    try {
+      const res = db.exec("SELECT value FROM app_settings WHERE key = ? LIMIT 1", [k]);
+      const v = res?.[0]?.values?.[0]?.[0];
+      if (v === null || v === undefined) return null;
+      return String(v);
+    } catch {
+      return null;
+    }
+  }
+
+  function dbSetAppSettingString(key, value) {
+    const k = String(key || "");
+    if (!k) return;
+    const v = value === null || value === undefined ? "" : String(value);
+    if (!v) {
+      try {
+        db.run("DELETE FROM app_settings WHERE key = ?", [k]);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    db.run("INSERT OR REPLACE INTO app_settings(key, value, updated_at) VALUES(?, ?, ?)", [
+      k,
+      v,
+      Date.now()
+    ]);
+  }
+
   // AI endpoint base URL: empty/missing means AI disabled.
-  let aiEndpointBaseUrl = (await loadAiEndpointBaseUrl()) || "";
-  let aiCustomWords = await loadAiCustomWords();
+  let didMigrateAiSettings = false;
+
+  let aiEndpointBaseUrl = dbGetAppSettingString(APP_SETTING_AI_ENDPOINT_BASE_URL) || "";
+  if (!aiEndpointBaseUrl) {
+    const legacy = (await loadAiEndpointBaseUrl()) || "";
+    if (legacy) {
+      const normalized = normalizeEndpointBaseUrl(legacy);
+      if (normalized) {
+        aiEndpointBaseUrl = normalized;
+        dbSetAppSettingString(APP_SETTING_AI_ENDPOINT_BASE_URL, normalized);
+        didMigrateAiSettings = true;
+      }
+    }
+  }
+
+  let aiCustomWords = [];
+  const customWordsJson = dbGetAppSettingString(APP_SETTING_AI_CUSTOM_WORDS_JSON);
+  if (customWordsJson) {
+    try {
+      const parsed = JSON.parse(customWordsJson);
+      if (Array.isArray(parsed)) {
+        aiCustomWords = parsed.filter((w) => typeof w === "string" && w.trim());
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (!aiCustomWords.length) {
+    const legacy = await loadAiCustomWords();
+    if (legacy.length) {
+      aiCustomWords = legacy;
+      dbSetAppSettingString(APP_SETTING_AI_CUSTOM_WORDS_JSON, JSON.stringify(legacy));
+      didMigrateAiSettings = true;
+    }
+  }
+
+  if (didMigrateAiSettings) {
+    try {
+      await persist();
+    } catch {
+      // ignore
+    }
+  }
 
   // Shared caches for autocomplete (new note + notes editor).
   let ollamaModel = null;
@@ -1894,11 +2032,79 @@ async function main() {
   const editorSelectionByNoteId = new Map();
 
   // Lightweight Vim-style editing for the rich notes editor.
-  // Modes are per-note: 'insert' (default) and 'normal'.
+  // Modes are per-note: 'insert' (default), 'normal', and 'visual'.
   const vimModeByNoteId = new Map();
   const vimPendingByNoteId = new Map();
-  const vimRegisterByNoteId = new Map();
+  const vimRegistersByNoteId = new Map();
+  const vimNextRegisterByNoteId = new Map();
+  const vimVisualAnchorByNoteId = new Map();
+  const vimUndoStackByNoteId = new Map();
+  const vimUndoMetaByNoteId = new Map();
+  const vimUndoApplyingByNoteId = new Set();
   let lastFocusedNoteEditor = null;
+
+  function vimGetUndoStack(noteId) {
+    let stack = vimUndoStackByNoteId.get(noteId);
+    if (!Array.isArray(stack)) {
+      stack = [];
+      vimUndoStackByNoteId.set(noteId, stack);
+    }
+    return stack;
+  }
+
+  function vimUndoPush(noteId, html, { force } = { force: false }) {
+    const stack = vimGetUndoStack(noteId);
+    const value = typeof html === "string" ? html : "";
+    const last = stack.length ? stack[stack.length - 1] : null;
+    if (!force && last === value) return;
+
+    // Simple coalescing to avoid pushing on every keystroke.
+    const meta = vimUndoMetaByNoteId.get(noteId) || { lastPushAt: 0 };
+    const now = Date.now();
+    const withinCoalesce = !force && now - (meta.lastPushAt || 0) < 450;
+    if (withinCoalesce && stack.length) {
+      stack[stack.length - 1] = value;
+    } else {
+      stack.push(value);
+      // Cap stack size.
+      if (stack.length > 60) stack.splice(0, stack.length - 60);
+    }
+    vimUndoMetaByNoteId.set(noteId, { lastPushAt: now });
+  }
+
+  function vimUndoApply(editor) {
+    const noteId = getNoteIdFromEditor(editor);
+    if (noteId === null) return false;
+    const stack = vimGetUndoStack(noteId);
+    if (stack.length < 2) return false;
+
+    // Drop current state and revert to previous.
+    stack.pop();
+    const prev = stack[stack.length - 1];
+    if (typeof prev !== "string") return false;
+
+    vimUndoApplyingByNoteId.add(noteId);
+    try {
+      editor.innerHTML = prev;
+      // Place caret at end.
+      const sel = window.getSelection();
+      if (sel) {
+        const r = document.createRange();
+        r.selectNodeContents(editor);
+        r.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      ensureNotesEditorCaretInView(editor);
+      return true;
+    } finally {
+      // Let any input handlers run before re-enabling capture.
+      setTimeout(() => {
+        vimUndoApplyingByNoteId.delete(noteId);
+      }, 0);
+    }
+  }
 
   function getNoteIdFromEditor(editor) {
     if (!(editor instanceof HTMLElement)) return null;
@@ -1939,6 +2145,28 @@ async function main() {
     return null;
   }
 
+  function getSelectionRangeInEditor(editor) {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    try {
+      const r = sel.getRangeAt(0);
+      if (!r) return null;
+      const startOk = r.startContainer instanceof Node && editor.contains(r.startContainer);
+      const endOk = r.endContainer instanceof Node && editor.contains(r.endContainer);
+      if (!startOk || !endOk) return null;
+      return r;
+    } catch {
+      return null;
+    }
+  }
+
+  function ensureCaretSelectionInEditor(editor) {
+    const existing = getSelectionRangeInEditor(editor);
+    if (existing) return existing;
+    collapseSelectionToEditorStart(editor);
+    return getSelectionRangeInEditor(editor);
+  }
+
   function collapseSelectionToEditorStart(editor) {
     const sel = window.getSelection();
     if (!sel) return;
@@ -1947,6 +2175,14 @@ async function main() {
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
+
+    // Collapsed ranges at element boundaries may have no client rect; force scroll.
+    try {
+      editor.scrollTop = 0;
+    } catch {
+      // ignore
+    }
+    ensureNotesEditorCaretInView(editor);
   }
 
   function collapseSelectionToAfterNode(node) {
@@ -2008,6 +2244,7 @@ async function main() {
       if (offset > text.length) offset = text.length;
     }
     setCaretInElement(firstText, offset);
+    ensureNotesEditorCaretInView(editor);
   }
 
   function vimCaretToEndOfLine(editor) {
@@ -2025,42 +2262,95 @@ async function main() {
     }
     const text = lastText.nodeValue || "";
     setCaretInElement(lastText, text.length);
+    ensureNotesEditorCaretInView(editor);
   }
 
   function vimSetMode(noteId, mode) {
-    if (mode !== "insert" && mode !== "normal") return;
+    if (mode !== "insert" && mode !== "normal" && mode !== "visual") return;
     vimModeByNoteId.set(noteId, mode);
-    updateVimIndicatorInDom(noteId);
+    if (mode !== "visual") vimVisualAnchorByNoteId.delete(noteId);
+    updateVimStatusInDom(noteId);
   }
 
   function vimGetMode(noteId) {
     return vimModeByNoteId.get(noteId) || "insert";
   }
 
-  function updateVimIndicatorInDom(noteId) {
-    const indicator = document.querySelector(
-      `.noteVimIndicator[data-note-id="${CSS.escape(String(noteId))}"]`
-    );
-    if (!(indicator instanceof HTMLElement)) return;
-    const mode = vimGetMode(noteId);
-    indicator.textContent = mode.toUpperCase();
-    indicator.classList.toggle("is-normal", mode === "normal");
+  const vimToastTimersByNoteId = new Map();
+
+  function vimGetPendingStatus(noteId) {
+    const p = vimPendingByNoteId.get(noteId);
+    if (!p) return null;
+    if (!p.key) return null;
+    // Pending keys generally time out around 700ms (dd/yy) to 4s (register, :x).
+    // Use 4s so the status remains readable while user is mid-sequence.
+    if (Date.now() - (p.at || 0) > 4000) return null;
+    return String(p.key);
   }
 
-  function updateVimIndicatorsInDom() {
-    const indicators = document.querySelectorAll(".noteVimIndicator[data-note-id]");
-    for (const el of indicators) {
+  function vimPeekNextRegister(noteId) {
+    const v = vimNextRegisterByNoteId.get(noteId);
+    return v ? String(v) : null;
+  }
+
+  function vimFormatStatus(noteId) {
+    const mode = String(vimGetMode(noteId) || "insert").toUpperCase();
+    const pending = vimGetPendingStatus(noteId);
+    const nextReg = vimPeekNextRegister(noteId);
+
+    let s = mode;
+    if (pending) s += `  |  PENDING: ${pending}`;
+    if (nextReg) s += `  |  REG: ${nextReg}`;
+    return s;
+  }
+
+  function updateVimStatusInDom(noteId) {
+    const el = document.querySelector(
+      `.noteVimStatus[data-note-id="${CSS.escape(String(noteId))}"]`
+    );
+    if (!(el instanceof HTMLElement)) return;
+    el.textContent = vimFormatStatus(noteId);
+  }
+
+  function updateVimStatusesInDom() {
+    const els = document.querySelectorAll(".noteVimStatus[data-note-id]");
+    for (const el of els) {
       if (!(el instanceof HTMLElement)) continue;
       const noteId = Number(el.dataset.noteId);
       if (!Number.isFinite(noteId)) continue;
-      const mode = vimGetMode(noteId);
-      el.textContent = mode.toUpperCase();
-      el.classList.toggle("is-normal", mode === "normal");
+      el.textContent = vimFormatStatus(noteId);
     }
+  }
+
+  function vimShowToast(noteId, message, { ms } = { ms: 900 }) {
+    const el = document.querySelector(
+      `.noteVimToast[data-note-id="${CSS.escape(String(noteId))}"]`
+    );
+    if (!(el instanceof HTMLElement)) return;
+    const msg = String(message || "").trim();
+    if (!msg) return;
+
+    const prev = vimToastTimersByNoteId.get(noteId);
+    if (prev) clearTimeout(prev);
+
+    el.textContent = msg;
+    el.hidden = false;
+    const t = setTimeout(() => {
+      el.hidden = true;
+      el.textContent = "";
+      vimToastTimersByNoteId.delete(noteId);
+    }, Math.max(250, Number(ms) || 900));
+    vimToastTimersByNoteId.set(noteId, t);
+  }
+
+  function updateVimIndicatorsInDom() {
+    // Back-compat shim: indicator removed; keep status line updated.
+    updateVimStatusesInDom();
   }
 
   function vimClearPending(noteId) {
     vimPendingByNoteId.delete(noteId);
+    updateVimStatusInDom(noteId);
   }
 
   function vimPendingIs(noteId, key, withinMs) {
@@ -2072,6 +2362,354 @@ async function main() {
 
   function vimSetPending(noteId, key) {
     vimPendingByNoteId.set(noteId, { key, at: Date.now() });
+    updateVimStatusInDom(noteId);
+  }
+
+  function vimGetRegisterBank(noteId) {
+    let bank = vimRegistersByNoteId.get(noteId);
+    if (!(bank instanceof Map)) {
+      bank = new Map();
+      vimRegistersByNoteId.set(noteId, bank);
+    }
+    return bank;
+  }
+
+  function vimWriteClipboard({ text, html }, { editor } = {}) {
+    const plain = String(text || "");
+    const markup = typeof html === "string" ? html : "";
+
+    if (!plain && !markup) return false;
+
+    const plainFromHtml = (inputHtml) => {
+      try {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = String(inputHtml || "");
+        return wrap.innerText || wrap.textContent || "";
+      } catch {
+        return "";
+      }
+    };
+
+    // Preserve the user's current selection so we can do a hidden-textarea fallback
+    // without breaking visual mode selection.
+    const prevActive = document.activeElement;
+    const sel = window.getSelection();
+    const ranges = [];
+    if (sel) {
+      for (let i = 0; i < sel.rangeCount; i++) {
+        try {
+          ranges.push(sel.getRangeAt(i).cloneRange());
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // 1) Synchronous execCommand path (most reliable under user-gesture constraints).
+    // Use a 'copy' event handler to provide both HTML and plain text.
+    let ok = false;
+    const copyPlain = plain || plainFromHtml(markup);
+    const copyHtml = markup || "";
+
+    const container = document.createElement("div");
+    container.setAttribute("contenteditable", "true");
+    container.style.position = "fixed";
+    container.style.left = "-9999px";
+    container.style.top = "0";
+    container.style.opacity = "0";
+    container.style.pointerEvents = "none";
+    container.innerHTML = copyHtml || "";
+    if (!copyHtml) container.textContent = copyPlain;
+
+    const onCopy = (ev) => {
+      try {
+        if (!ev || !ev.clipboardData) return;
+        if (copyPlain) ev.clipboardData.setData("text/plain", copyPlain);
+        if (copyHtml) ev.clipboardData.setData("text/html", copyHtml);
+        ev.preventDefault();
+        ok = true;
+      } catch {
+        // ignore
+      }
+    };
+
+    try {
+      document.addEventListener("copy", onCopy, true);
+      document.body.appendChild(container);
+      const r = document.createRange();
+      r.selectNodeContents(container);
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      try {
+        // execCommand may return false even when the copy event succeeds.
+        const execOk = document.execCommand("copy");
+        ok = ok || !!execOk;
+      } catch {
+        // ignore
+      }
+    } catch {
+      // ignore
+    } finally {
+      try {
+        document.removeEventListener("copy", onCopy, true);
+      } catch {
+        // ignore
+      }
+      try {
+        container.remove();
+      } catch {
+        // ignore
+      }
+
+      // Restore focus/selection best-effort.
+      try {
+        if (editor instanceof HTMLElement) editor.focus();
+        else if (prevActive instanceof HTMLElement) prevActive.focus();
+      } catch {
+        // ignore
+      }
+      try {
+        if (sel && ranges.length) {
+          sel.removeAllRanges();
+          for (const rr of ranges) sel.addRange(rr);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (ok) return true;
+
+    // 2) Async Clipboard API fallback.
+    try {
+      if (navigator?.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        const items = {};
+        if (copyPlain) items["text/plain"] = new Blob([copyPlain], { type: "text/plain" });
+        if (copyHtml) items["text/html"] = new Blob([copyHtml], { type: "text/html" });
+        const item = new ClipboardItem(items);
+        navigator.clipboard.write([item]).catch(() => {
+          // ignore
+        });
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(copyPlain).catch(() => {
+          // ignore
+        });
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    return false;
+  }
+
+  function vimDefaultRegisterName() {
+    return "0";
+  }
+
+  function vimSetRegister(noteId, name, value) {
+    const bank = vimGetRegisterBank(noteId);
+    bank.set(String(name || vimDefaultRegisterName()), {
+      html: value && typeof value.html === "string" ? value.html : "",
+      text: value && typeof value.text === "string" ? value.text : ""
+    });
+  }
+
+  function vimGetRegister(noteId, name) {
+    const bank = vimGetRegisterBank(noteId);
+    const v = bank.get(String(name || vimDefaultRegisterName()));
+    if (v && (typeof v.html === "string" || typeof v.text === "string")) return v;
+    return null;
+  }
+
+  function vimSetNextRegister(noteId, name) {
+    vimNextRegisterByNoteId.set(noteId, String(name || vimDefaultRegisterName()));
+    updateVimStatusInDom(noteId);
+  }
+
+  function vimConsumeNextRegister(noteId) {
+    const name = vimNextRegisterByNoteId.get(noteId);
+    vimNextRegisterByNoteId.delete(noteId);
+    updateVimStatusInDom(noteId);
+    return name || null;
+  }
+
+  function vimGetOpRegisterName(noteId) {
+    return vimConsumeNextRegister(noteId) || vimDefaultRegisterName();
+  }
+
+  function extendSelection(direction, granularity) {
+    const sel = window.getSelection();
+    if (!sel) return;
+    if (typeof sel.modify === "function") {
+      try {
+        sel.modify("extend", direction, granularity);
+      } catch {
+        // ignore
+      }
+    }
+
+    // Keep caret/selection visible while navigating long notes.
+    try {
+      const active = document.activeElement;
+      const editor = active instanceof Element ? active.closest(".noteEditorArea") : null;
+      if (editor instanceof HTMLElement) ensureNotesEditorCaretInView(editor);
+    } catch {
+      // ignore
+    }
+  }
+
+  function vimEnterVisualMode(editor) {
+    const noteId = getNoteIdFromEditor(editor);
+    if (noteId === null) return;
+    const r = ensureCaretSelectionInEditor(editor);
+    if (r) vimVisualAnchorByNoteId.set(noteId, r.cloneRange());
+    vimSetMode(noteId, "visual");
+  }
+
+  function vimExitVisualMode(editor) {
+    const noteId = getNoteIdFromEditor(editor);
+    if (noteId === null) return;
+
+    // Collapse to a caret position within the editor.
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      try {
+        sel.collapseToEnd();
+      } catch {
+        // ignore
+      }
+    }
+    vimSetMode(noteId, "normal");
+    vimClearPending(noteId);
+    vimNextRegisterByNoteId.delete(noteId);
+  }
+
+  function vimDeleteSelection(editor) {
+    const r = getSelectionRangeInEditor(editor);
+    if (!r) return false;
+    if (r.collapsed) return false;
+    try {
+      editor.focus();
+      // Prefer browser delete for contenteditable behavior.
+      if (document.queryCommandSupported && document.queryCommandSupported("delete")) {
+        if (document.execCommand("delete")) return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      r.deleteContents();
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        const rr = document.createRange();
+        rr.selectNodeContents(editor);
+        rr.collapse(true);
+        sel.addRange(rr);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function vimYankSelection(editor, registerName) {
+    const noteId = getNoteIdFromEditor(editor);
+    if (noteId === null) return { ok: false, clipboardOk: false };
+    const r = getSelectionRangeInEditor(editor);
+    if (!r) return { ok: false, clipboardOk: false };
+    if (r.collapsed) return { ok: false, clipboardOk: false };
+
+    let html = "";
+    let text = "";
+    try {
+      text = r.toString();
+      const frag = r.cloneContents();
+      const wrap = document.createElement("div");
+      wrap.appendChild(frag);
+      html = wrap.innerHTML;
+
+      // Some selections (e.g. checkbox-only, <br>-heavy) can yield an empty Range.toString().
+      // Fall back to the fragment's rendered text.
+      if (!text) text = wrap.innerText || wrap.textContent || "";
+    } catch {
+      // ignore
+    }
+
+    vimSetRegister(noteId, registerName, { html, text });
+    const clipboardOk =
+      String(registerName || "") === "+"
+        ? vimWriteClipboard({ text, html }, { editor })
+        : false;
+    return { ok: true, clipboardOk };
+  }
+
+  function vimPasteAtCaret(editor, registerName) {
+    const noteId = getNoteIdFromEditor(editor);
+    if (noteId === null) return false;
+    const reg = vimGetRegister(noteId, registerName);
+    if (!reg || (!reg.html && !reg.text)) return false;
+
+    const r = ensureCaretSelectionInEditor(editor);
+    if (!r) return false;
+
+    const tryInsertHtml = (html) => {
+      if (!html) return false;
+      try {
+        editor.focus();
+        return document.execCommand("insertHTML", false, html);
+      } catch {
+        return false;
+      }
+    };
+
+    const tryInsertText = (text) => {
+      if (!text) return false;
+      try {
+        editor.focus();
+        return document.execCommand("insertText", false, text);
+      } catch {
+        return false;
+      }
+    };
+
+    if (!tryInsertHtml(reg.html)) {
+      if (!tryInsertText(reg.text)) {
+        // Range-based fallback
+        try {
+          const sel = window.getSelection();
+          if (!sel || !sel.rangeCount) return;
+          const rr = sel.getRangeAt(0);
+          rr.deleteContents();
+          if (reg.html) {
+            const tpl = document.createElement("template");
+            tpl.innerHTML = reg.html;
+            const frag = tpl.content;
+            const last = frag.lastChild;
+            rr.insertNode(frag);
+            if (last) collapseSelectionToAfterNode(last);
+          } else if (reg.text) {
+            rr.insertNode(document.createTextNode(reg.text));
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
   }
 
   function moveSelection(direction, granularity) {
@@ -2083,6 +2721,50 @@ async function main() {
       } catch {
         // ignore
       }
+    }
+
+    // Keep caret visible while navigating long notes.
+    try {
+      const active = document.activeElement;
+      const editor = active instanceof Element ? active.closest(".noteEditorArea") : null;
+      if (editor instanceof HTMLElement) ensureNotesEditorCaretInView(editor);
+    } catch {
+      // ignore
+    }
+  }
+
+  function ensureNotesEditorCaretInView(editor) {
+    if (!(editor instanceof HTMLElement)) return;
+    try {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const r0 = sel.getRangeAt(0);
+      if (!(r0?.endContainer instanceof Node) || !editor.contains(r0.endContainer)) return;
+
+      const r = r0.cloneRange();
+      r.collapse(true);
+
+      const rects = r.getClientRects();
+      const caretRect = rects && rects.length ? rects[0] : r.getBoundingClientRect();
+      if (!caretRect || !(caretRect.width || caretRect.height)) return;
+
+      const editorRect = editor.getBoundingClientRect();
+      const pad = 16;
+
+      const tooHigh = caretRect.top < editorRect.top + pad;
+      const tooLow = caretRect.bottom > editorRect.bottom - pad;
+      if (!tooHigh && !tooLow) return;
+
+      let delta = 0;
+      if (tooHigh) delta = caretRect.top - (editorRect.top + pad);
+      else if (tooLow) delta = caretRect.bottom - (editorRect.bottom - pad);
+
+      // client-rect delta approximates the scroll delta for the editor's overflow.
+      const next = editor.scrollTop + delta;
+      editor.scrollTop = Math.max(0, next);
+    } catch {
+      // ignore
     }
   }
 
@@ -2121,45 +2803,18 @@ async function main() {
     editor.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  function vimYankCurrentBlock(editor) {
+  function vimYankCurrentBlock(editor, registerName) {
     const noteId = getNoteIdFromEditor(editor);
-    if (noteId === null) return;
+    if (noteId === null) return { ok: false, clipboardOk: false };
     const block = getCurrentBlockElement(editor);
     const html = block ? block.outerHTML : editor.innerHTML;
     const text = block ? block.textContent : editor.textContent;
-    vimRegisterByNoteId.set(noteId, { html, text });
-  }
-
-  function vimPasteAfterBlock(editor) {
-    const noteId = getNoteIdFromEditor(editor);
-    if (noteId === null) return;
-    const reg = vimRegisterByNoteId.get(noteId);
-    if (!reg || (!reg.html && !reg.text)) return;
-
-    const block = getCurrentBlockElement(editor);
-    const tpl = document.createElement("template");
-    tpl.innerHTML = reg.html || "";
-    const node = tpl.content.firstElementChild;
-
-    if (node instanceof HTMLElement) {
-      if (block) {
-        block.insertAdjacentElement("afterend", node);
-        collapseSelectionToAfterNode(node);
-      } else {
-        editor.appendChild(node);
-        collapseSelectionToAfterNode(node);
-      }
-    } else {
-      // Fallback to plain text paste
-      const text = reg.text || "";
-      if (block) {
-        block.insertAdjacentText("afterend", `\n${text}`);
-      } else {
-        editor.insertAdjacentText("beforeend", text);
-      }
-    }
-
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    vimSetRegister(noteId, registerName, { html, text });
+    const clipboardOk =
+      String(registerName || "") === "+"
+        ? vimWriteClipboard({ text, html }, { editor })
+        : false;
+    return { ok: true, clipboardOk };
   }
 
   async function activateBoard(board, { persistSelection } = { persistSelection: true }) {
@@ -2275,19 +2930,39 @@ async function main() {
 
       englishDictLoadPromise = (async () => {
         try {
-          const url = chrome?.runtime?.getURL
-            ? chrome.runtime.getURL("vendor/words-en.txt")
-            : "vendor/words-en.txt";
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Dictionary fetch failed: ${res.status}`);
-          const txt = await res.text();
+          const cacheKey = "englishDict:5000-words:v1";
+          let txt = "";
+          try {
+            const cached = await chrome.storage.local.get(cacheKey);
+            txt = typeof cached?.[cacheKey] === "string" ? cached[cacheKey] : "";
+          } catch {
+            // ignore
+          }
+
+          if (!txt) {
+            const url = "https://raw.githubusercontent.com/mahsu/IndexingExercise/master/5000-words.txt";
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Dictionary fetch failed: ${res.status}`);
+            txt = await res.text();
+            try {
+              await chrome.storage.local.set({ [cacheKey]: txt });
+            } catch {
+              // ignore
+            }
+          }
+
           const out = [];
+          const seen = new Set();
           for (const line of txt.split(/\r?\n/)) {
             const w = String(line || "").trim();
             if (!w) continue;
-            if (w.length > 40) continue;
-            if (!/^[A-Za-z]+$/.test(w)) continue;
-            out.push(w.toLowerCase());
+            if (w.length > 60) continue;
+            if (!/^[A-Za-z]+(?:[-'][A-Za-z]+)*$/.test(w)) continue;
+            const lower = w.toLowerCase();
+            if (isEnglishDictionaryProfaneWordLowercase(lower)) continue;
+            if (seen.has(lower)) continue;
+            seen.add(lower);
+            out.push(lower);
           }
           out.sort();
           englishDictWords = out;
@@ -2309,12 +2984,13 @@ async function main() {
 
       const { token } = getLastTokenInfo(base);
       if (!token) return null;
-      if (token.length < 4) return null;
+      if (token.length < 3) return null;
 
       const prefix = token.toLowerCase();
       // If the typed prefix itself is very unlikely in common English, skip
       // dictionary suggestions (avoids recommending obscure terms).
-      if (scoreEnglishTokenShapeLowercase(prefix) < 0.75) return null;
+      const shapePrefix = prefix.replace(/[^a-z]/g, "");
+      if (shapePrefix.length >= 3 && scoreEnglishTokenShapeLowercase(shapePrefix) < -2) return null;
       const words = englishDictWords;
 
       let lo = 0;
@@ -2326,8 +3002,12 @@ async function main() {
       }
 
       let best = "";
-      let bestScore = -Infinity;
       let bestCompletionLen = Infinity;
+      let bestScore = -Infinity;
+
+      // Avoid suggesting huge completions from a broad dictionary list; prefer
+      // completing the current word, not replacing it with a long rare term.
+      const maxCompletionLen = Math.max(8, Math.min(18, token.length + 6));
 
       // Scan a small window of matches; rank by commonness + short completion.
       for (let i = lo; i < words.length; i++) {
@@ -2336,23 +3016,26 @@ async function main() {
         if (w.length <= token.length) continue;
 
         const completionLen = w.length - token.length;
+        if (completionLen > maxCompletionLen) continue;
         const score = scoreEnglishDictionaryCandidateWordLowercase(w, token.length);
-        const betterScore = score > bestScore;
-        const betterLen = score === bestScore && completionLen < bestCompletionLen;
-        const betterWordLen =
-          score === bestScore && completionLen === bestCompletionLen && (!best || w.length < best.length);
+        if (!(score >= 6)) continue;
 
-        if (betterScore || betterLen || betterWordLen) {
+        // Prefer the shortest completion that still looks like common English.
+        const betterLen = completionLen < bestCompletionLen;
+        const betterScore = completionLen === bestCompletionLen && score > bestScore;
+        const betterWordLen =
+          completionLen === bestCompletionLen && score === bestScore && (!best || w.length < best.length);
+
+        if (betterLen || betterScore || betterWordLen) {
           best = w;
           bestScore = score;
           bestCompletionLen = completionLen;
         }
 
-        if (i - lo > 240) break;
+        if (i - lo > 600) break;
       }
 
-      // Require a minimally good score to avoid noisy/rare completions.
-      if (!best || !(bestScore >= 9)) return null;
+      if (!best) return null;
       return { baseText: base, completion: best.slice(token.length) };
     };
 
@@ -2475,10 +3158,125 @@ async function main() {
       container.hidden = true;
     };
 
+    const editorWrap = editor.closest(".noteEditor");
+    let inlineTrail = editorWrap ? editorWrap.querySelector(".noteEditorInlineTrail") : null;
+    if (editorWrap instanceof HTMLElement && !(inlineTrail instanceof HTMLElement)) {
+      inlineTrail = document.createElement("div");
+      inlineTrail.className = "noteEditorInlineTrail";
+      inlineTrail.hidden = true;
+      editorWrap.appendChild(inlineTrail);
+    }
+
+    const syncEditorInlineTrailTypography = () => {
+      if (!(inlineTrail instanceof HTMLElement)) return;
+      try {
+        const cs = getComputedStyle(editor);
+        inlineTrail.style.fontFamily = cs.fontFamily;
+        inlineTrail.style.fontSize = cs.fontSize;
+        inlineTrail.style.fontWeight = cs.fontWeight;
+        inlineTrail.style.letterSpacing = cs.letterSpacing;
+        inlineTrail.style.lineHeight = cs.lineHeight;
+      } catch {
+        // ignore
+      }
+    };
+
+    const hideEditorInlineTrail = () => {
+      if (!(inlineTrail instanceof HTMLElement)) return;
+      inlineTrail.textContent = "";
+      inlineTrail.hidden = true;
+    };
+
+    const getCaretClientRect = () => {
+      try {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return null;
+        const r0 = sel.getRangeAt(0);
+        if (!(r0?.endContainer instanceof Node) || !editor.contains(r0.endContainer)) return null;
+        const r = r0.cloneRange();
+        r.collapse(true);
+        const rects = r.getClientRects();
+        if (rects && rects.length) return rects[0];
+        const br = r.getBoundingClientRect();
+        if (br && (br.width || br.height)) return br;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const renderEditorInlineTrail = (candidate) => {
+      if (!(inlineTrail instanceof HTMLElement)) return;
+      if (!(editorWrap instanceof HTMLElement)) return;
+
+      if (
+        candidate &&
+        candidate.completion &&
+        getCaretPrefixText() === candidate.baseText &&
+        document.activeElement === editor
+      ) {
+        const caretRect = getCaretClientRect();
+        if (!caretRect) {
+          hideEditorInlineTrail();
+          return;
+        }
+
+        const wrapRect = editorWrap.getBoundingClientRect();
+        inlineTrail.textContent = String(candidate.completion || "");
+        inlineTrail.hidden = false;
+        syncEditorInlineTrailTypography();
+        inlineTrail.style.left = `${Math.max(0, caretRect.left - wrapRect.left)}px`;
+        inlineTrail.style.top = `${Math.max(0, caretRect.top - wrapRect.top)}px`;
+        return;
+      }
+
+      hideEditorInlineTrail();
+    };
+
+    let tabProgress = null; // { baseText, remaining, step, kind }
+
+    const getActiveTabCompletion = () => {
+      const baseText = getCaretPrefixText();
+      if (tabProgress && tabProgress.remaining && baseText === tabProgress.baseText) {
+        return { baseText, completion: tabProgress.remaining, kind: tabProgress.kind || "local" };
+      }
+      if (localCompletion && localCompletion.completion && baseText === localCompletion.baseText) {
+        return { baseText, completion: localCompletion.completion, kind: "local" };
+      }
+      if (aiSuggestion && aiSuggestion.completion && baseText === aiSuggestion.baseText) {
+        return { baseText, completion: aiSuggestion.completion, kind: "ai" };
+      }
+      return null;
+    };
+
+    const applyTabProgressStep = (candidate) => {
+      if (!candidate || !candidate.completion) return false;
+      const baseText = String(candidate.baseText || "");
+      const remaining = String(candidate.completion || "");
+      if (!remaining) return false;
+
+      // Accept full completion in one Tab press.
+      try {
+        editor.focus();
+        document.execCommand("insertText", false, remaining);
+      } catch {
+        return false;
+      }
+
+      tabProgress = null;
+      render();
+      return true;
+    };
+
     const render = () => {
       container.textContent = "";
       const hasLocalCompletion = !!(localCompletion && localCompletion.completion);
       const hasAi = !!(aiSuggestion && aiSuggestion.completion);
+      const tabC = getActiveTabCompletion();
+
+      // Inline ghost trail (same line as caret)
+      renderEditorInlineTrail(tabC);
+
       if (!hasLocalCompletion && !hasAi) {
         container.hidden = true;
         return;
@@ -2511,6 +3309,7 @@ async function main() {
           }
           if (kind2 === "localCompletion" || kind2 === "ai") {
             try {
+              tabProgress = null;
               editor.focus();
               document.execCommand("insertText", false, completion);
             } catch {
@@ -2555,6 +3354,8 @@ async function main() {
     const clearAll = () => {
       localCompletion = null;
       clearAi();
+      tabProgress = null;
+      hideEditorInlineTrail();
       hide();
     };
 
@@ -2569,6 +3370,7 @@ async function main() {
       }
 
       const value = getCaretPrefixText();
+      if (tabProgress && value !== tabProgress.baseText) tabProgress = null;
       const trimmed = String(value || "").trim();
       if (!trimmed) {
         clearAll();
@@ -2590,7 +3392,7 @@ async function main() {
 
         if (!localCompletion) {
           const { token } = getLastTokenInfo(baseText);
-          if (token && token.length >= 4) {
+          if (token && token.length >= 3) {
             void ensureEnglishDictionaryLoaded()
               .then(() => {
                 if (getCaretPrefixText() !== baseText) return;
@@ -2651,25 +3453,10 @@ async function main() {
     editor.addEventListener("keydown", (e) => {
       if (e.key !== "Tab") return;
 
-      // Prefer local "Complete:" recommendation; fall back to AI.
-      const prefix = getCaretPrefixText();
-      if (localCompletion && localCompletion.completion && prefix === localCompletion.baseText) {
+      const c = getActiveTabCompletion();
+      if (c && c.completion && getCaretPrefixText() === c.baseText) {
         e.preventDefault();
-        try {
-          document.execCommand("insertText", false, localCompletion.completion);
-        } catch {
-          // ignore
-        }
-        return;
-      }
-
-      if (aiSuggestion && aiSuggestion.completion && prefix === aiSuggestion.baseText) {
-        e.preventDefault();
-        try {
-          document.execCommand("insertText", false, aiSuggestion.completion);
-        } catch {
-          // ignore
-        }
+        applyTabProgressStep(c);
         return;
       }
 
@@ -2682,11 +3469,20 @@ async function main() {
         const active = document.activeElement;
         if (active instanceof Element && container.contains(active)) return;
         hide();
+        hideEditorInlineTrail();
       }, 0);
     });
 
     editor.addEventListener("focus", () => {
       scheduleRefresh();
+    });
+
+    editor.addEventListener("scroll", () => {
+      renderEditorInlineTrail(getActiveTabCompletion());
+    });
+
+    window.addEventListener("resize", () => {
+      renderEditorInlineTrail(getActiveTabCompletion());
     });
   }
 
@@ -2931,6 +3727,18 @@ async function main() {
       try {
         aiEndpointBaseUrl = await saveAiEndpointBaseUrl(normalized);
         aiCustomWords = await saveAiCustomWords(parsed.valid);
+
+        // Persist into the SQLite DB so settings travel with DB export/import.
+        try {
+          dbSetAppSettingString(APP_SETTING_AI_ENDPOINT_BASE_URL, aiEndpointBaseUrl || "");
+          dbSetAppSettingString(
+            APP_SETTING_AI_CUSTOM_WORDS_JSON,
+            Array.isArray(aiCustomWords) && aiCustomWords.length ? JSON.stringify(aiCustomWords) : ""
+          );
+          await persist();
+        } catch (err) {
+          console.error(err);
+        }
 
         if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
           queueAutosizeTextarea(aiCustomWordsInput);
@@ -3898,6 +4706,7 @@ async function main() {
 
       // Esc while in the notes editor UI should not let Chrome close the popup.
       // - If the editor is in insert mode, Esc exits to normal mode.
+      // - If the editor is in visual mode, Esc exits to normal mode.
       // - If already in normal mode, Esc closes the notes editor.
       if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Escape" && inNotesUi) {
         e.preventDefault();
@@ -3916,6 +4725,21 @@ async function main() {
           // Keep focus in the editor if possible.
           const editor = card instanceof HTMLElement ? card.querySelector(".noteEditor") : null;
           if (editor instanceof HTMLElement) safeFocus(editor);
+          return;
+        }
+
+        if (mode === "visual") {
+          notesExitPending = null;
+          vimClearPending(noteId);
+
+          const editorArea =
+            card instanceof HTMLElement ? card.querySelector(".noteEditorArea") : null;
+          if (editorArea instanceof HTMLElement) {
+            editorArea.focus();
+            vimExitVisualMode(editorArea);
+          } else {
+            vimSetMode(noteId, "normal");
+          }
           return;
         }
 
@@ -4073,6 +4897,16 @@ async function main() {
           else if (key === nav.right) moveSelection('forward', 'character');
           else if (key === nav.up) moveSelection('backward', 'line');
           else if (key === nav.down) moveSelection('forward', 'line');
+          return;
+        } else if (mode === 'visual' && noteEditor) {
+          // Extend selection in visual mode (no Shift required)
+          e.preventDefault();
+          e.stopPropagation();
+          if (noteEditor instanceof HTMLElement) noteEditor.focus();
+          if (key === nav.left) extendSelection('backward', 'character');
+          else if (key === nav.right) extendSelection('forward', 'character');
+          else if (key === nav.up) extendSelection('backward', 'line');
+          else if (key === nav.down) extendSelection('forward', 'line');
           return;
         } else if (mode !== 'insert') {
           e.preventDefault();
@@ -4696,7 +5530,10 @@ async function main() {
       const noteId = getNoteIdFromEditor(editor);
       if (noteId === null) return;
       if (!vimModeByNoteId.has(noteId)) vimSetMode(noteId, "insert");
-      updateVimIndicatorInDom(noteId);
+      // Seed undo stack on first focus.
+      const stack = vimGetUndoStack(noteId);
+      if (!stack.length) vimUndoPush(noteId, editor.innerHTML, { force: true });
+      updateVimStatusInDom(noteId);
     },
     true
   );
@@ -4729,6 +5566,136 @@ async function main() {
 
       if (mode === "insert") return;
 
+      // Don't treat modifier-only keydowns as command input.
+      // This is important for sequences like register selection: '"' then Shift+'=' ("+").
+      if (e.key === "Shift" || e.key === "CapsLock" || e.key === "AltGraph") return;
+
+      // Register selection prefix: " then 1-4
+      const k0 = e.key;
+      const k0Normalized = k0 === "=" ? "+" : k0;
+      if (vimPendingIs(noteId, '\"', 4000) && /^[0-4+]$/.test(k0Normalized)) {
+        e.preventDefault();
+        editor.focus();
+        vimSetNextRegister(noteId, k0Normalized);
+        vimClearPending(noteId);
+        return;
+      }
+
+      if (mode === "visual") {
+        const k = e.key;
+        // Visual mode is command mode: don't insert typed characters.
+        // We intentionally constrain selection extension to h/j/k/l for now.
+        if (k === '"') {
+          e.preventDefault();
+          editor.focus();
+          vimSetPending(noteId, '"');
+          return;
+        }
+
+        if (k === "h") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("backward", "character");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "l") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("forward", "character");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "j") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("forward", "line");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "k") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("backward", "line");
+          vimClearPending(noteId);
+          return;
+        }
+
+        // Allow physical arrow keys to extend selection (no Shift) in visual mode.
+        if (k === "ArrowLeft") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("backward", "character");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "ArrowRight") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("forward", "character");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "ArrowUp") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("backward", "line");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "ArrowDown") {
+          e.preventDefault();
+          editor.focus();
+          extendSelection("forward", "line");
+          vimClearPending(noteId);
+          return;
+        }
+
+        if (k === "y") {
+          e.preventDefault();
+          editor.focus();
+          const regName = vimGetOpRegisterName(noteId);
+          const res = vimYankSelection(editor, regName);
+          if (res.ok) {
+            if (String(regName || "") === "+") {
+              vimShowToast(noteId, res.clipboardOk ? 'Copied to clipboard (+)' : 'Yanked to + (clipboard blocked)');
+            } else {
+              vimShowToast(noteId, `Yanked to register ${regName}`);
+            }
+          }
+          vimExitVisualMode(editor);
+          return;
+        }
+
+        if (k === "c") {
+          // Change (cut selection): yank selection, delete it, then enter insert mode.
+          e.preventDefault();
+          editor.focus();
+          const regName = vimGetOpRegisterName(noteId);
+          const res = vimYankSelection(editor, regName);
+          const deleted = vimDeleteSelection(editor);
+          if (res.ok && deleted) {
+            if (String(regName || "") === "+") {
+              vimShowToast(noteId, res.clipboardOk ? 'Cut to clipboard (+)' : 'Cut to + (clipboard blocked)');
+            } else {
+              vimShowToast(noteId, `Cut to register ${regName}`);
+            }
+          }
+          editor.dispatchEvent(new Event("input", { bubbles: true }));
+          vimSetMode(noteId, "insert");
+          vimClearPending(noteId);
+          return;
+        }
+
+        // Ignore other printable keys so they don't type into the editor.
+        if (typeof k === "string" && k.length === 1) {
+          e.preventDefault();
+          editor.focus();
+        }
+        vimClearPending(noteId);
+        return;
+      }
+
       // Normal mode commands
       const k = e.key;
       const handledKeys = new Set([
@@ -4738,6 +5705,8 @@ async function main() {
         "l",
         "i",
         "a",
+        "v",
+        "u",
         "0",
         "^",
         ":",
@@ -4747,7 +5716,8 @@ async function main() {
         "d",
         "y",
         "p",
-        "$"
+        "$",
+        '"'
       ]);
 
       if (!handledKeys.has(k)) {
@@ -4768,6 +5738,12 @@ async function main() {
         return;
       }
 
+      if (k === "v") {
+        vimClearPending(noteId);
+        vimEnterVisualMode(editor);
+        return;
+      }
+
       if (k === "a") {
         moveSelection("forward", "character");
         vimSetMode(noteId, "insert");
@@ -4775,9 +5751,20 @@ async function main() {
         return;
       }
 
+      if (k === "u") {
+        vimClearPending(noteId);
+        if (vimUndoApply(editor)) vimShowToast(noteId, "Undo");
+        return;
+      }
+
       if (k === ":") {
         // Minimal ex-style command: :x closes the rich notes editor.
         vimSetPending(noteId, ":");
+        return;
+      }
+
+      if (k === '"') {
+        vimSetPending(noteId, '"');
         return;
       }
 
@@ -4848,6 +5835,13 @@ async function main() {
           sel.removeAllRanges();
           sel.addRange(r);
         }
+        // Collapsed ranges at end may have no client rect; force scroll.
+        try {
+          editor.scrollTop = editor.scrollHeight;
+        } catch {
+          // ignore
+        }
+        ensureNotesEditorCaretInView(editor);
         vimClearPending(noteId);
         return;
       }
@@ -4856,6 +5850,7 @@ async function main() {
         if (vimPendingIs(noteId, "d", 700)) {
           // dd
           vimDeleteCurrentBlock(editor);
+          vimShowToast(noteId, "Deleted block");
           vimClearPending(noteId);
         } else {
           vimSetPending(noteId, "d");
@@ -4866,7 +5861,15 @@ async function main() {
       if (k === "y") {
         if (vimPendingIs(noteId, "y", 700)) {
           // yy
-          vimYankCurrentBlock(editor);
+          const regName = vimGetOpRegisterName(noteId);
+          const res = vimYankCurrentBlock(editor, regName);
+          if (res.ok) {
+            if (String(regName || "") === "+") {
+              vimShowToast(noteId, res.clipboardOk ? 'Copied block to clipboard (+)' : 'Yanked block to + (clipboard blocked)');
+            } else {
+              vimShowToast(noteId, `Yanked block to register ${regName}`);
+            }
+          }
           vimClearPending(noteId);
         } else {
           vimSetPending(noteId, "y");
@@ -4875,7 +5878,11 @@ async function main() {
       }
 
       if (k === "p") {
-        vimPasteAfterBlock(editor);
+        const regName = vimGetOpRegisterName(noteId);
+        if (vimPasteAtCaret(editor, regName)) {
+          vimShowToast(noteId, `Pasted from register ${regName}`);
+        }
+        vimSetMode(noteId, "insert");
         vimClearPending(noteId);
         return;
       }
@@ -4927,6 +5934,21 @@ async function main() {
           db = new SQL.Database(bytes);
           ensureSchema(db, DEFAULT_TAB_NAME);
           flippedNoteIds.clear();
+
+          // Reload AI settings from the imported DB.
+          aiEndpointBaseUrl = dbGetAppSettingString(APP_SETTING_AI_ENDPOINT_BASE_URL) || "";
+          aiCustomWords = [];
+          const importedCustomWordsJson = dbGetAppSettingString(APP_SETTING_AI_CUSTOM_WORDS_JSON);
+          if (importedCustomWordsJson) {
+            try {
+              const parsed = JSON.parse(importedCustomWordsJson);
+              if (Array.isArray(parsed)) {
+                aiCustomWords = parsed.filter((w) => typeof w === "string" && w.trim());
+              }
+            } catch {
+              // ignore
+            }
+          }
 
           boards = queryBoards(db);
           if (!boards.length) {
@@ -5030,6 +6052,7 @@ async function main() {
   {
     const input = document.getElementById("noteText");
     const container = noteAutocomplete;
+    const inlineTrail = document.getElementById("noteTextTrail");
     if (input instanceof HTMLInputElement && container instanceof HTMLElement) {
       let localTimer = null;
       let aiTimer = null;
@@ -5065,19 +6088,39 @@ async function main() {
 
         englishDictLoadPromise = (async () => {
           try {
-            const url = chrome?.runtime?.getURL
-              ? chrome.runtime.getURL("vendor/words-en.txt")
-              : "vendor/words-en.txt";
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Dictionary fetch failed: ${res.status}`);
-            const txt = await res.text();
+            const cacheKey = "englishDict:5000-words:v1";
+            let txt = "";
+            try {
+              const cached = await chrome.storage.local.get(cacheKey);
+              txt = typeof cached?.[cacheKey] === "string" ? cached[cacheKey] : "";
+            } catch {
+              // ignore
+            }
+
+            if (!txt) {
+              const url = "https://raw.githubusercontent.com/mahsu/IndexingExercise/master/5000-words.txt";
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`Dictionary fetch failed: ${res.status}`);
+              txt = await res.text();
+              try {
+                await chrome.storage.local.set({ [cacheKey]: txt });
+              } catch {
+                // ignore
+              }
+            }
+
             const out = [];
+            const seen = new Set();
             for (const line of txt.split(/\r?\n/)) {
               const w = String(line || "").trim();
               if (!w) continue;
-              if (w.length > 40) continue;
-              if (!/^[A-Za-z]+$/.test(w)) continue;
-              out.push(w.toLowerCase());
+              if (w.length > 60) continue;
+              if (!/^[A-Za-z]+(?:[-'][A-Za-z]+)*$/.test(w)) continue;
+              const lower = w.toLowerCase();
+              if (isEnglishDictionaryProfaneWordLowercase(lower)) continue;
+              if (seen.has(lower)) continue;
+              seen.add(lower);
+              out.push(lower);
             }
             out.sort();
             englishDictWords = out;
@@ -5116,8 +6159,12 @@ async function main() {
         }
 
         let best = "";
-        let bestScore = -Infinity;
         let bestCompletionLen = Infinity;
+        let bestScore = -Infinity;
+
+        // Avoid suggesting huge completions from a broad dictionary list; prefer
+        // completing the current word, not replacing it with a long rare term.
+        const maxCompletionLen = Math.max(6, Math.min(12, token.length + 3));
 
         for (let i = lo; i < words.length; i++) {
           const w = words[i];
@@ -5125,13 +6172,17 @@ async function main() {
           if (w.length <= token.length) continue;
 
           const completionLen = w.length - token.length;
+          if (completionLen > maxCompletionLen) continue;
           const score = scoreEnglishDictionaryCandidateWordLowercase(w, token.length);
-          const betterScore = score > bestScore;
-          const betterLen = score === bestScore && completionLen < bestCompletionLen;
-          const betterWordLen =
-            score === bestScore && completionLen === bestCompletionLen && (!best || w.length < best.length);
+          if (!(score >= 9)) continue;
 
-          if (betterScore || betterLen || betterWordLen) {
+          // Prefer the shortest completion that still looks like common English.
+          const betterLen = completionLen < bestCompletionLen;
+          const betterScore = completionLen === bestCompletionLen && score > bestScore;
+          const betterWordLen =
+            completionLen === bestCompletionLen && score === bestScore && (!best || w.length < best.length);
+
+          if (betterLen || betterScore || betterWordLen) {
             best = w;
             bestScore = score;
             bestCompletionLen = completionLen;
@@ -5140,7 +6191,7 @@ async function main() {
           if (i - lo > 240) break;
         }
 
-        if (!best || !(bestScore >= 9)) return null;
+        if (!best) return null;
         return { baseText: base, completion: best.slice(token.length) };
       };
 
@@ -5203,6 +6254,101 @@ async function main() {
         focusedSuggestionIndex = -1;
       };
 
+      const syncInlineTrailTypography = () => {
+        if (!(inlineTrail instanceof HTMLElement)) return;
+        try {
+          const cs = getComputedStyle(input);
+          inlineTrail.style.fontFamily = cs.fontFamily;
+          inlineTrail.style.fontSize = cs.fontSize;
+          inlineTrail.style.fontWeight = cs.fontWeight;
+          inlineTrail.style.letterSpacing = cs.letterSpacing;
+          inlineTrail.style.lineHeight = cs.lineHeight;
+        } catch {
+          // ignore
+        }
+      };
+
+      const renderInlineTrail = (candidate) => {
+        if (!(inlineTrail instanceof HTMLElement)) return;
+
+        if (
+          candidate &&
+          candidate.completion &&
+          input.value === candidate.baseText &&
+          document.activeElement === input
+        ) {
+          inlineTrail.textContent = "";
+          inlineTrail.hidden = false;
+          syncInlineTrailTypography();
+
+          const inner = document.createElement("div");
+          inner.style.width = "100%";
+          inner.style.height = "100%";
+          inner.style.display = "flex";
+          inner.style.alignItems = "center";
+
+          try {
+            const cs = getComputedStyle(input);
+            inner.style.paddingTop = cs.paddingTop;
+            inner.style.paddingRight = cs.paddingRight;
+            inner.style.paddingBottom = cs.paddingBottom;
+            inner.style.paddingLeft = cs.paddingLeft;
+          } catch {
+            // ignore
+          }
+
+          const textWrap = document.createElement("span");
+          textWrap.style.display = "inline-flex";
+          textWrap.style.transform = `translateX(${-Number(input.scrollLeft || 0)}px)`;
+
+          const prefix = document.createElement("span");
+          prefix.className = "noteInlineTrailPrefix";
+          prefix.textContent = String(candidate.baseText || "");
+
+          const suffix = document.createElement("span");
+          suffix.className = "noteInlineTrailSuffix";
+          suffix.textContent = String(candidate.completion || "");
+
+          textWrap.appendChild(prefix);
+          textWrap.appendChild(suffix);
+          inner.appendChild(textWrap);
+          inlineTrail.appendChild(inner);
+          return;
+        }
+
+        inlineTrail.textContent = "";
+        inlineTrail.hidden = true;
+      };
+
+      let tabProgress = null; // { baseText, remaining, step, kind }
+
+      const getActiveTabCompletion = () => {
+        const baseText = input.value;
+        if (tabProgress && tabProgress.remaining && baseText === tabProgress.baseText) {
+          return { baseText, completion: tabProgress.remaining, kind: tabProgress.kind || "local" };
+        }
+        if (localCompletion && localCompletion.completion && baseText === localCompletion.baseText) {
+          return { baseText, completion: localCompletion.completion, kind: "local" };
+        }
+        if (aiSuggestion && aiSuggestion.completion && baseText === aiSuggestion.baseText) {
+          return { baseText, completion: aiSuggestion.completion, kind: "ai" };
+        }
+        return null;
+      };
+
+      const applyTabProgressStep = (candidate) => {
+        if (!candidate || !candidate.completion) return false;
+        const baseText = String(candidate.baseText || "");
+        const remaining = String(candidate.completion || "");
+        if (!remaining) return false;
+
+        // Accept full completion in one Tab press.
+        input.value = baseText + remaining;
+        tabProgress = null;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      };
+
       const getSuggestionButtons = () =>
         Array.from(container.querySelectorAll("button.monoLinkButton")).filter((b) => b instanceof HTMLButtonElement);
 
@@ -5232,6 +6378,11 @@ async function main() {
         const hasLocal = Array.isArray(localSuggestions) && localSuggestions.length > 0;
         const hasLocalCompletion = !!(localCompletion && localCompletion.completion);
         const hasAi = !!(aiSuggestion && aiSuggestion.completion);
+        const tabC = getActiveTabCompletion();
+
+        // Inline ghost trail (same line as input)
+        renderInlineTrail(tabC);
+
         if (!hasLocal && !hasLocalCompletion && !hasAi) {
           container.hidden = true;
           focusedSuggestionIndex = -1;
@@ -5342,6 +6493,8 @@ async function main() {
         localSuggestions = [];
         localCompletion = null;
         clearAi();
+        tabProgress = null;
+        renderInlineTrail(null);
         hide();
       };
 
@@ -5452,6 +6605,7 @@ async function main() {
         if (aiTimer) clearTimeout(aiTimer);
 
         const value = input.value;
+        if (tabProgress && value !== tabProgress.baseText) tabProgress = null;
         const trimmed = String(value || "").trim();
 
         if (!trimmed) {
@@ -5538,6 +6692,14 @@ async function main() {
 
       input.addEventListener("input", scheduleRefresh);
 
+      input.addEventListener("scroll", () => {
+        renderInlineTrail(getActiveTabCompletion());
+      });
+
+      window.addEventListener("resize", () => {
+        renderInlineTrail(getActiveTabCompletion());
+      });
+
       input.addEventListener("keydown", (e) => {
         // Navigate suggestions using existing Alt+Up/Alt+Down keybindings.
         if (e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -5559,18 +6721,10 @@ async function main() {
         }
 
         if (e.key !== "Tab") return;
-        // Prefer local "Complete:" recommendation; fall back to AI.
-        if (localCompletion && localCompletion.completion && input.value === localCompletion.baseText) {
+        const c = getActiveTabCompletion();
+        if (c && c.completion && input.value === c.baseText) {
           e.preventDefault();
-          input.value = localCompletion.baseText + localCompletion.completion;
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          return;
-        }
-
-        if (aiSuggestion && aiSuggestion.completion && input.value === aiSuggestion.baseText) {
-          e.preventDefault();
-          input.value = aiSuggestion.baseText + aiSuggestion.completion;
-          input.dispatchEvent(new Event("input", { bubbles: true }));
+          applyTabProgressStep(c);
           return;
         }
 
@@ -5876,6 +7030,11 @@ async function main() {
       if (!target.classList.contains("noteEditorArea")) return;
       const noteId = Number(target.dataset.noteId);
       if (!Number.isFinite(noteId)) return;
+
+      // Track undo history unless we're currently applying an undo.
+      if (!vimUndoApplyingByNoteId.has(noteId)) {
+        vimUndoPush(noteId, target.innerHTML);
+      }
 
       const html = target.innerHTML;
       const existing = saveTimers.get(noteId);

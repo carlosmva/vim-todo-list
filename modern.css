@@ -356,6 +356,13 @@ button,
   z-index: 1;
 }
 
+/* Carbon may apply a hover background to the <li> wrapper; keep it transparent
+   so we don't get a rectangular "plate" behind the rounded tab. */
+.tabs .bx--tabs__nav-item:hover,
+.tabs .bx--tabs__nav-item:focus-within {
+  background: transparent !important;
+}
+
 .tabs .bx--tabs__nav-item::before,
 .tabs .bx--tabs__nav-item::after {
   display: none !important;
@@ -463,10 +470,13 @@ button,
 
 .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:hover {
   transform: translateY(-2px);
+  background: var(--tab-bg-active) !important;
+  box-shadow: 0 4px 10px rgba(23, 34, 56, 0.2) !important;
 }
 
 .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:active {
   transform: translateY(0);
+  background: var(--tab-bg-active) !important;
 }
 
 .tabs .bx--tabs__nav-item .bx--tabs__nav-link:hover,
@@ -478,10 +488,14 @@ button,
 
 .tabs .bx--tabs__nav-link:hover {
   transform: translateY(2px);
+  background: var(--tab-bg) !important;
+  box-shadow: none !important;
 }
 
 .tabs .bx--tabs__nav-link:active {
   transform: translateY(4px);
+  background: var(--tab-bg) !important;
+  box-shadow: none !important;
 }
 
 .board {

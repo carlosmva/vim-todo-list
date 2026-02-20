@@ -27,15 +27,18 @@
         <div id="notesView" class="view" aria-label="Notes view">
           <form id="createForm" class="create" aria-label="Create note">
             <div class="bx--form-item">
-              <input
-                id="noteText"
-                class="bx--text-input"
-                type="text"
-                placeholder="New note…"
-                maxlength="300"
-                autocomplete="off"
-                required
-              />
+              <div class="noteTextInlineWrap">
+                <input
+                  id="noteText"
+                  class="bx--text-input"
+                  type="text"
+                  placeholder="New note…"
+                  maxlength="300"
+                  autocomplete="off"
+                  required
+                />
+                <div id="noteTextTrail" class="noteInlineTrail" aria-hidden="true" hidden></div>
+              </div>
             </div>
 
             <div id="noteAutocomplete" class="noteAutocomplete" aria-label="Autocomplete suggestions" hidden></div>
