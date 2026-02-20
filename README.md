@@ -15,6 +15,10 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 - Export/Import
   - **Export DB** / **Import DB** for full fidelity
   - **Export CSV** with readable values (dates as `MM/DD/YYYY`, `notes_html` exported as readable text)
+- **AI autocompletion (Ollama)**: optional word/phrase suggestions powered by a local LLM
+  - Configure via **AI Settings** in the header (endpoint URL, model name)
+  - Works alongside local completions (DB, custom words, dictionary)
+  - Press `Tab` to accept a suggestion; use arrow keys to cycle through options
 
 ## Install (unpacked)
 
@@ -43,6 +47,24 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 - A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
 - **AI Settings** is available in the header links row (configure an optional local AI endpoint like Ollama).
 - When a word-completion suggestion is shown while typing a new note, press `Tab` to accept it.
+
+## AI autocompletion (Ollama)
+
+The extension can use [Ollama](https://ollama.ai) running locally to suggest completions as you type. Completions are contextual and can span words or phrases.
+
+1. **Install Ollama** on your machine and pull a model (e.g. `ollama pull llama3.2`).
+2. Open **AI Settings** from the header and configure:
+   - **Endpoint base URL**: `http://localhost:11434` (Ollama default)
+   - **Model name** (optional): e.g. `llama3.2:latest` — leave blank to use your default Ollama model
+3. Save. The status LED indicates when the endpoint is reachable.
+4. While typing in the **New note** input or **Notes** editor, AI suggestions appear alongside local completions. Press `Tab` to accept; use arrow keys to cycle through options.
+
+**Troubleshooting**
+
+- If the status LED stays on "checking", ensure Ollama is running and reachable at your configured URL.
+- On **403 errors**, Ollama blocks cross-origin requests by default. Allow extension origins and restart Ollama:
+  - Windows: `setx OLLAMA_ORIGINS "chrome-extension://*"`
+  - macOS/Linux: `export OLLAMA_ORIGINS="chrome-extension://*"`
 
 ## Notes Editor Shortcuts
 
