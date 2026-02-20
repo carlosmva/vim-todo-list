@@ -117,7 +117,16 @@
 
         <div id="aiSettingsView" class="view" aria-label="AI Settings" hidden>
           <div class="instructionsHeader">
-            <div class="instructionsTitle">AI Settings</div>
+            <div class="instructionsTitle aiSettingsTitle">
+              AI Settings
+              <span
+                id="aiStatusLed"
+                class="aiStatusLed aiStatusLed--red"
+                role="img"
+                aria-label="LLM status: unknown"
+                title="LLM status: unknown"
+              ></span>
+            </div>
             <button id="closeAiSettingsBtn" class="monoLinkButton" type="button">
               Close
             </button>
@@ -133,6 +142,16 @@
                   type="url"
                   inputmode="url"
                   placeholder="http://localhost:11434"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="aiSettingsRow">
+                <label for="aiEndpointModel">Model name (optional)</label>
+                <input
+                  id="aiEndpointModel"
+                  class="bx--text-input"
+                  type="text"
+                  placeholder="e.g. llama3.2:latest"
                   autocomplete="off"
                 />
               </div>

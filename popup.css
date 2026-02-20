@@ -319,6 +319,54 @@ body {
   font-weight: 600;
 }
 
+.aiSettingsTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiStatusLed {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--cds-border-subtle);
+  flex: 0 0 auto;
+}
+
+.aiStatusLed--green {
+  background: var(--cds-support-success, #198038);
+}
+
+.aiStatusLed--red {
+  background: var(--cds-support-error, #da1e28);
+}
+
+.aiStatusLed--pending {
+  background: var(--cds-support-warning, #f1c21b);
+  animation: aiLedPulse 900ms ease-in-out infinite;
+}
+
+@keyframes aiLedPulse {
+  0% {
+    opacity: 0.45;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.55;
+    transform: scale(0.98);
+  }
+}
+
+.noteAutocompletePending {
+  font-size: 12px;
+  opacity: 0.75;
+  margin-right: 8px;
+}
+
 .instructionsContent {
   flex: 1;
   min-height: 0;

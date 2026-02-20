@@ -279,6 +279,22 @@ function normalizeEndpointBaseUrl(raw) {
   return out;
 }
 
+function getOllamaOriginsHintFor403(baseUrl) {
+  // Ollama blocks cross-origin requests by default except for a small allowlist.
+  // Browser extensions send an Origin like chrome-extension://<id>, while PowerShell does not.
+  // If PowerShell works but the extension gets 403, this is the usual fix.
+  try {
+    const u = new URL(String(baseUrl || ""));
+    const host = String(u.hostname || "").toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
+      return " (Ollama: set OLLAMA_ORIGINS=chrome-extension://* and restart Ollama)";
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
 async function loadAiEndpointBaseUrl() {
   const result = await chrome.storage.local.get([AI_ENDPOINT_BASE_URL_KEY]);
   const value = result[AI_ENDPOINT_BASE_URL_KEY];
@@ -1456,7 +1472,9 @@ async function main() {
   const aiSettingsMessage = document.getElementById("aiSettingsMessage");
   const aiSettingsForm = document.getElementById("aiSettingsForm");
   const aiEndpointBaseUrlInput = document.getElementById("aiEndpointBaseUrl");
+  const aiEndpointModelInput = document.getElementById("aiEndpointModel");
   const aiCustomWordsInput = document.getElementById("aiCustomWords");
+  const aiStatusLed = document.getElementById("aiStatusLed");
   const cardFilterRow = document.getElementById("cardFilterRow");
   const cardFilterInput = document.getElementById("cardFilterInput");
   const manageTabsMessage = document.getElementById("manageTabsMessage");
@@ -1604,6 +1622,12 @@ async function main() {
     const combo = (...keys) => keys.map((k) => keycap(k)).join(`<span class="keycapSep">+</span>`);
 
     instructionsContent.innerHTML = `
+      <h3>AI (Ollama)</h3>
+      <ul>
+        <li>If AI is enabled and the status LED gets stuck on “checking”, confirm Ollama is running and reachable at your configured URL</li>
+        <li>If you see 403 errors, allow extension origins and restart Ollama: ${keycap('setx OLLAMA_ORIGINS "chrome-extension://*"')}</li>
+      </ul>
+
       <h3>Navigation</h3>
       <ul>
         <li>${combo("Alt", fmt(openPopupKey))}: open the popup</li>
@@ -1827,6 +1851,205 @@ async function main() {
     if (aiSettingsMessage instanceof HTMLElement) aiSettingsMessage.textContent = text || "";
   }
 
+  let aiHealthTimer = null;
+  let aiHealthAbort = null;
+  let aiHealthToken = 0;
+
+  function setAiStatusLedState(state, detail) {
+    if (!(aiStatusLed instanceof HTMLElement)) return;
+    const s = state === "green" ? "green" : state === "pending" ? "pending" : "red";
+    aiStatusLed.classList.toggle("aiStatusLed--green", s === "green");
+    aiStatusLed.classList.toggle("aiStatusLed--pending", s === "pending");
+    aiStatusLed.classList.toggle("aiStatusLed--red", s === "red");
+    const label = String(
+      detail || (s === "green" ? "working" : s === "pending" ? "waiting" : "not working")
+    );
+    aiStatusLed.setAttribute("aria-label", `LLM status: ${label}`);
+    aiStatusLed.setAttribute("title", `LLM status: ${label}`);
+  }
+
+  async function probeOllamaHealth(baseUrl, timeoutMs = 30000, externalSignal, modelOverride) {
+    const url = new URL("/api/tags", baseUrl).toString();
+    const controller = new AbortController();
+    let timedOut = false;
+    let stage = "tags";
+
+    if (externalSignal) {
+      try {
+        if (externalSignal.aborted) controller.abort();
+        else {
+          externalSignal.addEventListener(
+            "abort",
+            () => {
+              try {
+                controller.abort();
+              } catch {
+                // ignore
+              }
+            },
+            { once: true }
+          );
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const timeout = setTimeout(() => {
+      try {
+        timedOut = true;
+        controller.abort();
+      } catch {
+        // ignore
+      }
+    }, Math.max(50, Number(timeoutMs) || 1500));
+    try {
+      stage = "tags";
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`Ollama tags failed: ${res.status}`);
+      const data = await res.json();
+      const models = Array.isArray(data?.models)
+        ? data.models
+            .map((m) => String(m?.name || "").trim())
+            .filter(Boolean)
+        : [];
+      const defaultName = models[0] || "";
+      if (!defaultName) throw new Error("No Ollama models found");
+
+      const override = String(modelOverride || "").trim();
+      if (override && !models.includes(override)) {
+        const e = new Error(`Model not found: ${override}`);
+        e.code = "model_not_found";
+        throw e;
+      }
+
+      const name = override || defaultName;
+
+      // Also verify /api/generate works, since tags can succeed while generate is blocked (e.g. 403).
+      stage = "generate";
+      const genUrl = new URL("/api/generate", baseUrl).toString();
+      const genRes = await fetch(genUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: name, prompt: "ok", stream: false, options: { num_predict: 1 } }),
+        signal: controller.signal
+      });
+      if (!genRes.ok) {
+        let body = "";
+        try {
+          body = String((await genRes.text()) || "");
+        } catch {
+          body = "";
+        }
+        const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
+        const err = new Error(`Ollama generate failed: ${genRes.status}${snippet}`);
+        err.status = genRes.status;
+        err.body = body;
+        throw err;
+      }
+
+      // Best-effort: ensure response shape looks right.
+      try {
+        const genData = await genRes.json();
+        const r = typeof genData?.response === "string" ? genData.response : "";
+        if (!r && r !== "") {
+          throw new Error("Ollama generate returned unexpected response");
+        }
+      } catch {
+        // ignore JSON parsing issues; the HTTP 2xx already indicates the endpoint is reachable.
+      }
+
+      return { ok: true, model: name };
+    } catch (err) {
+      const isAbort = String(err?.name || "")
+        .toLowerCase()
+        .includes("abort");
+      if (isAbort && timedOut) {
+        const e = new Error(`Ollama health check timed out (${stage})`);
+        e.code = "timeout";
+        e.stage = stage;
+        throw e;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function queueAiSettingsHealthCheck({ delayMs = 250 } = {}) {
+    if (!(aiSettingsView instanceof HTMLElement) || aiSettingsView.hidden) return;
+
+    if (aiHealthTimer) clearTimeout(aiHealthTimer);
+    aiHealthTimer = setTimeout(async () => {
+      const token = ++aiHealthToken;
+
+      const raw = aiEndpointBaseUrlInput instanceof HTMLInputElement ? aiEndpointBaseUrlInput.value : "";
+      const normalized = normalizeEndpointBaseUrl(raw);
+      const modelOverride = aiEndpointModelInput instanceof HTMLInputElement ? aiEndpointModelInput.value : "";
+
+      if (normalized === null) {
+        setAiStatusLedState("red", raw.trim() ? "invalid URL" : "unknown");
+        return;
+      }
+
+      if (!normalized) {
+        setAiStatusLedState("red", "disabled");
+        return;
+      }
+
+      if (aiHealthAbort) {
+        try {
+          aiHealthAbort.abort();
+        } catch {
+          // ignore
+        }
+        aiHealthAbort = null;
+      }
+
+      aiHealthAbort = new AbortController();
+      try {
+        setAiStatusLedState("pending", "checking");
+        // Note: probeOllamaHealth uses its own timeout; we still abort on view changes.
+        const r = await probeOllamaHealth(normalized, 30000, aiHealthAbort.signal, modelOverride);
+        if (token !== aiHealthToken) return;
+        if (r?.ok) setAiStatusLedState("green", `working (${r.model})`);
+        else setAiStatusLedState("red", "not working");
+      } catch (err) {
+        if (token !== aiHealthToken) return;
+        if (!(aiSettingsView instanceof HTMLElement) || aiSettingsView.hidden) return;
+
+        const isAbort = String(err?.name || "")
+          .toLowerCase()
+          .includes("abort");
+        const isTimeout = err && (err.code === "timeout" || /timed out/i.test(String(err?.message || "")));
+        if (isAbort && !isTimeout) return;
+        if (isTimeout) {
+          const stage2 = err && typeof err.stage === "string" ? String(err.stage || "") : "";
+          setAiStatusLedState("red", stage2 ? `timeout (${stage2})` : "timeout");
+          return;
+        }
+
+        if (err && err.code === "model_not_found") {
+          setAiStatusLedState("red", String(err?.message || "model not found").slice(0, 140));
+          return;
+        }
+
+        const st = err && typeof err.status === "number" ? err.status : null;
+        const msg = String(err?.message || "").trim();
+        const body = typeof err?.body === "string" ? String(err.body || "") : "";
+        const snippet = body ? body.replace(/\s+/g, " ").slice(0, 120) : "";
+        if (Number.isFinite(st)) {
+          const hint403 = Number(st) === 403 ? getOllamaOriginsHintFor403(normalized) : "";
+          setAiStatusLedState("red", (snippet ? `generate ${st}: ${snippet}` : `generate ${st}`) + hint403);
+        } else {
+          setAiStatusLedState("red", msg ? msg.slice(0, 140) : "not working");
+        }
+      } finally {
+        aiHealthAbort = null;
+      }
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
   function getNoteIdFromCardElement(card) {
     if (!(card instanceof HTMLElement)) return null;
     const id = Number(card.dataset.noteId);
@@ -1880,6 +2103,7 @@ async function main() {
   if ((await loadKeyLayout()) === null) await saveKeyLayout(keyLayout);
 
   const APP_SETTING_AI_ENDPOINT_BASE_URL = "ai.endpointBaseUrl";
+  const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
 
   function dbGetAppSettingString(key) {
@@ -1930,6 +2154,9 @@ async function main() {
     }
   }
 
+  // AI model: optional. If set, we will call /api/generate with this model name.
+  let aiEndpointModel = dbGetAppSettingString(APP_SETTING_AI_ENDPOINT_MODEL) || "";
+
   let aiCustomWords = [];
   const customWordsJson = dbGetAppSettingString(APP_SETTING_AI_CUSTOM_WORDS_JSON);
   if (customWordsJson) {
@@ -1960,9 +2187,108 @@ async function main() {
   }
 
   // Shared caches for autocomplete (new note + notes editor).
-  let ollamaModel = null;
+  let ollamaModel = aiEndpointModel || null;
   let englishDictWords = null; // lowercased, sorted
   let englishDictLoadPromise = null;
+
+  function buildAiAutocompletePrompt(prefixText) {
+    const raw = String(prefixText || "");
+    const MAX_CONTEXT_CHARS = 1800;
+    const context = raw.length > MAX_CONTEXT_CHARS ? raw.slice(raw.length - MAX_CONTEXT_CHARS) : raw;
+    const endsWithSentencePunct = /[.!?…]+$/.test(String(context || "").trimEnd());
+    const endsWithWhitespace = /\s$/.test(context);
+    const lastTokenMatch = String(context || "").match(/(\S+)$/);
+    const lastToken = !endsWithWhitespace && lastTokenMatch ? String(lastTokenMatch[1] || "") : "";
+
+    const isWordishToken = /^[A-Za-z][A-Za-z'-]*$/.test(lastToken);
+    const lowerLastToken = lastToken.toLowerCase();
+    const commonWholeWords = new Set([
+      "a",
+      "an",
+      "and",
+      "are",
+      "as",
+      "at",
+      "be",
+      "because",
+      "but",
+      "by",
+      "for",
+      "from",
+      "have",
+      "i",
+      "if",
+      "in",
+      "is",
+      "it",
+      "of",
+      "on",
+      "or",
+      "really",
+      "so",
+      "that",
+      "the",
+      "this",
+      "to",
+      "was",
+      "we",
+      "with",
+      "you"
+    ]);
+
+    // Heuristic: if there's no trailing space but the last token looks like a complete word,
+    // allow the model to continue the sentence (prefix with punctuation/space).
+    // Otherwise, treat as mid-word and ask for the suffix only.
+    const tokenLooksComplete =
+      !!lastToken &&
+      isWordishToken &&
+      (lastToken.length >= 4 || commonWholeWords.has(lowerLastToken)) &&
+      // avoid classifying very short fragments like "rea" as complete
+      !(lastToken.length <= 3 && !commonWholeWords.has(lowerLastToken));
+
+    const cursorMode = endsWithSentencePunct
+      ? "end-of-sentence"
+      : endsWithWhitespace
+        ? "after-space"
+        : !lastToken
+          ? "after-space"
+          : tokenLooksComplete
+            ? "end-of-word"
+            : "mid-word";
+
+    const words = Array.isArray(aiCustomWords) ? aiCustomWords.filter((w) => typeof w === "string" && w.trim()) : [];
+    const custom = words.length ? `\nPreferred terms (if relevant): ${words.slice(0, 40).join(", ")}` : "";
+
+    return (
+      "You are an autocomplete engine for a TODO note editor.\n" +
+      "Given the text BEFORE the cursor, return the characters to INSERT at the cursor.\n" +
+      "Your primary goal is to produce a helpful continuation for the user as they type full sentences.\n" +
+      "Rules:\n" +
+      "- Return ONLY the continuation text (no quotes, no explanations, no prefixes like 'Continuation:').\n" +
+      "- Do NOT repeat the provided text.\n" +
+      "- One line only. Keep it short (<= 60 characters).\n" +
+      "- If CURSOR_MODE is 'mid-word': return ONLY the missing suffix of LAST_TOKEN (no spaces).\n" +
+      "- If CURSOR_MODE is 'end-of-word': continue the sentence with punctuation and/or a space + words.\n" +
+      "- If CURSOR_MODE is 'after-space': suggest the next word(s) (do NOT start with a space).\n" +
+      "- If CURSOR_MODE is 'end-of-sentence': you may return empty (no suggestion), or start a new sentence (e.g. ' Next…').\n" +
+      "- Prefer grammatical, natural continuations that complete the current sentence.\n" +
+      "- Avoid generic filler. Use the given context.\n" +
+      "- If unsure, return empty (no suggestion).\n" +
+      "Examples:\n" +
+      "TEXT BEFORE CURSOR: This is rea\nCONTINUATION: lly\n" +
+      "TEXT BEFORE CURSOR: This is really im\nCONTINUATION: portant\n" +
+      "TEXT BEFORE CURSOR: This is really\nCONTINUATION: good for performance.\n" +
+      "TEXT BEFORE CURSOR: I ne\nCONTINUATION: ed\n" +
+      "TEXT BEFORE CURSOR: Buy milk \nCONTINUATION: and eggs\n" +
+      "TEXT BEFORE CURSOR: Buy milk\nCONTINUATION: and eggs\n" +
+      "TEXT BEFORE CURSOR: Fix bug in pop\nCONTINUATION: up.js\n" +
+      custom +
+      `\n\nCURSOR_MODE: ${cursorMode}\nLAST_TOKEN: ${lastToken}\n` +
+      "\n\nTEXT BEFORE CURSOR:\n<<<\n" +
+      context +
+      "\n>>>\nCONTINUATION:" 
+    );
+  }
 
   function parseCustomWords(raw) {
     const lines = String(raw || "")
@@ -2885,6 +3211,9 @@ async function main() {
     let aiTimer = null;
     let aiAbort = null;
 
+    let aiPending = false;
+    let aiLastError = "";
+
     let localCompletion = null; // { baseText, completion }
     let aiSuggestion = null; // { baseText, completion }
 
@@ -3110,21 +3439,243 @@ async function main() {
       }
     };
 
-    const computeAiWordCompletion = (baseText, aiResponse) => {
+    const computeAiContextCompletion = (baseText, aiResponse) => {
       const base = String(baseText || "");
       if (!base.trim()) return null;
-      if (endsWithWhitespace(base)) return null;
 
-      let r = String(aiResponse || "");
-      if (!r || /^\s/.test(r)) return null;
+      let r = String(aiResponse || "").replace(/\r\n/g, "\n");
+      if (!r) return null;
 
-      const token = getLastToken(base);
-      if (token && r.slice(0, token.length).toLowerCase() === token.toLowerCase()) {
-        r = r.slice(token.length);
+      // Use only the first line to avoid multi-line dumps.
+      r = r.split("\n")[0] || "";
+      r = r.replace(/^\s*Continuation\s*:\s*/i, "");
+      r = r.replace(/^\s+/g, "");
+      r = r.replace(/\s+$/g, "");
+
+      // Strip surrounding quotes.
+      if (
+        (r.startsWith('"') && r.endsWith('"')) ||
+        (r.startsWith("'") && r.endsWith("'"))
+      ) {
+        r = r.slice(1, -1);
       }
 
-      const w = getLeadingWord(r);
-      return w ? { baseText: base, completion: w } : null;
+      const baseLower = base.toLowerCase();
+      let rLower = r.toLowerCase();
+
+      const baseEndsWs = /\s$/.test(base);
+      const baseLast = base.slice(-1);
+      const baseLastTokenMatch = String(base || "").match(/(\S+)$/);
+      const baseLastToken = !baseEndsWs && baseLastTokenMatch ? String(baseLastTokenMatch[1] || "") : "";
+      const isWordishToken = /^[A-Za-z][A-Za-z'-]*$/.test(baseLastToken);
+      const lowerLastToken = baseLastToken.toLowerCase();
+      const commonWholeWords = new Set([
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "because",
+        "but",
+        "by",
+        "for",
+        "from",
+        "have",
+        "i",
+        "if",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "really",
+        "so",
+        "that",
+        "the",
+        "this",
+        "to",
+        "was",
+        "we",
+        "with",
+        "you"
+      ]);
+
+      const dictHasWordLower = (wLower) => {
+        if (!Array.isArray(englishDictWords) || !englishDictWords.length) return false;
+        const w = String(wLower || "");
+        if (!w) return false;
+        let lo = 0;
+        let hi = englishDictWords.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (englishDictWords[mid] < w) lo = mid + 1;
+          else hi = mid;
+        }
+        return englishDictWords[lo] === w;
+      };
+
+      const isGluedDictWordsLower = (wLower) => {
+        const w = String(wLower || "");
+        if (!w || w.length < 10) return false;
+        if (!/^[a-z]+$/.test(w)) return false;
+        if (!Array.isArray(englishDictWords) || !englishDictWords.length) return false;
+        for (let i = 4; i <= w.length - 4; i++) {
+          const a = w.slice(0, i);
+          const b = w.slice(i);
+          if (dictHasWordLower(a) && dictHasWordLower(b)) return true;
+        }
+        return false;
+      };
+      const tokenLooksComplete = (() => {
+        if (!baseLastToken || !isWordishToken) return false;
+        if (commonWholeWords.has(lowerLastToken)) return true;
+
+        // If the 5k English dictionary is loaded, only treat *known words* as complete.
+        if (dictHasWordLower(lowerLastToken)) return true;
+
+        // Also allow user-provided custom words to count as complete.
+        if (Array.isArray(aiCustomWords) && aiCustomWords.length) {
+          for (const w0 of aiCustomWords) {
+            const w = String(w0 || "").trim().toLowerCase();
+            if (w && w === lowerLastToken) return true;
+          }
+        }
+
+        return false;
+      })();
+
+      // If the model repeated the input, strip it.
+      if (r && base && rLower.startsWith(baseLower)) {
+        r = r.slice(base.length);
+        rLower = r.toLowerCase();
+      } else {
+        // Some models ignore instructions and return the full completed word
+        // instead of the suffix (e.g. base: "I ne" response: "need").
+        const { token } = getLastTokenInfo(base);
+        const tokenLower = String(token || "").toLowerCase();
+        if (tokenLower && baseLower.endsWith(tokenLower) && rLower.startsWith(tokenLower)) {
+          r = r.slice(tokenLower.length);
+          rLower = r.toLowerCase();
+        }
+      }
+
+      // If the model returned a phrase instead of a suffix, but that phrase contains
+      // a word that completes the user's current token, salvage just the suffix.
+      // Example: base "... next we" + response "Next week" -> "ek".
+      if (!baseEndsWs) {
+        const { token } = getLastTokenInfo(base);
+        const tokenLower = String(token || "").toLowerCase();
+        if (tokenLower && tokenLower.length >= 2 && /\s/.test(String(r || ""))) {
+          const wordsInResp = String(rLower || "").match(/[a-z]+(?:[-'][a-z]+)*/g) || [];
+          for (const w of wordsInResp) {
+            if (!w) continue;
+            if (w.length <= tokenLower.length) continue;
+            if (!w.startsWith(tokenLower)) continue;
+            r = w.slice(tokenLower.length);
+            rLower = r.toLowerCase();
+            break;
+          }
+        }
+      }
+
+      // Contraction guardrail: if the user just typed an apostrophe, only allow
+      // common contraction suffixes (prevents junk like "let'important").
+      if (/[A-Za-z]['’]$/.test(base) && /^[A-Za-z]/.test(r) && !/^['’]/.test(r)) {
+        const ok =
+          rLower === "s" ||
+          rLower === "t" ||
+          rLower === "d" ||
+          rLower === "m" ||
+          rLower.startsWith("re") ||
+          rLower.startsWith("ve") ||
+          rLower.startsWith("ll");
+        if (!ok) return null;
+      }
+
+      // If we're at a word boundary and the model starts with a letter/number,
+      // it often needs a leading space (e.g., "Send agendas" + "important" -> "Send agendas important").
+      // But do NOT insert spaces mid-word ("imp" + "ortant" -> "important").
+      if (!baseEndsWs) {
+        if (/[.,;:!?…]/.test(baseLast) && /^[A-Za-z0-9]/.test(r) && !/^\s/.test(r)) {
+          r = " " + r;
+          rLower = r.toLowerCase();
+        } else if (tokenLooksComplete && /[A-Za-z0-9]/.test(baseLast) && /^[A-Za-z0-9]/.test(r) && !/^\s/.test(r)) {
+          // Ambiguous short tokens like "we" can be both a whole word and a prefix.
+          // If the completion forms a real word with the current token ("we"+"ek" -> "week"),
+          // treat it as mid-word and do NOT prepend a space.
+          const looksLikeSuffix = isWordishToken && /^[A-Za-z'-]+$/.test(r) && !/\s/.test(r);
+          if (looksLikeSuffix) {
+            const combinedLower = (baseLastToken + r).toLowerCase();
+            let combinedIsKnown = dictHasWordLower(combinedLower);
+            if (!combinedIsKnown && Array.isArray(aiCustomWords) && aiCustomWords.length) {
+              for (const w0 of aiCustomWords) {
+                const w = String(w0 || "").trim().toLowerCase();
+                if (w && w === combinedLower) {
+                  combinedIsKnown = true;
+                  break;
+                }
+              }
+            }
+            if (combinedIsKnown) {
+              // Keep as-is (suffix only) to avoid inserting a space.
+            } else {
+              // Reject glued nonsense like "importantimportantly" when starting a new word.
+              const lead = (String(r || "").match(/^([A-Za-z]{4,})/) || [])[1] || "";
+              const leadLower = lead.toLowerCase();
+              if (leadLower && isGluedDictWordsLower(leadLower)) return null;
+
+              if (!/^['’]/.test(r)) {
+                r = " " + r;
+                rLower = r.toLowerCase();
+              }
+            }
+          } else {
+          // Reject glued nonsense like "importantimportantly" when starting a new word.
+          const lead = (String(r || "").match(/^([A-Za-z]{4,})/) || [])[1] || "";
+          const leadLower = lead.toLowerCase();
+          if (leadLower && isGluedDictWordsLower(leadLower)) return null;
+
+          if (!/^['’]/.test(r)) {
+            r = " " + r;
+            rLower = r.toLowerCase();
+          }
+          }
+        } else if (!tokenLooksComplete) {
+          // Mid-word: never allow spaces in the completion.
+          if (/\s/.test(r)) return null;
+
+          // If the common English dictionary is already loaded, only accept suffixes
+          // that form a real word with the current token (prevents junk like
+          // "alm" + "ostensibly" -> "almostensibly").
+          if (Array.isArray(englishDictWords) && englishDictWords.length && isWordishToken && /^[A-Za-z'-]+$/.test(r)) {
+            const combined = (baseLastToken + r).toLowerCase();
+            // Completing a word into something very long is almost always junk.
+            if (combined.length > 28) return null;
+            if (/^[a-z]+(?:[-'][a-z]+)*$/.test(combined)) {
+              if (!dictHasWordLower(combined)) return null;
+            }
+          }
+        }
+      }
+
+      // Keep short; allow spaces/punctuation.
+      r = r.replace(/[\u0000-\u001F\u007F]/g, "");
+      if (r.endsWith(".")) {
+        r = r.slice(0, -1).replace(/\s+$/g, "");
+        rLower = r.toLowerCase();
+      }
+      r = r.slice(0, 80);
+      if (!r.trim()) return null;
+
+      // Guardrail: never append letters/digits immediately before sentence punctuation without a separator.
+      // If the model forgets the space, we added it above; if it still looks wrong, drop it.
+      const lastChar = base.slice(-1);
+      if (/[.!?…]/.test(lastChar) && /^[A-Za-z0-9]/.test(r) && !/^\s/.test(r)) return null;
+
+      return { baseText: base, completion: r };
     };
 
     const fetchOllamaDefaultModel = async (baseUrl, signal) => {
@@ -3141,16 +3692,94 @@ async function main() {
       const model = ollamaModel || (await fetchOllamaDefaultModel(baseUrl, signal));
       ollamaModel = model;
       const url = new URL("/api/generate", baseUrl).toString();
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, prompt: String(prompt || ""), stream: false }),
-        signal
-      });
-      if (!res.ok) throw new Error(`Ollama generate failed: ${res.status}`);
-      const data = await res.json();
-      const r = typeof data?.response === "string" ? data.response : "";
-      return r;
+      const chatUrl = new URL("/api/chat", baseUrl).toString();
+
+      const doFetch = async (prompt2, options) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model,
+            prompt: String(prompt2 || ""),
+            stream: false,
+            options
+          }),
+          signal
+        });
+        if (!res.ok) {
+          let body = "";
+          try {
+            body = String((await res.text()) || "");
+          } catch {
+            body = "";
+          }
+          const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
+          const err = new Error(`Ollama generate failed: ${res.status}${snippet}`);
+          err.status = res.status;
+          err.body = body;
+          err.url = url;
+          throw err;
+        }
+        const data = await res.json();
+        const r = typeof data?.response === "string" ? String(data.response || "") : "";
+        const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
+        return { text: r, meta: doneReason ? `done_reason=${doneReason}` : "" };
+      };
+
+      const doChatFetch = async (prompt2, options) => {
+        const res = await fetch(chatUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model,
+            stream: false,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an autocomplete engine. Return only the continuation text to insert at the cursor. No quotes. One line."
+              },
+              { role: "user", content: String(prompt2 || "") }
+            ],
+            options
+          }),
+          signal
+        });
+        if (!res.ok) {
+          let body = "";
+          try {
+            body = String((await res.text()) || "");
+          } catch {
+            body = "";
+          }
+          const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
+          const err = new Error(`Ollama chat failed: ${res.status}${snippet}`);
+          err.status = res.status;
+          err.body = body;
+          err.url = chatUrl;
+          throw err;
+        }
+        const data = await res.json();
+        const content = typeof data?.message?.content === "string" ? String(data.message.content || "") : "";
+        const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
+        return { text: content, meta: doneReason ? `done_reason=${doneReason}` : "" };
+      };
+
+      // Some models (e.g., qwen) occasionally return an empty response; retry once with a nudge.
+      const r1 = await doFetch(prompt, { num_predict: 32, temperature: 0.2, top_p: 0.9 });
+      if (String(r1?.text || "").trim()) return r1.text;
+
+      const nudge =
+        "\n\nIMPORTANT: Output at least 1 visible character. If mid-word, output the missing suffix only.";
+      const r2 = await doFetch(String(prompt || "") + nudge, { num_predict: 48, temperature: 0.6, top_p: 0.95 });
+      if (String(r2?.text || "").trim()) return r2.text;
+
+      // Fallback: some chat-tuned models return empty for /api/generate but work via /api/chat.
+      const r3 = await doChatFetch(prompt, { num_predict: 48, temperature: 0.4, top_p: 0.95 });
+      if (String(r3?.text || "").trim()) return r3.text;
+
+      // Allow "no suggestion" rather than forcing garbage.
+      return "";
     };
 
     const hide = () => {
@@ -3277,7 +3906,7 @@ async function main() {
       // Inline ghost trail (same line as caret)
       renderEditorInlineTrail(tabC);
 
-      if (!hasLocalCompletion && !hasAi) {
+      if (!hasLocalCompletion && !hasAi && !aiPending && !aiLastError) {
         container.hidden = true;
         return;
       }
@@ -3288,6 +3917,18 @@ async function main() {
       label.className = "noteAutocompleteLabel";
       label.textContent = "Suggestions:";
       container.appendChild(label);
+
+      if (aiPending) {
+        const pending = document.createElement("span");
+        pending.className = "noteAutocompletePending";
+        pending.textContent = "AI …";
+        container.appendChild(pending);
+      } else if (aiLastError) {
+        const pending = document.createElement("span");
+        pending.className = "noteAutocompletePending";
+        pending.textContent = `AI error: ${aiLastError}`;
+        container.appendChild(pending);
+      }
 
       const addBtn = (text, kind, payload) => {
         const btn = document.createElement("button");
@@ -3341,6 +3982,8 @@ async function main() {
 
     const clearAi = () => {
       aiSuggestion = null;
+      aiPending = false;
+      aiLastError = "";
       if (aiAbort) {
         try {
           aiAbort.abort();
@@ -3421,29 +4064,77 @@ async function main() {
       }
 
       aiTimer = setTimeout(async () => {
+        let timedOut = false;
+        let timeoutId = null;
         try {
           aiAbort = new AbortController();
+          timeoutId = setTimeout(() => {
+            timedOut = true;
+            try {
+              aiAbort.abort();
+            } catch {
+              // ignore
+            }
+          }, 12000);
+          aiPending = true;
+          aiLastError = "";
+          render();
+
+          // Load dictionary early so mid-word validation can reject blended junk
+          // like "suggimportant" reliably (instead of only after a lazy load).
+          try {
+            await ensureEnglishDictionaryLoaded();
+          } catch {
+            // ignore
+          }
+
           const baseText = getCaretPrefixText();
-          const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, baseText, aiAbort.signal);
-          const c = computeAiWordCompletion(baseText, raw);
+          const prompt = buildAiAutocompletePrompt(baseText);
+          const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, prompt, aiAbort.signal);
+          const c = computeAiContextCompletion(baseText, raw);
           if (!c) {
             aiSuggestion = null;
+            aiPending = false;
             render();
             return;
           }
 
           if (getCaretPrefixText() !== baseText) return;
           aiSuggestion = c;
+          aiPending = false;
           render();
         } catch (err) {
-          if (String(err?.name || "").toLowerCase().includes("abort")) return;
-          console.error(err);
+          if (String(err?.name || "").toLowerCase().includes("abort")) {
+            aiSuggestion = null;
+            aiPending = false;
+            if (timedOut) aiLastError = "timeout";
+            render();
+            return;
+          }
+          const st = err && typeof err.status === "number" ? Number(err.status) : null;
+          if (st === 401 || st === 403 || st === 404) console.warn(err);
+          else console.error(err);
           aiSuggestion = null;
+          aiPending = false;
+
+          const msg = String(err?.message || "").trim();
+          const body = typeof err?.body === "string" ? String(err.body || "") : "";
+          const snippet = body ? body.replace(/\s+/g, " ").slice(0, 140) : "";
+
+          const hint403 = st === 403 ? getOllamaOriginsHintFor403(aiEndpointBaseUrl) : "";
+
+          if (st === 401) aiLastError = snippet ? `401 unauthorized: ${snippet}` : "401 unauthorized";
+          else if (st === 403) aiLastError = (snippet ? `403 forbidden: ${snippet}` : "403 forbidden") + hint403;
+          else if (st === 404) aiLastError = snippet ? `404 not found: ${snippet}` : "404 not found";
+          else if (Number.isFinite(st)) aiLastError = snippet ? `${String(st)}: ${snippet}` : String(st);
+          else if (msg) aiLastError = msg.slice(0, 180);
+          else aiLastError = "failed";
           render();
         } finally {
+          if (timeoutId) clearTimeout(timeoutId);
           aiAbort = null;
         }
-      }, 750);
+      }, 450);
     };
 
     editor.addEventListener("input", scheduleRefresh);
@@ -3653,6 +4344,13 @@ async function main() {
           aiCustomWordsInput.value = Array.isArray(aiCustomWords) ? aiCustomWords.join("\n") : "";
           queueAutosizeTextarea(aiCustomWordsInput);
         }
+
+        if (aiEndpointModelInput instanceof HTMLInputElement) {
+          aiEndpointModelInput.value = aiEndpointModel || "";
+        }
+
+        // Update status indicator when opening AI Settings.
+        queueAiSettingsHealthCheck({ delayMs: 0 });
       } else if (closeAiSettingsBtn instanceof HTMLElement) {
         closeAiSettingsBtn.focus();
       }
@@ -3690,6 +4388,23 @@ async function main() {
       if (input instanceof HTMLElement) input.focus();
     });
   }
+
+  if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
+    aiEndpointBaseUrlInput.addEventListener("input", () => {
+      queueAiSettingsHealthCheck({ delayMs: 450 });
+    });
+    aiEndpointBaseUrlInput.addEventListener("blur", () => {
+      queueAiSettingsHealthCheck({ delayMs: 0 });
+    });
+  }
+  if (aiEndpointModelInput instanceof HTMLInputElement) {
+    aiEndpointModelInput.addEventListener("input", () => {
+      queueAiSettingsHealthCheck({ delayMs: 450 });
+    });
+    aiEndpointModelInput.addEventListener("blur", () => {
+      queueAiSettingsHealthCheck({ delayMs: 0 });
+    });
+  }
   if (closeManageTabsBtn instanceof HTMLElement) {
     closeManageTabsBtn.addEventListener("click", () => {
       showNotesView();
@@ -3713,6 +4428,7 @@ async function main() {
       const normalized = normalizeEndpointBaseUrl(raw);
       if (normalized === null) {
         setAiSettingsMessage("Please enter a valid http(s) URL (or leave empty to disable). ");
+        queueAiSettingsHealthCheck({ delayMs: 0 });
         return;
       }
 
@@ -3724,13 +4440,21 @@ async function main() {
         );
       }
 
+      const modelRaw = aiEndpointModelInput instanceof HTMLInputElement ? aiEndpointModelInput.value : "";
+      const modelName = String(modelRaw || "").trim();
+
       try {
         aiEndpointBaseUrl = await saveAiEndpointBaseUrl(normalized);
         aiCustomWords = await saveAiCustomWords(parsed.valid);
+        aiEndpointModel = modelName;
+
+        // Reset cached model so subsequent requests use the new selection (or re-fetch default).
+        ollamaModel = aiEndpointModel || null;
 
         // Persist into the SQLite DB so settings travel with DB export/import.
         try {
           dbSetAppSettingString(APP_SETTING_AI_ENDPOINT_BASE_URL, aiEndpointBaseUrl || "");
+          dbSetAppSettingString(APP_SETTING_AI_ENDPOINT_MODEL, aiEndpointModel || "");
           dbSetAppSettingString(
             APP_SETTING_AI_CUSTOM_WORDS_JSON,
             Array.isArray(aiCustomWords) && aiCustomWords.length ? JSON.stringify(aiCustomWords) : ""
@@ -3746,16 +4470,19 @@ async function main() {
 
         if (aiEndpointBaseUrl) {
           setAiSettingsMessage(
-            `Saved. Custom words: ${Array.isArray(aiCustomWords) ? aiCustomWords.length : 0}.`
+            `Saved. Model: ${aiEndpointModel || "auto"}. Custom words: ${Array.isArray(aiCustomWords) ? aiCustomWords.length : 0}.`
           );
         } else {
           setAiSettingsMessage(
-            `AI disabled. Custom words: ${Array.isArray(aiCustomWords) ? aiCustomWords.length : 0}.`
+            `AI disabled. Model: ${aiEndpointModel || "auto"}. Custom words: ${Array.isArray(aiCustomWords) ? aiCustomWords.length : 0}.`
           );
         }
+
+        queueAiSettingsHealthCheck({ delayMs: 0 });
       } catch (err) {
         console.error(err);
         setAiSettingsMessage("Could not save settings.");
+        queueAiSettingsHealthCheck({ delayMs: 0 });
       }
     });
   }
@@ -6057,6 +6784,8 @@ async function main() {
       let localTimer = null;
       let aiTimer = null;
       let aiAbort = null;
+      let aiPending = false;
+      let aiLastError = "";
 
       let focusedSuggestionIndex = -1;
 
@@ -6231,21 +6960,233 @@ async function main() {
         const w = getLeadingWord(suffix);
         return w ? { baseText: base, completion: w } : null;
       };
-      const computeAiWordCompletion = (baseText, aiResponse) => {
+      const computeAiContextCompletion = (baseText, aiResponse) => {
         const base = String(baseText || "");
         if (!base.trim()) return null;
-        if (endsWithWhitespace(base)) return null;
 
-        let r = String(aiResponse || "");
-        if (!r || /^\s/.test(r)) return null;
+        let r = String(aiResponse || "").replace(/\r\n/g, "\n");
+        if (!r) return null;
 
-        const token = getLastToken(base);
-        if (token && r.slice(0, token.length).toLowerCase() === token.toLowerCase()) {
-          r = r.slice(token.length);
+        // Use only the first line to avoid multi-line dumps.
+        r = r.split("\n")[0] || "";
+        r = r.replace(/^\s*Continuation\s*:\s*/i, "");
+        r = r.replace(/^\s+/g, "");
+        r = r.replace(/\s+$/g, "");
+
+        // Strip surrounding quotes.
+        if (
+          (r.startsWith('"') && r.endsWith('"')) ||
+          (r.startsWith("'") && r.endsWith("'"))
+        ) {
+          r = r.slice(1, -1);
         }
 
-        const w = getLeadingWord(r);
-        return w ? { baseText: base, completion: w } : null;
+        const baseLower = base.toLowerCase();
+        let rLower = r.toLowerCase();
+
+        const baseEndsWs = /\s$/.test(base);
+        const baseLast = base.slice(-1);
+        const baseLastTokenMatch = String(base || "").match(/(\S+)$/);
+        const baseLastToken = !baseEndsWs && baseLastTokenMatch ? String(baseLastTokenMatch[1] || "") : "";
+        const isWordishToken = /^[A-Za-z][A-Za-z'-]*$/.test(baseLastToken);
+        const lowerLastToken = baseLastToken.toLowerCase();
+        const commonWholeWords = new Set([
+          "a",
+          "an",
+          "and",
+          "are",
+          "as",
+          "at",
+          "be",
+          "because",
+          "but",
+          "by",
+          "for",
+          "from",
+          "have",
+          "i",
+          "if",
+          "in",
+          "is",
+          "it",
+          "of",
+          "on",
+          "or",
+          "really",
+          "so",
+          "that",
+          "the",
+          "this",
+          "to",
+          "was",
+          "we",
+          "with",
+          "you"
+        ]);
+
+        const dictHasWordLower = (wLower) => {
+          if (!Array.isArray(englishDictWords) || !englishDictWords.length) return false;
+          const w = String(wLower || "");
+          if (!w) return false;
+          let lo = 0;
+          let hi = englishDictWords.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (englishDictWords[mid] < w) lo = mid + 1;
+            else hi = mid;
+          }
+          return englishDictWords[lo] === w;
+        };
+
+        const isGluedDictWordsLower = (wLower) => {
+          const w = String(wLower || "");
+          if (!w || w.length < 10) return false;
+          if (!/^[a-z]+$/.test(w)) return false;
+          if (!Array.isArray(englishDictWords) || !englishDictWords.length) return false;
+          for (let i = 4; i <= w.length - 4; i++) {
+            const a = w.slice(0, i);
+            const b = w.slice(i);
+            if (dictHasWordLower(a) && dictHasWordLower(b)) return true;
+          }
+          return false;
+        };
+        const tokenLooksComplete = (() => {
+          if (!baseLastToken || !isWordishToken) return false;
+          if (commonWholeWords.has(lowerLastToken)) return true;
+
+          if (dictHasWordLower(lowerLastToken)) return true;
+
+          if (Array.isArray(aiCustomWords) && aiCustomWords.length) {
+            for (const w0 of aiCustomWords) {
+              const w = String(w0 || "").trim().toLowerCase();
+              if (w && w === lowerLastToken) return true;
+            }
+          }
+
+          return false;
+        })();
+
+        // If the model repeated the input, strip it.
+        if (r && base && rLower.startsWith(baseLower)) {
+          r = r.slice(base.length);
+          rLower = r.toLowerCase();
+        } else {
+          // Some models return the full completed word instead of the suffix.
+          const { token } = getLastTokenInfo(base);
+          const tokenLower = String(token || "").toLowerCase();
+          if (tokenLower && baseLower.endsWith(tokenLower) && rLower.startsWith(tokenLower)) {
+            r = r.slice(tokenLower.length);
+            rLower = r.toLowerCase();
+          }
+        }
+
+        // If the model returned a phrase instead of a suffix, but that phrase contains
+        // a word that completes the user's current token, salvage just the suffix.
+        // Example: base "... next we" + response "Next week" -> "ek".
+        if (!baseEndsWs) {
+          const { token } = getLastTokenInfo(base);
+          const tokenLower = String(token || "").toLowerCase();
+          if (tokenLower && tokenLower.length >= 2 && /\s/.test(String(r || ""))) {
+            const wordsInResp = String(rLower || "").match(/[a-z]+(?:[-'][a-z]+)*/g) || [];
+            for (const w of wordsInResp) {
+              if (!w) continue;
+              if (w.length <= tokenLower.length) continue;
+              if (!w.startsWith(tokenLower)) continue;
+              r = w.slice(tokenLower.length);
+              rLower = r.toLowerCase();
+              break;
+            }
+          }
+        }
+
+        // Contraction guardrail: if the user just typed an apostrophe, only allow
+        // common contraction suffixes (prevents junk like "let'important").
+        if (/[A-Za-z]['’]$/.test(base) && /^[A-Za-z]/.test(r) && !/^['’]/.test(r)) {
+          const ok =
+            rLower === "s" ||
+            rLower === "t" ||
+            rLower === "d" ||
+            rLower === "m" ||
+            rLower.startsWith("re") ||
+            rLower.startsWith("ve") ||
+            rLower.startsWith("ll");
+          if (!ok) return null;
+        }
+
+        // If we're at a word boundary and the model starts with a letter/number,
+        // it often needs a leading space (e.g., "Send agendas" + "important" -> "Send agendas important").
+        // But do NOT insert spaces mid-word ("imp" + "ortant" -> "important").
+        if (!baseEndsWs) {
+          if (/[.,;:!?…]/.test(baseLast) && /^[A-Za-z0-9]/.test(r) && !/^\s/.test(r)) {
+            r = " " + r;
+            rLower = r.toLowerCase();
+          } else if (tokenLooksComplete && /[A-Za-z0-9]/.test(baseLast) && /^[A-Za-z0-9]/.test(r) && !/^\s/.test(r)) {
+            const looksLikeSuffix = isWordishToken && /^[A-Za-z'-]+$/.test(r) && !/\s/.test(r);
+            if (looksLikeSuffix) {
+              const combinedLower = (baseLastToken + r).toLowerCase();
+              let combinedIsKnown = dictHasWordLower(combinedLower);
+              if (!combinedIsKnown && Array.isArray(aiCustomWords) && aiCustomWords.length) {
+                for (const w0 of aiCustomWords) {
+                  const w = String(w0 || "").trim().toLowerCase();
+                  if (w && w === combinedLower) {
+                    combinedIsKnown = true;
+                    break;
+                  }
+                }
+              }
+              if (combinedIsKnown) {
+                // keep suffix; no leading space
+              } else {
+                const lead = (String(r || "").match(/^([A-Za-z]{4,})/) || [])[1] || "";
+                const leadLower = lead.toLowerCase();
+                if (leadLower && isGluedDictWordsLower(leadLower)) return null;
+
+                if (!/^['’]/.test(r)) {
+                  r = " " + r;
+                  rLower = r.toLowerCase();
+                }
+              }
+            } else {
+            const lead = (String(r || "").match(/^([A-Za-z]{4,})/) || [])[1] || "";
+            const leadLower = lead.toLowerCase();
+            if (leadLower && isGluedDictWordsLower(leadLower)) return null;
+
+            if (!/^['’]/.test(r)) {
+              r = " " + r;
+              rLower = r.toLowerCase();
+            }
+            }
+          } else if (!tokenLooksComplete) {
+            // Mid-word: never allow spaces in the completion.
+            if (/\s/.test(r)) return null;
+
+            // If the common English dictionary is already loaded, only accept suffixes
+            // that form a real word with the current token.
+            if (Array.isArray(englishDictWords) && englishDictWords.length && isWordishToken && /^[A-Za-z'-]+$/.test(r)) {
+              const combined = (baseLastToken + r).toLowerCase();
+              if (combined.length > 28) return null;
+              if (/^[a-z]+(?:[-'][a-z]+)*$/.test(combined)) {
+                if (!dictHasWordLower(combined)) return null;
+              }
+            }
+          }
+        }
+
+        // Keep short; allow spaces/punctuation.
+        r = r.replace(/[\u0000-\u001F\u007F]/g, "");
+        if (r.endsWith(".")) {
+          r = r.slice(0, -1).replace(/\s+$/g, "");
+          rLower = r.toLowerCase();
+        }
+        r = r.slice(0, 80);
+        if (!r.trim()) return null;
+
+        const lastChar = base.slice(-1);
+        if (/[.!?…]/.test(lastChar) && /^[A-Za-z0-9]/.test(r) && !/^\s/.test(r)) {
+          return null;
+        }
+
+        return { baseText: base, completion: r };
       };
 
       const hide = () => {
@@ -6287,20 +7228,7 @@ async function main() {
           inner.style.display = "flex";
           inner.style.alignItems = "center";
 
-          try {
-            const cs = getComputedStyle(input);
-            inner.style.paddingTop = cs.paddingTop;
-            inner.style.paddingRight = cs.paddingRight;
-            inner.style.paddingBottom = cs.paddingBottom;
-            inner.style.paddingLeft = cs.paddingLeft;
-          } catch {
-            // ignore
-          }
-
           const textWrap = document.createElement("span");
-          textWrap.style.display = "inline-flex";
-          textWrap.style.transform = `translateX(${-Number(input.scrollLeft || 0)}px)`;
-
           const prefix = document.createElement("span");
           prefix.className = "noteInlineTrailPrefix";
           prefix.textContent = String(candidate.baseText || "");
@@ -6383,7 +7311,7 @@ async function main() {
         // Inline ghost trail (same line as input)
         renderInlineTrail(tabC);
 
-        if (!hasLocal && !hasLocalCompletion && !hasAi) {
+        if (!hasLocal && !hasLocalCompletion && !hasAi && !aiPending && !aiLastError) {
           container.hidden = true;
           focusedSuggestionIndex = -1;
           return;
@@ -6395,6 +7323,18 @@ async function main() {
         label.className = "noteAutocompleteLabel";
         label.textContent = "Suggestions:";
         container.appendChild(label);
+
+        if (aiPending) {
+          const pending = document.createElement("span");
+          pending.className = "noteAutocompletePending";
+          pending.textContent = "AI …";
+          container.appendChild(pending);
+        } else if (aiLastError) {
+          const pending = document.createElement("span");
+          pending.className = "noteAutocompletePending";
+          pending.textContent = `AI error: ${aiLastError}`;
+          container.appendChild(pending);
+        }
 
         const addBtn = (text, kind, payload) => {
           const btn = document.createElement("button");
@@ -6479,6 +7419,8 @@ async function main() {
 
       const clearAi = () => {
         aiSuggestion = null;
+        aiPending = false;
+        aiLastError = "";
         if (aiAbort) {
           try {
             aiAbort.abort();
@@ -6588,16 +7530,91 @@ async function main() {
         const model = ollamaModel || (await fetchOllamaDefaultModel(baseUrl, signal));
         ollamaModel = model;
         const url = new URL("/api/generate", baseUrl).toString();
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model, prompt: String(prompt || ""), stream: false }),
-          signal
-        });
-        if (!res.ok) throw new Error(`Ollama generate failed: ${res.status}`);
-        const data = await res.json();
-        const r = typeof data?.response === "string" ? data.response : "";
-        return r;
+        const chatUrl = new URL("/api/chat", baseUrl).toString();
+
+        const doFetch = async (prompt2, options) => {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              model,
+              prompt: String(prompt2 || ""),
+              stream: false,
+              options
+            }),
+            signal
+          });
+          if (!res.ok) {
+            let body = "";
+            try {
+              body = String((await res.text()) || "");
+            } catch {
+              body = "";
+            }
+            const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
+            const err = new Error(`Ollama generate failed: ${res.status}${snippet}`);
+            err.status = res.status;
+            err.body = body;
+            err.url = url;
+            throw err;
+          }
+          const data = await res.json();
+          const r = typeof data?.response === "string" ? String(data.response || "") : "";
+          const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
+          return { text: r, meta: doneReason ? `done_reason=${doneReason}` : "" };
+        };
+
+        const doChatFetch = async (prompt2, options) => {
+          const res = await fetch(chatUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              model,
+              stream: false,
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You are an autocomplete engine. Return only the continuation text to insert at the cursor. No quotes. One line."
+                },
+                { role: "user", content: String(prompt2 || "") }
+              ],
+              options
+            }),
+            signal
+          });
+          if (!res.ok) {
+            let body = "";
+            try {
+              body = String((await res.text()) || "");
+            } catch {
+              body = "";
+            }
+            const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
+            const err = new Error(`Ollama chat failed: ${res.status}${snippet}`);
+            err.status = res.status;
+            err.body = body;
+            err.url = chatUrl;
+            throw err;
+          }
+          const data = await res.json();
+          const content = typeof data?.message?.content === "string" ? String(data.message.content || "") : "";
+          const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
+          return { text: content, meta: doneReason ? `done_reason=${doneReason}` : "" };
+        };
+
+        const r1 = await doFetch(prompt, { num_predict: 32, temperature: 0.2, top_p: 0.9 });
+        if (String(r1?.text || "").trim()) return r1.text;
+
+        const nudge =
+          "\n\nIMPORTANT: Output at least 1 visible character. If mid-word, output the missing suffix only.";
+        const r2 = await doFetch(String(prompt || "") + nudge, { num_predict: 48, temperature: 0.6, top_p: 0.95 });
+        if (String(r2?.text || "").trim()) return r2.text;
+
+        const r3 = await doChatFetch(prompt, { num_predict: 48, temperature: 0.4, top_p: 0.95 });
+        if (String(r3?.text || "").trim()) return r3.text;
+
+        return "";
       };
 
       const scheduleRefresh = () => {
@@ -6664,13 +7681,37 @@ async function main() {
         }
 
         aiTimer = setTimeout(async () => {
+          let timedOut = false;
+          let timeoutId = null;
           try {
             aiAbort = new AbortController();
+            timeoutId = setTimeout(() => {
+              timedOut = true;
+              try {
+                aiAbort.abort();
+              } catch {
+                // ignore
+              }
+            }, 12000);
+            aiPending = true;
+            aiLastError = "";
+            render();
+
+            // Load dictionary early so mid-word validation can reject blended junk
+            // like "suggimportant" reliably (instead of only after a lazy load).
+            try {
+              await ensureEnglishDictionaryLoaded();
+            } catch {
+              // ignore
+            }
+
             const baseText = input.value;
-            const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, baseText, aiAbort.signal);
-            const c = computeAiWordCompletion(baseText, raw);
+            const prompt = buildAiAutocompletePrompt(baseText);
+            const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, prompt, aiAbort.signal);
+            const c = computeAiContextCompletion(baseText, raw);
             if (!c) {
               aiSuggestion = null;
+              aiPending = false;
               render();
               return;
             }
@@ -6678,16 +7719,40 @@ async function main() {
             // Only keep if input hasn't changed since request started.
             if (input.value !== baseText) return;
             aiSuggestion = c;
+            aiPending = false;
             render();
           } catch (err) {
-            if (String(err?.name || "").toLowerCase().includes("abort")) return;
-            console.error(err);
+              if (String(err?.name || "").toLowerCase().includes("abort")) {
+                aiSuggestion = null;
+                aiPending = false;
+                if (timedOut) aiLastError = "timeout";
+                render();
+                return;
+              }
+            const st = err && typeof err.status === "number" ? Number(err.status) : null;
+            if (st === 401 || st === 403 || st === 404) console.warn(err);
+            else console.error(err);
             aiSuggestion = null;
+            aiPending = false;
+
+            const msg = String(err?.message || "").trim();
+            const body = typeof err?.body === "string" ? String(err.body || "") : "";
+            const snippet = body ? body.replace(/\s+/g, " ").slice(0, 140) : "";
+
+            const hint403 = st === 403 ? getOllamaOriginsHintFor403(aiEndpointBaseUrl) : "";
+
+            if (st === 401) aiLastError = snippet ? `401 unauthorized: ${snippet}` : "401 unauthorized";
+            else if (st === 403) aiLastError = (snippet ? `403 forbidden: ${snippet}` : "403 forbidden") + hint403;
+            else if (st === 404) aiLastError = snippet ? `404 not found: ${snippet}` : "404 not found";
+            else if (Number.isFinite(st)) aiLastError = snippet ? `${String(st)}: ${snippet}` : String(st);
+            else if (msg) aiLastError = msg.slice(0, 180);
+            else aiLastError = "failed";
             render();
           } finally {
+            if (timeoutId) clearTimeout(timeoutId);
             aiAbort = null;
           }
-        }, 750);
+        }, 450);
       };
 
       input.addEventListener("input", scheduleRefresh);
@@ -7040,10 +8105,18 @@ async function main() {
       const existing = saveTimers.get(noteId);
       if (existing) clearTimeout(existing);
 
-      const t = setTimeout(async () => {
+      const t = setTimeout(() => {
         saveTimers.delete(noteId);
-        setNotesHtml(db, noteId, html);
-        await persist();
+        try {
+          setNotesHtml(db, noteId, html);
+        } catch (err) {
+          console.warn(err);
+          return;
+        }
+        void persist().catch((err) => {
+          // Popup can be closing/unloading; avoid unhandled promise rejections.
+          console.warn(err);
+        });
       }, 350);
 
       saveTimers.set(noteId, t);
