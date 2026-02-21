@@ -673,7 +673,7 @@ button,
   border-radius: var(--modern-radius-md);
   background: var(--modern-surface-1);
   box-shadow: var(--modern-shadow-sm);
-  overflow: visible !important;
+  overflow: hidden;
   align-self: start;
 }
 

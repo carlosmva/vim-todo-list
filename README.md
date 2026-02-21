@@ -1,6 +1,6 @@
 # vim-todo-list
 
-Chrome extension popup for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly).
+Chrome extension for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly). Opens as a centered overlay with backdrop blur over the current page (click the extension icon or press `Alt+R`).
 
 ![Vim To-Do List showcase](icons/vim-todo-notes-img.png)
 

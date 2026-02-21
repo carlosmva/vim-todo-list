@@ -1,4 +1,6 @@
 /* global initSqlJs */
+(function () {
+  "use strict";
 
 const STORAGE_KEY = "sqliteDb_v1";
 const ACTIVE_BOARD_KEY = "activeBoard_v1";
@@ -7,6 +9,7 @@ const THEME_KEY = "theme_v1";
 const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
 const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
+const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line"];
 
 const openNoteEditorIds = new Set();
 const flippedNoteIds = new Set();
@@ -312,8 +315,8 @@ async function loadAiCustomWords() {
   return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
 }
 
-async function saveAiCustomWords(words) {
-  const list = Array.isArray(words) ? words.filter((w) => typeof w === "string" && w.trim()) : [];
+async function saveAiCustomWords(customWords) {
+  const list = Array.isArray(customWords) ? customWords.filter((w) => typeof w === "string" && w.trim()) : [];
   if (!list.length) {
     await chrome.storage.local.remove([AI_CUSTOM_WORDS_KEY]);
     return [];
@@ -1631,6 +1634,13 @@ async function main() {
       themeToggle.textContent = THEME_LABELS[value] || value;
       themeToggle.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}. Click to switch.`);
     }
+    if (window.parent !== window) {
+      try {
+        window.parent.postMessage({ type: "vim-todo-theme", theme: value }, "*");
+      } catch {
+        // ignore
+      }
+    }
   }
 
   function getNavKeys(layout) {
@@ -2245,7 +2255,6 @@ async function main() {
   }
 
   // Theme: load from DB first, migrate from chrome.storage if needed.
-  const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line"];
   let didMigrateTheme = false;
   let theme = dbGetAppSettingString(APP_SETTING_THEME) || null;
   if (!theme) {
@@ -6340,6 +6349,21 @@ async function main() {
     void activateBoard(board, { persistSelection: true });
   });
 
+  // Escape closes the overlay when popup is in an iframe.
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Escape" || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (window.parent === window) return;
+      try {
+        window.parent.postMessage({ type: "vim-todo-close" }, "*");
+      } catch {
+        // ignore
+      }
+    },
+    true
+  );
+
   // "/" focuses the card filter in Notes view (when not typing in another input/editor).
   document.addEventListener(
     "keydown",
@@ -8386,3 +8410,4 @@ main().catch((err) => {
   console.error(err);
   document.body.textContent = `Error: ${err?.message || String(err)}`;
 });
+})();
