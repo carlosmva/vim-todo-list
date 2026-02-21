@@ -247,15 +247,9 @@ async function saveKeyLayout(layout) {
   await chrome.storage.local.set({ [KEY_LAYOUT_KEY]: layout });
 }
 
-async function loadTheme() {
+async function loadThemeFromStorage() {
   const result = await chrome.storage.local.get([THEME_KEY]);
-  const value = result[THEME_KEY];
-  if (value === "light" || value === "dark") return value;
-  return null;
-}
-
-async function saveTheme(theme) {
-  await chrome.storage.local.set({ [THEME_KEY]: theme });
+  return result[THEME_KEY] || null;
 }
 
 function normalizeEndpointBaseUrl(raw) {
@@ -786,8 +780,8 @@ function queryNotes(db, board) {
       WHERE board = ?
       ORDER BY
         CASE WHEN status = 'pending' THEN 0 ELSE 1 END,
+        sort_order ASC,
         CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 1 END,
-        CASE WHEN status = 'pending' THEN sort_order ELSE NULL END ASC,
         created_at DESC,
         id DESC
     `,
@@ -850,10 +844,20 @@ function setStatus(db, board, id, status) {
     return;
   }
 
-  const stmt = db.prepare(
-    "UPDATE notes SET status = 'complete', completed_at = ?, updated_at = ? WHERE id = ?"
+  const nextOrderStmt = db.prepare(
+    "SELECT COALESCE(MAX(sort_order), -1) AS m FROM notes WHERE board = ? AND status = 'complete'"
   );
-  stmt.run([now, now, id]);
+  nextOrderStmt.bind([board]);
+  let nextOrder = 0;
+  if (nextOrderStmt.step()) {
+    const m = nextOrderStmt.getAsObject()?.m;
+    nextOrder = Number.isFinite(Number(m)) ? Number(m) + 1 : 0;
+  }
+  nextOrderStmt.free();
+  const stmt = db.prepare(
+    "UPDATE notes SET status = 'complete', completed_at = ?, updated_at = ?, sort_order = ? WHERE id = ?"
+  );
+  stmt.run([now, now, nextOrder, id]);
   stmt.free();
 }
 
@@ -1040,16 +1044,16 @@ function renderNotes(db, notes) {
       moveBtn.textContent = "Mark complete";
       moveBtn.dataset.action = "complete";
       pendingCount++;
-      card.setAttribute("aria-grabbed", "false");
     } else {
       moveBtn.textContent = "Move to pending";
       moveBtn.dataset.action = "pending";
       completeCount++;
     }
+    card.setAttribute("aria-grabbed", "false");
 
-    // Pending cards are draggable for reordering, except when the rich editor
-    // is open (click+drag should select text, not start DnD).
-    card.draggable = note.status === "pending" && !editorOpen;
+    // Cards are draggable for reordering within their column, except when the
+    // rich editor is open (click+drag should select text, not start DnD).
+    card.draggable = !editorOpen;
 
     moveBtn.dataset.id = String(note.id);
 
@@ -1067,11 +1071,33 @@ function renderNotes(db, notes) {
     flipBtn.dataset.action = "flip";
     flipBtn.dataset.noteId = String(note.id);
 
+    const moveUpBtn = document.createElement("button");
+    moveUpBtn.type = "button";
+    moveUpBtn.textContent = "↑";
+    moveUpBtn.className = "monoLinkButton";
+    moveUpBtn.dataset.action = "moveUp";
+    moveUpBtn.dataset.noteId = String(note.id);
+    moveUpBtn.setAttribute("aria-label", "Move up");
+
+    const moveDownBtn = document.createElement("button");
+    moveDownBtn.type = "button";
+    moveDownBtn.textContent = "↓";
+    moveDownBtn.className = "monoLinkButton";
+    moveDownBtn.dataset.action = "moveDown";
+    moveDownBtn.dataset.noteId = String(note.id);
+    moveDownBtn.setAttribute("aria-label", "Move down");
+
     footer.appendChild(flipBtn);
     footer.appendChild(priorityBtn);
     footer.appendChild(notesBtn);
     footer.appendChild(deleteBtn);
     footer.appendChild(moveBtn);
+    const moveArrowsSpacer = document.createElement("span");
+    moveArrowsSpacer.className = "noteActionsMoveSpacer";
+    moveArrowsSpacer.setAttribute("aria-hidden", "true");
+    footer.appendChild(moveArrowsSpacer);
+    footer.appendChild(moveUpBtn);
+    footer.appendChild(moveDownBtn);
 
     const editorWrap = document.createElement("div");
     editorWrap.className = "noteEditor";
@@ -1260,17 +1286,28 @@ function getDragAfterElement(container, y) {
 }
 
 function persistPendingOrderFromDom(db, board, pendingList) {
-  const cards = [...pendingList.querySelectorAll(".noteCard[data-note-id]")];
+  persistOrderFromDom(db, board, pendingList, "pending");
+}
+
+function persistCompleteOrderFromDom(db, board, completeList) {
+  persistOrderFromDom(db, board, completeList, "complete");
+}
+
+function persistOrderFromDom(db, board, listEl, status) {
+  if (!(listEl instanceof Element)) return;
+  const cards = [...listEl.querySelectorAll(".noteCard[data-note-id]")];
   const now = Date.now();
   db.run("BEGIN");
   const stmt = db.prepare(
-    "UPDATE notes SET sort_order = ?, updated_at = ? WHERE id = ? AND board = ? AND status = 'pending'"
+    "UPDATE notes SET sort_order = ?, priority = ?, updated_at = ? WHERE id = ? AND board = ? AND status = ?"
   );
   try {
     for (let i = 0; i < cards.length; i++) {
-      const id = Number(cards[i].dataset.noteId);
+      const c = cards[i];
+      const id = Number(c.dataset.noteId);
       if (!Number.isFinite(id)) continue;
-      stmt.run([i, now, id, board]);
+      const priority = normalizePriority(c.dataset.priority);
+      stmt.run([i, priority, now, id, board, status]);
     }
   } finally {
     stmt.free();
@@ -1585,11 +1622,7 @@ async function main() {
   }
 
   const keyLayoutToggle = document.getElementById("keyLayoutToggle");
-  const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs"];
-  const THEME_LABELS = { light: "Light", dark: "Dark", "solarized-light": "Solarized", "solarized-dark": "Solarized Dark", emacs: "Emacs" };
-  let theme = (await loadTheme()) || "light";
-  if (!THEME_ORDER.includes(theme)) theme = "light";
-  if ((await loadTheme()) === null) await saveTheme(theme);
+  const THEME_LABELS = { light: "Light", dark: "Dark", "solarized-light": "Solarized", "solarized-dark": "Solarized Dark", emacs: "Emacs", "command-line": "Command Line" };
 
   function applyTheme(t) {
     const value = THEME_ORDER.includes(t) ? t : "light";
@@ -1599,8 +1632,6 @@ async function main() {
       themeToggle.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}. Click to switch.`);
     }
   }
-
-  applyTheme(theme);
 
   function getNavKeys(layout) {
     const l = layout === "dvorak" ? "dvorak" : "qwerty";
@@ -1652,7 +1683,7 @@ async function main() {
       <ul>
         <li>${combo("Alt", fmt(openPopupKey))}: open the popup</li>
         <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
-        <li><b>AI Settings</b>: focus the AI Settings header link and press Enter</li>
+        <li><b>AI</b>: focus the AI header link and press Enter</li>
         <li>${combo("Alt", fmt(nav.down))}: move down</li>
         <li>${combo("Alt", fmt(nav.up))}: move up</li>
         <li>${combo("Alt", fmt(nav.left))}: move left (not in notes)</li>
@@ -1676,6 +1707,12 @@ async function main() {
         <li>${keycap('"')} + ${keycap("1")}/${keycap("2")}/${keycap("3")}/${keycap("4")}: choose register for the next yank/paste</li>
         <li>${keycap('"')} + ${keycap("+")}: use the system clipboard register for the next yank/cut</li>
         <li>${keycap("p")}: (normal mode) paste register at caret and enter insert mode</li>
+      </ul>
+
+      <h3>Reorder cards</h3>
+      <ul>
+        <li><b>↑</b> / <b>↓</b> buttons: move a card up or down within its column (Pending or Complete)</li>
+        <li>Drag and drop: drag a card to reorder it within its column</li>
       </ul>
 
       <h3>Autocomplete</h3>
@@ -2125,6 +2162,7 @@ async function main() {
   const APP_SETTING_AI_ENDPOINT_BASE_URL = "ai.endpointBaseUrl";
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
+  const APP_SETTING_THEME = "app.theme";
 
   function dbGetAppSettingString(key) {
     const k = String(key || "");
@@ -2205,6 +2243,29 @@ async function main() {
       // ignore
     }
   }
+
+  // Theme: load from DB first, migrate from chrome.storage if needed.
+  const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line"];
+  let didMigrateTheme = false;
+  let theme = dbGetAppSettingString(APP_SETTING_THEME) || null;
+  if (!theme) {
+    const legacy = await loadThemeFromStorage();
+    if (legacy && THEME_ORDER.includes(legacy)) {
+      theme = legacy;
+      dbSetAppSettingString(APP_SETTING_THEME, theme);
+      didMigrateTheme = true;
+    }
+  }
+  if (!theme || !THEME_ORDER.includes(theme)) theme = "light";
+  if (didMigrateTheme) {
+    try {
+      await persist();
+    } catch {
+      // ignore
+    }
+  }
+
+  applyTheme(theme);
 
   // Shared caches for autocomplete (new note + notes editor).
   let ollamaModel = aiEndpointModel || null;
@@ -2362,7 +2423,12 @@ async function main() {
       const idx = THEME_ORDER.indexOf(theme);
       theme = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
       applyTheme(theme);
-      await saveTheme(theme);
+      try {
+        dbSetAppSettingString(APP_SETTING_THEME, theme);
+        await persist();
+      } catch {
+        // ignore
+      }
     });
   }
 
@@ -6783,53 +6849,80 @@ async function main() {
     }
   }
 
-  // Drag & drop reordering for Pending only
+  // Drag & drop reordering for Pending and Complete
   {
     const pendingList = el("pendingList");
+    const completeList = el("completeList");
     let dragging = null;
 
-    pendingList.addEventListener("dragstart", (e) => {
-      const target = e.target;
-      if (!(target instanceof Element)) return;
-      const card = target.closest(".noteCard");
-      if (!(card instanceof HTMLElement)) return;
-      if (!card.draggable) return;
+    const setupDnd = (listEl, persistFn) => {
+      listEl.addEventListener("dragstart", (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const card = target.closest(".noteCard");
+        if (!(card instanceof HTMLElement)) return;
+        if (!card.draggable) return;
 
-      dragging = card;
-      card.classList.add("is-dragging");
-      card.setAttribute("aria-grabbed", "true");
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", card.dataset.noteId || "");
-      }
-    });
+        dragging = card;
+        card.classList.add("is-dragging");
+        card.setAttribute("aria-grabbed", "true");
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", card.dataset.noteId || "");
+        }
+      });
 
-    pendingList.addEventListener("dragover", (e) => {
-      if (!dragging) return;
-      e.preventDefault();
-      const after = getDragAfterElement(pendingList, e.clientY);
-      if (!after) {
-        pendingList.appendChild(dragging);
-      } else {
-        pendingList.insertBefore(dragging, after);
-      }
-    });
+      listEl.addEventListener("dragover", (e) => {
+        if (!dragging) return;
+        if (!listEl.contains(dragging)) return;
+        e.preventDefault();
+        const after = getDragAfterElement(listEl, e.clientY);
+        if (!after) {
+          listEl.appendChild(dragging);
+        } else {
+          listEl.insertBefore(dragging, after);
+        }
+      });
 
-    pendingList.addEventListener("drop", (e) => {
-      if (!dragging) return;
-      e.preventDefault();
-    });
+      listEl.addEventListener("drop", (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+      });
 
-    pendingList.addEventListener("dragend", async () => {
-      if (!dragging) return;
-      dragging.classList.remove("is-dragging");
-      dragging.setAttribute("aria-grabbed", "false");
-      dragging = null;
+      listEl.addEventListener("dragend", async () => {
+        if (!dragging) return;
+        const list = dragging.parentElement;
+        const cards = list ? [...list.querySelectorAll(".noteCard[data-note-id]")] : [];
+        const idx = cards.indexOf(dragging);
+        // Update dragged card's priority to match its new position (card above, or below if at top)
+        if (idx >= 0 && idx < cards.length) {
+          const refCard = idx > 0 ? cards[idx - 1] : (cards[idx + 1] || null);
+          if (refCard instanceof HTMLElement) {
+            const refPriority = String(refCard.dataset.priority || "normal");
+            dragging.dataset.priority = refPriority;
+            const priorityBtn = dragging.querySelector("button[data-action='togglePriority']");
+            if (priorityBtn instanceof HTMLElement) {
+              priorityBtn.textContent = `Priority: ${formatPriorityLabel(refPriority)}`;
+              priorityBtn.setAttribute("aria-label", `Priority: ${formatPriorityLabel(refPriority)}. Activate to change.`);
+            }
+          }
+        }
+        dragging.classList.remove("is-dragging");
+        dragging.setAttribute("aria-grabbed", "false");
+        dragging = null;
 
-      persistPendingOrderFromDom(db, activeBoard, pendingList);
-      await persist();
-      await refresh();
-    });
+        if (list === pendingList) {
+          persistPendingOrderFromDom(db, activeBoard, pendingList);
+        } else if (list === completeList) {
+          persistCompleteOrderFromDom(db, activeBoard, completeList);
+        }
+        await persist();
+        await refresh();
+      });
+    };
+
+    setupDnd(pendingList, persistPendingOrderFromDom);
+    setupDnd(completeList, persistCompleteOrderFromDom);
   }
 
   // Autocomplete (new note input): local DB + optional AI completion
@@ -8057,6 +8150,60 @@ async function main() {
         requestAnimationFrame(() => morphCardHeight(card));
         const flipBtn = card.querySelector("button[data-action='flip']");
         if (flipBtn instanceof HTMLElement) safeFocus(flipBtn);
+      }
+      return;
+    }
+
+    if (action === "moveUp" || action === "moveDown") {
+      const noteId = Number(target.dataset.noteId);
+      if (!Number.isFinite(noteId)) return;
+      const card = target.closest(".noteCard[data-note-id]");
+      if (!(card instanceof HTMLElement)) return;
+      const list = card.parentElement;
+      if (!(list instanceof HTMLElement)) return;
+      const cards = [...list.querySelectorAll(".noteCard[data-note-id]")];
+      const idx = cards.indexOf(card);
+      if (idx < 0) return;
+      const swapIdx = action === "moveUp" ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= cards.length) return;
+
+      const otherCard = cards[swapIdx];
+      const cardPriority = String(card.dataset.priority || "normal");
+      const otherPriority = String(otherCard.dataset.priority || "normal");
+
+      if (action === "moveUp") {
+        list.insertBefore(card, otherCard);
+      } else {
+        list.insertBefore(otherCard, card);
+      }
+
+      // Swap priorities so the moved card takes on the priority of its new position
+      card.dataset.priority = otherPriority;
+      otherCard.dataset.priority = cardPriority;
+      const cardPriorityBtn = card.querySelector("button[data-action='togglePriority']");
+      const otherPriorityBtn = otherCard.querySelector("button[data-action='togglePriority']");
+      if (cardPriorityBtn instanceof HTMLElement) {
+        cardPriorityBtn.textContent = `Priority: ${formatPriorityLabel(otherPriority)}`;
+        cardPriorityBtn.setAttribute("aria-label", `Priority: ${formatPriorityLabel(otherPriority)}. Activate to change.`);
+      }
+      if (otherPriorityBtn instanceof HTMLElement) {
+        otherPriorityBtn.textContent = `Priority: ${formatPriorityLabel(cardPriority)}`;
+        otherPriorityBtn.setAttribute("aria-label", `Priority: ${formatPriorityLabel(cardPriority)}. Activate to change.`);
+      }
+
+      const status = card.dataset.status;
+      if (status === "pending") {
+        persistPendingOrderFromDom(db, activeBoard, list);
+      } else {
+        persistCompleteOrderFromDom(db, activeBoard, list);
+      }
+      await persist();
+      await refresh();
+      const cardAfter = document.querySelector(`.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`);
+      if (cardAfter instanceof HTMLElement) {
+        keepCardInView(cardAfter);
+        const btn = cardAfter.querySelector(`button[data-action='${action}']`);
+        if (btn instanceof HTMLElement) safeFocus(btn);
       }
       return;
     }

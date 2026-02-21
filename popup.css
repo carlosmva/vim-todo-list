@@ -862,6 +862,11 @@ body {
   padding: 0 10px 10px;
 }
 
+.noteActionsMoveSpacer {
+  margin-left: 12px;
+  min-width: 0;
+}
+
 .noteBackBody {
   padding: 10px;
   display: flex;

@@ -2,6 +2,8 @@
 
 Chrome extension popup for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly).
 
+![Vim To-Do List showcase](icons/vim-todo-notes-img.png)
+
 Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
 
 ## Features
@@ -9,6 +11,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 - Two columns per board: **Pending** and **Complete**
 - Multiple **boards** via tabs
 - Per-card actions row: **Priority**, **Attachments**, **Notes**, **Delete**, **Mark complete / Move to pending**
+- **Reorder cards**: ↑/↓ buttons or drag-and-drop to move cards up or down within Pending or Complete
 - Priority levels: `low`, `normal`, `high`
   - Text colors: low = black, normal = blue, high = red
   - Cards are always ordered by priority (high → normal → low)
@@ -16,7 +19,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
   - **Export DB** / **Import DB** for full fidelity
   - **Export CSV** with readable values (dates as `MM/DD/YYYY`, `notes_html` exported as readable text)
 - **AI autocompletion (Ollama)**: optional word/phrase suggestions powered by a local LLM
-  - Configure via **AI Settings** in the header (endpoint URL, model name)
+  - Configure via **AI** in the header (endpoint URL, model name)
   - Works alongside local completions (DB, custom words, dictionary)
   - Press `Tab` to accept a suggestion; use arrow keys to cycle through options
 
@@ -36,16 +39,26 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 
 - Type a note in **New note** and click **Add**.
 - Use **Mark complete** / **Move to pending** to move cards between columns.
+- Use **↑** / **↓** or drag-and-drop to reorder cards within Pending or Complete.
 - Use **Attachments** to flip the card and manage links.
 - Use **Notes** to open the rich notes editor for that card.
 - Use **Priority** to cycle `normal → high → low → normal`.
+
+## Themes
+
+- **Light** and **Dark** (default)
+- **Solarized Light** and **Solarized Dark**
+- **Emacs** (classic light gray)
+- **Command Line** (terminal-style: black background, green text, monospace)
+- Click the theme button in the header to cycle through options.
+- Theme preference is stored in the DB and travels with Export DB / Import DB.
 
 ## Keyboard
 
 - Open popup: `Alt+R` (same shortcut regardless of in-app QWERTY/DVORAK mode)
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
 - A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
-- **AI Settings** is available in the header links row (configure an optional local AI endpoint like Ollama).
+- **AI**, **Tabs**, and **About** are available in the header links row.
 - When a word-completion suggestion is shown while typing a new note, press `Tab` to accept it.
 
 ## AI autocompletion (Ollama)
@@ -53,7 +66,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 The extension can use [Ollama](https://ollama.ai) running locally to suggest completions as you type. Completions are contextual and can span words or phrases.
 
 1. **Install Ollama** on your machine and pull a model (e.g. `ollama pull llama3.2`).
-2. Open **AI Settings** from the header and configure:
+2. Open **AI** from the header and configure:
    - **Endpoint base URL**: `http://localhost:11434` (Ollama default)
    - **Model name** (optional): e.g. `llama3.2:latest` — leave blank to use your default Ollama model
 3. Save. The status LED indicates when the endpoint is reachable.
@@ -77,6 +90,13 @@ The extension can use [Ollama](https://ollama.ai) running locally to suggest com
 
 - Notes are stored in a SQLite DB (sql.js) persisted in `chrome.storage.local`.
 - DB bytes are stored as Base64 under `sqliteDb_v1`.
+- Theme and AI settings are stored in the DB and travel with Export DB / Import DB.
+
+## About
+
+**vim-todo-list** by [Northeastern Software Services LLC](https://northeasternsoftware.com/)
+
+- [GitHub](https://github.com/carlosmva/vim-todo-list)
 
 ## Development notes
 

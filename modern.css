@@ -77,6 +77,25 @@
   --modern-muted-on-dark: #93a1a1;
 }
 
+/* Command Line - terminal style (black bg, green text, monospace) */
+[data-theme="command-line"] {
+  --modern-font-sans: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --modern-bg: linear-gradient(160deg, #0a0a0a 0%, #0c0c0c 55%, #0d0d0d 100%);
+  --modern-surface-1: rgba(18, 18, 18, 0.95);
+  --modern-surface-2: #121212;
+  --modern-surface-muted: rgba(24, 24, 24, 0.95);
+  --modern-text: #00ff41;
+  --modern-text-subtle: #00cc33;
+  --modern-border: #1a3d1a;
+  --modern-border-strong: #2d5a2d;
+  --modern-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --modern-shadow-md: 0 8px 22px rgba(0, 0, 0, 0.6);
+  --modern-focus: #00ff41;
+  --modern-link: #00ff41;
+  --modern-link-hover: #33ff66;
+  --modern-muted-on-dark: #00cc33;
+}
+
 /* Emacs - classic default theme (light gray, dark text) */
 [data-theme="emacs"] {
   --modern-bg: linear-gradient(160deg, #f5f5f5 0%, #e8e8e8 55%, #e0e0e0 100%);
@@ -152,7 +171,25 @@ button,
 [data-theme="solarized-dark"] .noteAttachments,
 [data-theme="solarized-dark"] .noteAttachmentsTitle,
 [data-theme="solarized-dark"] .noteBackBody,
-[data-theme="solarized-dark"] .noteText {
+[data-theme="solarized-dark"] .noteText,
+[data-theme="command-line"] body,
+[data-theme="command-line"] .app,
+[data-theme="command-line"] .header,
+[data-theme="command-line"] .create,
+[data-theme="command-line"] .col,
+[data-theme="command-line"] .noteCard,
+[data-theme="command-line"] .instructionsContent,
+[data-theme="command-line"] .instructionsHeader,
+[data-theme="command-line"] .instructionsTitle,
+[data-theme="command-line"] .dashboardTable,
+[data-theme="command-line"] .dashboardTable th,
+[data-theme="command-line"] .dashboardTable td,
+[data-theme="command-line"] .manageTabsMessage,
+[data-theme="command-line"] .manageTabsName,
+[data-theme="command-line"] .noteAttachments,
+[data-theme="command-line"] .noteAttachmentsTitle,
+[data-theme="command-line"] .noteBackBody,
+[data-theme="command-line"] .noteText {
   color: var(--modern-text);
 }
 
@@ -298,7 +335,10 @@ button,
 [data-theme="dark"] textarea,
 [data-theme="solarized-dark"] .bx--text-input,
 [data-theme="solarized-dark"] input,
-[data-theme="solarized-dark"] textarea {
+[data-theme="solarized-dark"] textarea,
+[data-theme="command-line"] .bx--text-input,
+[data-theme="command-line"] input,
+[data-theme="command-line"] textarea {
   color: var(--modern-text);
 }
 
@@ -307,7 +347,10 @@ button,
 [data-theme="dark"] textarea::placeholder,
 [data-theme="solarized-dark"] .bx--text-input::placeholder,
 [data-theme="solarized-dark"] input::placeholder,
-[data-theme="solarized-dark"] textarea::placeholder {
+[data-theme="solarized-dark"] textarea::placeholder,
+[data-theme="command-line"] .bx--text-input::placeholder,
+[data-theme="command-line"] input::placeholder,
+[data-theme="command-line"] textarea::placeholder {
   color: var(--modern-muted-on-dark);
 }
 
@@ -328,12 +371,14 @@ button,
 }
 
 [data-theme="dark"] a,
-[data-theme="solarized-dark"] a {
+[data-theme="solarized-dark"] a,
+[data-theme="command-line"] a {
   color: var(--modern-link);
 }
 
 [data-theme="dark"] a:hover,
-[data-theme="solarized-dark"] a:hover {
+[data-theme="solarized-dark"] a:hover,
+[data-theme="command-line"] a:hover {
   color: var(--modern-link-hover);
 }
 
@@ -346,7 +391,12 @@ button,
 [data-theme="solarized-dark"] .monoLinkButton,
 [data-theme="solarized-dark"] .noteActions .monoLinkButton,
 [data-theme="solarized-dark"] .noteBackButtonsRow .monoLinkButton,
-[data-theme="solarized-dark"] .createButtons .monoLinkButton {
+[data-theme="solarized-dark"] .createButtons .monoLinkButton,
+[data-theme="command-line"] .headerLink,
+[data-theme="command-line"] .monoLinkButton,
+[data-theme="command-line"] .noteActions .monoLinkButton,
+[data-theme="command-line"] .noteBackButtonsRow .monoLinkButton,
+[data-theme="command-line"] .createButtons .monoLinkButton {
   color: var(--modern-text) !important;
 }
 
@@ -358,6 +408,11 @@ button,
 [data-theme="solarized-dark"] .headerLink:hover,
 [data-theme="solarized-dark"] .monoLinkButton:hover:not(:disabled) {
   color: #fdf6e3 !important;
+}
+
+[data-theme="command-line"] .headerLink:hover,
+[data-theme="command-line"] .monoLinkButton:hover:not(:disabled) {
+  color: #33ff66 !important;
 }
 
 .monoLinkButton:focus-visible,
@@ -546,6 +601,13 @@ button,
   --tab-text-active: #fdf6e3;
 }
 
+[data-theme="command-line"] .tabs {
+  --tab-bg: #1a2e1a;
+  --tab-text: #00cc33;
+  --tab-bg-active: #2d5a2d;
+  --tab-text-active: #00ff41;
+}
+
 .tabs .bx--tabs__nav-link:focus,
 .tabs .bx--tabs__nav-link:focus-visible {
   outline: 2px solid var(--modern-focus);
@@ -628,12 +690,23 @@ button,
   color: #93a1a1;
 }
 
+[data-theme="command-line"] .colTitle {
+  color: #00cc33;
+}
+
 [data-theme="solarized-light"] .colTitle {
   color: #586e75;
 }
 
 [data-theme="emacs"] .colTitle {
   color: #333333;
+}
+
+[data-theme="command-line"] .headerTitle {
+  color: #00ff41;
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+  -webkit-text-stroke: 1px #003300;
+  paint-order: stroke fill;
 }
 
 #aboutContent {
@@ -733,6 +806,11 @@ button,
   color: var(--modern-text);
 }
 
+[data-theme="command-line"] .attachmentPill {
+  background: #1a2e1a;
+  color: var(--modern-text);
+}
+
 .noteEditorArea {
   max-height: 220px;
   overflow: auto;
@@ -749,6 +827,11 @@ button,
 [data-theme="solarized-dark"] .noteEditorArea {
   background: #073642;
   color: #839496;
+}
+
+[data-theme="command-line"] .noteEditorArea {
+  background: #0d0d0d;
+  color: #00ff41;
 }
 
 [data-theme="dark"] .noteCard[data-priority="low"] .noteText {
@@ -775,8 +858,21 @@ button,
   color: #dc322f !important;
 }
 
+[data-theme="command-line"] .noteCard[data-priority="low"] .noteText {
+  color: #00cc33 !important;
+}
+
+[data-theme="command-line"] .noteCard[data-priority="normal"] .noteText {
+  color: #00ff41 !important;
+}
+
+[data-theme="command-line"] .noteCard[data-priority="high"] .noteText {
+  color: #ff6b6b !important;
+}
+
 [data-theme="dark"] .instructionsContent kbd,
-[data-theme="solarized-dark"] .instructionsContent kbd {
+[data-theme="solarized-dark"] .instructionsContent kbd,
+[data-theme="command-line"] .instructionsContent kbd {
   color: var(--modern-text);
   border-color: var(--modern-border-strong);
 }
