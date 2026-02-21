@@ -836,6 +836,14 @@ function setNotesHtml(db, noteId, html) {
   stmt.free();
 }
 
+function setNoteText(db, noteId, text) {
+  const stmt = db.prepare(
+    "UPDATE notes SET text = ?, updated_at = ? WHERE id = ?"
+  );
+  stmt.run([String(text || "").trim(), Date.now(), noteId]);
+  stmt.free();
+}
+
 function setStatus(db, board, id, status) {
   const now = Date.now();
   if (status === "pending") {
@@ -1701,6 +1709,7 @@ async function main() {
         <li>${combo("Alt", fmt(focusNewNoteKey))}: focus new note input</li>
         <li>${keycap("/")}: focus card filter for current tab</li>
         <li>${keycap("Enter")}: activate the focused button</li>
+        <li>${keycap("F2")}: rename task (when focus is on a card)</li>
       </ul>
 
       <h3>Notes editor</h3>
@@ -4937,6 +4946,62 @@ async function main() {
     if (!btn && card instanceof HTMLElement) card.scrollIntoView({ block: "nearest" });
   }
 
+  function startRename(card) {
+    if (!(card instanceof HTMLElement)) return;
+    const noteId = Number(card.dataset.noteId);
+    if (!Number.isFinite(noteId)) return;
+    const body = card.querySelector(".noteFace:not(.noteBack) .noteText");
+    if (!(body instanceof HTMLElement)) return;
+    if (card.querySelector(".noteTextRenameInput")) return;
+
+    const currentText = (body.textContent || "").trim();
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "noteTextRenameInput bx--text-input";
+    input.value = currentText;
+    input.setAttribute("aria-label", "Rename task");
+    input.dataset.noteId = String(noteId);
+
+    const focusCard = () => {
+      const c = document.querySelector(
+        `.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`
+      );
+      if (c instanceof HTMLElement) focusCardPrimaryAction(c);
+    };
+
+    const finish = (save) => {
+      input.remove();
+      body.hidden = false;
+      const newText = (input.value || "").trim();
+      if (save && newText) {
+        setNoteText(db, noteId, input.value);
+        refresh().then(focusCard);
+      } else {
+        body.textContent = currentText;
+        focusCard();
+      }
+    };
+
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      }
+    });
+
+    input.addEventListener("blur", () => finish(true));
+
+    body.hidden = true;
+    body.parentNode.insertBefore(input, body);
+    input.focus();
+    input.select();
+  }
+
   function moveCardFocus(delta) {
     const cards = getAllCardsInDomOrder();
     if (!cards.length) return;
@@ -5549,6 +5614,23 @@ async function main() {
         (activeCard && activeCard.classList.contains("is-flipped")
           ? activeCard
           : document.querySelector(".noteCard.is-flipped")) || null;
+
+      // F2: rename task when focus is on a card (front face, not in notes editor)
+      if (
+        e.key === "F2" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        activeCard instanceof HTMLElement &&
+        !inNotesUi &&
+        !activeCard.classList.contains("is-flipped") &&
+        !(activeEl instanceof Element && activeEl.closest(".noteTextRenameInput"))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        startRename(activeCard);
+        return;
+      }
 
       const inAttachmentsUi =
         activeEl instanceof Element &&

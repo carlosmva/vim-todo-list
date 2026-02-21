@@ -710,6 +710,22 @@ body {
   padding: 10px;
 }
 
+.noteTextRenameInput {
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  color: inherit;
+  background: var(--cds-field, #f4f4f4);
+  border: 1px solid var(--cds-border-strong, #393939);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.noteTextRenameInput:focus {
+  outline: 2px solid var(--cds-focus, #0f62fe);
+  outline-offset: -2px;
+}
+
 /* Priority styling (color-code note text)
    low: black, normal: blue, high: red */
 .noteCard[data-priority="low"] .noteText {
