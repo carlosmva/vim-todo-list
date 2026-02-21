@@ -834,6 +834,24 @@ button,
   color: #00ff41;
 }
 
+[data-theme="dark"] .noteTextRenameInput {
+  background: #1b2433;
+  color: #e8eef8;
+  border-color: var(--modern-border-strong);
+}
+
+[data-theme="solarized-dark"] .noteTextRenameInput {
+  background: #073642;
+  color: #839496;
+  border-color: var(--modern-border-strong);
+}
+
+[data-theme="command-line"] .noteTextRenameInput {
+  background: #0d0d0d;
+  color: #00ff41;
+  border-color: var(--modern-border-strong);
+}
+
 [data-theme="dark"] .noteCard[data-priority="low"] .noteText {
   color: #d7e2f1 !important;
 }
