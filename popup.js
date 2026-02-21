@@ -2193,8 +2193,14 @@ async function main() {
 
   function buildAiAutocompletePrompt(prefixText) {
     const raw = String(prefixText || "");
-    const MAX_CONTEXT_CHARS = 1800;
-    const context = raw.length > MAX_CONTEXT_CHARS ? raw.slice(raw.length - MAX_CONTEXT_CHARS) : raw;
+    const MAX_CONTEXT_WORDS = 50;
+    const trimmed = raw.trimEnd();
+    const trailingSpace = raw.length > trimmed.length ? raw.slice(trimmed.length) : "";
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    const context =
+      words.length > MAX_CONTEXT_WORDS
+        ? words.slice(-MAX_CONTEXT_WORDS).join(" ") + trailingSpace
+        : raw;
     const endsWithSentencePunct = /[.!?…]+$/.test(String(context || "").trimEnd());
     const endsWithWhitespace = /\s$/.test(context);
     const lastTokenMatch = String(context || "").match(/(\S+)$/);
@@ -2256,8 +2262,8 @@ async function main() {
             ? "end-of-word"
             : "mid-word";
 
-    const words = Array.isArray(aiCustomWords) ? aiCustomWords.filter((w) => typeof w === "string" && w.trim()) : [];
-    const custom = words.length ? `\nPreferred terms (if relevant): ${words.slice(0, 40).join(", ")}` : "";
+    const customWords = Array.isArray(aiCustomWords) ? aiCustomWords.filter((w) => typeof w === "string" && w.trim()) : [];
+    const custom = customWords.length ? `\nPreferred terms (if relevant): ${customWords.slice(0, 40).join(", ")}` : "";
 
     return (
       "You are an autocomplete engine for a TODO note editor.\n" +
