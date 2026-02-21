@@ -1456,14 +1456,17 @@ async function main() {
 
   const notesView = document.getElementById("notesView");
   const instructionsView = document.getElementById("instructionsView");
+  const aboutView = document.getElementById("aboutView");
   const dashboardView = document.getElementById("dashboardView");
   const aiSettingsView = document.getElementById("aiSettingsView");
   const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
+  const aboutLink = document.getElementById("aboutLink");
   const aiSettingsLink = document.getElementById("aiSettingsLink");
   const manageTabsLink = document.getElementById("manageTabsLink");
   const themeToggle = document.getElementById("themeToggle");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
+  const closeAboutBtn = document.getElementById("closeAboutBtn");
   const closeDashboardBtn = document.getElementById("closeDashboardBtn");
   const closeAiSettingsBtn = document.getElementById("closeAiSettingsBtn");
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
@@ -1530,6 +1533,7 @@ async function main() {
   function showNotesView() {
     if (notesView instanceof HTMLElement) notesView.hidden = false;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
@@ -1538,6 +1542,16 @@ async function main() {
   function showInstructionsView() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = false;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
+  }
+
+  function showAboutView() {
+    if (notesView instanceof HTMLElement) notesView.hidden = true;
+    if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = false;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
@@ -1546,6 +1560,7 @@ async function main() {
   function showDashboardView() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = false;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
@@ -1554,6 +1569,7 @@ async function main() {
   function showAiSettingsView() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = false;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
@@ -1562,21 +1578,25 @@ async function main() {
   function showManageTabsView() {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
 
   const keyLayoutToggle = document.getElementById("keyLayoutToggle");
+  const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs"];
+  const THEME_LABELS = { light: "Light", dark: "Dark", "solarized-light": "Solarized", "solarized-dark": "Solarized Dark", emacs: "Emacs" };
   let theme = (await loadTheme()) || "light";
+  if (!THEME_ORDER.includes(theme)) theme = "light";
   if ((await loadTheme()) === null) await saveTheme(theme);
 
   function applyTheme(t) {
-    const value = t === "dark" ? "dark" : "light";
+    const value = THEME_ORDER.includes(t) ? t : "light";
     document.documentElement.setAttribute("data-theme", value);
     if (themeToggle instanceof HTMLElement) {
-      themeToggle.textContent = value === "dark" ? "Dark" : "Light";
-      themeToggle.setAttribute("aria-label", `Theme: ${value}. Click to switch.`);
+      themeToggle.textContent = THEME_LABELS[value] || value;
+      themeToggle.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}. Click to switch.`);
     }
   }
 
@@ -2196,10 +2216,10 @@ async function main() {
     const MAX_CONTEXT_WORDS = 50;
     const trimmed = raw.trimEnd();
     const trailingSpace = raw.length > trimmed.length ? raw.slice(trimmed.length) : "";
-    const words = trimmed.split(/\s+/).filter(Boolean);
+    const contextWords = trimmed.split(/\s+/).filter(Boolean);
     const context =
-      words.length > MAX_CONTEXT_WORDS
-        ? words.slice(-MAX_CONTEXT_WORDS).join(" ") + trailingSpace
+      contextWords.length > MAX_CONTEXT_WORDS
+        ? contextWords.slice(-MAX_CONTEXT_WORDS).join(" ") + trailingSpace
         : raw;
     const endsWithSentencePunct = /[.!?…]+$/.test(String(context || "").trimEnd());
     const endsWithWhitespace = /\s$/.test(context);
@@ -2339,7 +2359,8 @@ async function main() {
 
   if (themeToggle instanceof HTMLElement) {
     themeToggle.addEventListener("click", async () => {
-      theme = theme === "dark" ? "light" : "dark";
+      const idx = THEME_ORDER.indexOf(theme);
+      theme = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
       applyTheme(theme);
       await saveTheme(theme);
     });
@@ -3326,13 +3347,13 @@ async function main() {
       // dictionary suggestions (avoids recommending obscure terms).
       const shapePrefix = prefix.replace(/[^a-z]/g, "");
       if (shapePrefix.length >= 3 && scoreEnglishTokenShapeLowercase(shapePrefix) < -2) return null;
-      const words = englishDictWords;
+      const dictWords = englishDictWords;
 
       let lo = 0;
-      let hi = words.length;
+      let hi = dictWords.length;
       while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (words[mid] < prefix) lo = mid + 1;
+        if (dictWords[mid] < prefix) lo = mid + 1;
         else hi = mid;
       }
 
@@ -3345,8 +3366,8 @@ async function main() {
       const maxCompletionLen = Math.max(8, Math.min(18, token.length + 6));
 
       // Scan a small window of matches; rank by commonness + short completion.
-      for (let i = lo; i < words.length; i++) {
-        const w = words[i];
+      for (let i = lo; i < dictWords.length; i++) {
+        const w = dictWords[i];
         if (!w.startsWith(prefix)) break;
         if (w.length <= token.length) continue;
 
@@ -3384,10 +3405,10 @@ async function main() {
       if (token.length < 2) return null;
 
       const prefix = token.toLowerCase();
-      const words = Array.isArray(aiCustomWords) ? aiCustomWords : [];
+      const wordList = Array.isArray(aiCustomWords) ? aiCustomWords : [];
 
       let best = "";
-      for (const w0 of words) {
+      for (const w0 of wordList) {
         const w = String(w0 || "").trim();
         if (!w) continue;
         if (w.length <= token.length) continue;
@@ -3421,8 +3442,8 @@ async function main() {
           const t = String(row.text || "");
           const updatedAt = Number(row.updated_at);
 
-          const words = t.match(/[A-Za-z0-9_-]+/g) || [];
-          for (const w of words) {
+          const tokens = t.match(/[A-Za-z0-9_-]+/g) || [];
+          for (const w of tokens) {
             if (!w) continue;
             if (w.length <= token.length) continue;
             if (w.slice(0, token.length).toLowerCase() !== tokenLower) continue;
@@ -4331,6 +4352,13 @@ async function main() {
       if (closeInstructionsBtn instanceof HTMLElement) closeInstructionsBtn.focus();
     });
   }
+  if (aboutLink instanceof HTMLElement) {
+    aboutLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      showAboutView();
+      if (closeAboutBtn instanceof HTMLElement) closeAboutBtn.focus();
+    });
+  }
 
   // AI Settings view toggle
   if (aiSettingsLink instanceof HTMLElement) {
@@ -4382,6 +4410,13 @@ async function main() {
   }
   if (closeInstructionsBtn instanceof HTMLElement) {
     closeInstructionsBtn.addEventListener("click", () => {
+      showNotesView();
+      const input = document.getElementById("noteText");
+      if (input instanceof HTMLElement) input.focus();
+    });
+  }
+  if (closeAboutBtn instanceof HTMLElement) {
+    closeAboutBtn.addEventListener("click", () => {
       showNotesView();
       const input = document.getElementById("noteText");
       if (input instanceof HTMLElement) input.focus();
@@ -5185,20 +5220,24 @@ async function main() {
     const manageTabsLink = document.getElementById("manageTabsLink");
     const keyLayoutToggle = document.getElementById("keyLayoutToggle");
     const instructionsLink = document.getElementById("instructionsLink");
+    const aboutLink = document.getElementById("aboutLink");
     if (themeToggle instanceof HTMLElement) targets.push(themeToggle);
     if (aiSettingsLink instanceof HTMLElement) targets.push(aiSettingsLink);
     if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
     if (keyLayoutToggle instanceof HTMLElement) targets.push(keyLayoutToggle);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
+    if (aboutLink instanceof HTMLElement) targets.push(aboutLink);
 
     const notesView = document.getElementById("notesView");
     const instructionsView = document.getElementById("instructionsView");
+    const aboutView = document.getElementById("aboutView");
     const dashboardView = document.getElementById("dashboardView");
     const aiSettingsView = document.getElementById("aiSettingsView");
     const manageTabsView = document.getElementById("manageTabsView");
 
     const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
     const instructionsVisible = instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
+    const aboutVisible = aboutView instanceof HTMLElement && !aboutView.hasAttribute("hidden");
     const dashboardVisible = dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
     const aiSettingsVisible = aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
     const manageTabsVisible = manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
@@ -5228,6 +5267,11 @@ async function main() {
 
     if (instructionsVisible) {
       const closeBtn = document.getElementById("closeInstructionsBtn");
+      if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+    }
+
+    if (aboutVisible) {
+      const closeBtn = document.getElementById("closeAboutBtn");
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
     }
 
@@ -5858,6 +5902,7 @@ async function main() {
         if (inHeaderLinks) {
           const notesView = document.getElementById("notesView");
           const instructionsView = document.getElementById("instructionsView");
+          const aboutView = document.getElementById("aboutView");
           const dashboardView = document.getElementById("dashboardView");
           const aiSettingsView = document.getElementById("aiSettingsView");
           const manageTabsView = document.getElementById("manageTabsView");
@@ -5865,6 +5910,7 @@ async function main() {
           const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
           const instructionsVisible =
             instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
+          const aboutVisible = aboutView instanceof HTMLElement && !aboutView.hasAttribute("hidden");
           const dashboardVisible =
             dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
           const aiSettingsVisible =
@@ -5898,6 +5944,12 @@ async function main() {
 
           if (instructionsVisible) {
             const closeBtn = document.getElementById("closeInstructionsBtn");
+            if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
+            return;
+          }
+
+          if (aboutVisible) {
+            const closeBtn = document.getElementById("closeAboutBtn");
             if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
             return;
           }
@@ -6882,14 +6934,14 @@ async function main() {
 
         const prefix = token.toLowerCase();
         if (scoreEnglishTokenShapeLowercase(prefix) < 0.75) return null;
-        const words = englishDictWords;
+        const dictWords = englishDictWords;
 
         // Binary search for first word >= prefix.
         let lo = 0;
-        let hi = words.length;
+        let hi = dictWords.length;
         while (lo < hi) {
           const mid = (lo + hi) >> 1;
-          if (words[mid] < prefix) lo = mid + 1;
+          if (dictWords[mid] < prefix) lo = mid + 1;
           else hi = mid;
         }
 
@@ -6901,8 +6953,8 @@ async function main() {
         // completing the current word, not replacing it with a long rare term.
         const maxCompletionLen = Math.max(6, Math.min(12, token.length + 3));
 
-        for (let i = lo; i < words.length; i++) {
-          const w = words[i];
+        for (let i = lo; i < dictWords.length; i++) {
+          const w = dictWords[i];
           if (!w.startsWith(prefix)) break;
           if (w.length <= token.length) continue;
 
@@ -6940,10 +6992,10 @@ async function main() {
         if (token.length < 2) return null;
 
         const prefix = token.toLowerCase();
-        const words = Array.isArray(aiCustomWords) ? aiCustomWords : [];
+        const wordList = Array.isArray(aiCustomWords) ? aiCustomWords : [];
 
         let best = "";
-        for (const w0 of words) {
+        for (const w0 of wordList) {
           const w = String(w0 || "").trim();
           if (!w) continue;
           if (w.length <= token.length) continue;
@@ -7498,8 +7550,8 @@ async function main() {
             const t = String(row.text || "");
             const updatedAt = Number(row.updated_at);
 
-            const words = t.match(/[A-Za-z0-9_-]+/g) || [];
-            for (const w of words) {
+            const tokens = t.match(/[A-Za-z0-9_-]+/g) || [];
+            for (const w of tokens) {
               if (!w) continue;
               if (w.length <= token.length) continue;
               if (w.slice(0, token.length).toLowerCase() !== tokenLower) continue;

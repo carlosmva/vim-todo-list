@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vim Todo List</title>
+    <link href="https://db.onlinewebfonts.com/c/02ed244366f143349129a8f2e39872a6?family=Kelvinized+Normal" rel="stylesheet" />
     <link rel="stylesheet" href="vendor/carbon.min.css" />
     <link rel="stylesheet" href="popup.css" />
     <link rel="stylesheet" href="modern.css" />
@@ -19,6 +20,7 @@
             <a id="manageTabsLink" class="headerLink" href="#" aria-label="Manage Tabs">Manage Tabs</a>
             <button id="keyLayoutToggle" class="headerLink" type="button" aria-label="Keyboard layout"></button>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
+            <a id="aboutLink" class="headerLink" href="#" aria-label="About">About</a>
           </div>
         </div>
       </header>
@@ -103,6 +105,25 @@
             </button>
           </div>
           <div id="instructionsContent" class="instructionsContent"></div>
+        </div>
+
+        <div id="aboutView" class="view" aria-label="About" hidden>
+          <div class="instructionsHeader">
+            <div class="instructionsTitle">About</div>
+            <button id="closeAboutBtn" class="monoLinkButton" type="button">
+              Close
+            </button>
+          </div>
+          <div id="aboutContent" class="instructionsContent">
+            <p class="aboutAppName">vim-todo-list</p>
+            <p class="aboutBy">by</p>
+            <p class="aboutCompany">
+              <a href="https://northeasternsoftware.com/" target="_blank" rel="noopener noreferrer">Northeastern Software Services LLC</a>
+            </p>
+            <p class="aboutRepo">
+              <a href="https://github.com/carlosmva/vim-todo-list" target="_blank" rel="noopener noreferrer">GitHub</a>
+            </p>
+          </div>
         </div>
 
         <div id="dashboardView" class="view" aria-label="Dashboard" hidden>
