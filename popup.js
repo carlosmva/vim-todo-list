@@ -11,6 +11,25 @@ const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
 const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line"];
 
+const isMac =
+  typeof navigator !== "undefined" &&
+  (/Mac|iPod|iPhone|iPad/.test(navigator.platform) ||
+    (navigator.userAgentData && navigator.userAgentData.platform === "macOS"));
+
+function modKeyLabel() {
+  return isMac ? "⌘" : "Alt";
+}
+
+function modKeyActive(e) {
+  if (!e) return false;
+  return isMac ? !!e.metaKey : !!e.altKey;
+}
+
+function modKeyOnly(e) {
+  if (!e) return false;
+  return modKeyActive(e) && !e.ctrlKey && (isMac ? !e.altKey : !e.metaKey);
+}
+
 const openNoteEditorIds = new Set();
 const flippedNoteIds = new Set();
 let cardFilterQuery = "";
@@ -276,6 +295,30 @@ function normalizeEndpointBaseUrl(raw) {
   return out;
 }
 
+function isExternalAiHost(baseUrl) {
+  try {
+    const u = new URL(String(baseUrl || ""));
+    const host = String(u.hostname || "").toLowerCase();
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0";
+  } catch {
+    return false;
+  }
+}
+
+function getOriginForPermission(baseUrl) {
+  try {
+    const u = new URL(String(baseUrl || ""));
+    u.pathname = "/";
+    u.search = "";
+    u.hash = "";
+    let out = u.toString();
+    if (!out.endsWith("/")) out += "/";
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 function getOllamaOriginsHintFor403(baseUrl) {
   // Ollama blocks cross-origin requests by default except for a small allowlist.
   // Browser extensions send an Origin like chrome-extension://<id>, while PowerShell does not.
@@ -286,6 +329,7 @@ function getOllamaOriginsHintFor403(baseUrl) {
     if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
       return " (Ollama: set OLLAMA_ORIGINS=chrome-extension://* and restart Ollama)";
     }
+    return " (Ollama: set OLLAMA_ORIGINS=chrome-extension://* and restart Ollama on the server)";
   } catch {
     // ignore
   }
@@ -1689,24 +1733,26 @@ async function main() {
     const fmt = (k) => String(k || "").toUpperCase();
     const keycap = (text) => `<kbd>${String(text || "")}</kbd>`;
     const combo = (...keys) => keys.map((k) => keycap(k)).join(`<span class="keycapSep">+</span>`);
+    const mod = modKeyLabel();
 
     instructionsContent.innerHTML = `
       <h3>AI (Ollama)</h3>
       <ul>
         <li>If AI is enabled and the status LED gets stuck on “checking”, confirm Ollama is running and reachable at your configured URL</li>
-        <li>If you see 403 errors, allow extension origins and restart Ollama: ${keycap('setx OLLAMA_ORIGINS "chrome-extension://*"')}</li>
+        <li>For localhost 403 errors: allow extension origins and restart Ollama (Windows: ${keycap('setx OLLAMA_ORIGINS "chrome-extension://*"')}; Mac/Linux: ${keycap('export OLLAMA_ORIGINS="chrome-extension://*"')})</li>
+        <li>For external hosts: enter the full URL (e.g. http://server:11434). Chrome will prompt for permission when you save.</li>
       </ul>
 
       <h3>Navigation</h3>
       <ul>
-        <li>${combo("Alt", fmt(openPopupKey))}: open the popup</li>
+        <li>${combo(mod, fmt(openPopupKey))}: open the popup</li>
         <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
         <li><b>AI</b>: focus the AI header link and press Enter</li>
-        <li>${combo("Alt", fmt(nav.down))}: move down</li>
-        <li>${combo("Alt", fmt(nav.up))}: move up</li>
-        <li>${combo("Alt", fmt(nav.left))}: move left (not in notes)</li>
-        <li>${combo("Alt", fmt(nav.right))}: move right (not in notes)</li>
-        <li>${combo("Alt", fmt(focusNewNoteKey))}: focus new note input</li>
+        <li>${combo(mod, fmt(nav.down))}: move down</li>
+        <li>${combo(mod, fmt(nav.up))}: move up</li>
+        <li>${combo(mod, fmt(nav.left))}: move left (not in notes)</li>
+        <li>${combo(mod, fmt(nav.right))}: move right (not in notes)</li>
+        <li>${combo(mod, fmt(focusNewNoteKey))}: focus new note input</li>
         <li>${keycap("/")}: focus card filter for current tab</li>
         <li>${keycap("Enter")}: activate the focused button</li>
         <li>${keycap("F2")}: rename task (when focus is on a card)</li>
@@ -1715,14 +1761,14 @@ async function main() {
       <h3>Notes editor</h3>
       <ul>
         <li>${keycap(":x")}: close notes editor or close flipped attachments</li>
-        <li>${combo("Alt", fmt(checkboxKey))}: toggle crossed-out (strikethrough) text for the line</li>
+        <li>${combo(mod, fmt(checkboxKey))}: toggle crossed-out (strikethrough) text for the line</li>
         <li>${keycap("Esc")}: insert → normal, visual → normal, normal → close notes</li>
         <li>${keycap("u")}: (normal mode) undo last change</li>
         <li>${keycap("v")}: (normal mode) enter visual selection mode</li>
         <li>${keycap("y")}: (visual mode) yank selection to a register</li>
         <li>${keycap("c")}: (visual mode) cut selection (yank + delete) and enter insert mode</li>
         <li>${keycap("↑")}/${keycap("↓")}/${keycap("←")}/${keycap("→")}: (visual mode) extend selection without Shift</li>
-        <li>${combo("Alt", fmt(nav.up))}/${combo("Alt", fmt(nav.down))}/${combo("Alt", fmt(nav.left))}/${combo("Alt", fmt(nav.right))}: (visual mode) extend selection (layout-dependent keys)</li>
+        <li>${combo(mod, fmt(nav.up))}/${combo(mod, fmt(nav.down))}/${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))}: (visual mode) extend selection (layout-dependent keys)</li>
         <li>${keycap('"')} + ${keycap("1")}/${keycap("2")}/${keycap("3")}/${keycap("4")}: choose register for the next yank/paste</li>
         <li>${keycap('"')} + ${keycap("+")}: use the system clipboard register for the next yank/cut</li>
         <li>${keycap("p")}: (normal mode) paste register at caret and enter insert mode</li>
@@ -1738,7 +1784,7 @@ async function main() {
       <ul>
         <li>Local suggestions appear while typing in the new note input</li>
         <li>${keycap("Tab")}: accept the “Complete:” recommendation when shown (otherwise stays in the New note field)</li>
-        <li>${combo("Alt", fmt(nav.down))}/${combo("Alt", fmt(nav.up))}: move through visible suggestions</li>
+        <li>${combo(mod, fmt(nav.down))}/${combo(mod, fmt(nav.up))}: move through visible suggestions</li>
       </ul>
     `;
   }
@@ -4568,6 +4614,27 @@ async function main() {
       const modelRaw = aiEndpointModelInput instanceof HTMLInputElement ? aiEndpointModelInput.value : "";
       const modelName = String(modelRaw || "").trim();
 
+      if (normalized && isExternalAiHost(normalized)) {
+        const origin = getOriginForPermission(normalized);
+        if (origin && chrome.permissions) {
+          try {
+            const granted = await chrome.permissions.request({ origins: [origin] });
+            if (!granted) {
+              setAiSettingsMessage(
+                "Permission denied for external host. The extension cannot reach the AI server." +
+                  " Grant it in chrome://extensions (Details → Site access) or leave empty to disable."
+              );
+              return;
+            }
+          } catch (err) {
+            setAiSettingsMessage(
+              `Could not request permission for ${normalized}: ${err instanceof Error ? err.message : String(err)}`
+            );
+            return;
+          }
+        }
+      }
+
       try {
         aiEndpointBaseUrl = await saveAiEndpointBaseUrl(normalized);
         aiCustomWords = await saveAiCustomWords(parsed.valid);
@@ -5514,11 +5581,11 @@ async function main() {
     return false;
   }
 
-  // Prevent Alt alone from activating browser menu and closing the popup
+  // Prevent modifier alone (Alt on Win/Linux, ⌘ on Mac) from activating browser menu and closing the popup
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.key === "Alt" && e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (modKeyActive(e) && (e.key === "Alt" || e.key === "Meta") && !e.ctrlKey && (isMac ? !e.altKey : !e.metaKey)) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -5533,9 +5600,9 @@ async function main() {
       const nav = getNavKeys(keyLayout);
 
       // Autocomplete suggestion navigation (capture-phase):
-      // When suggestions are visible for the New note input, Alt+Up/Alt+Down should
+      // When suggestions are visible for the New note input, mod+Up/mod+Down should
       // traverse the suggestion buttons rather than moving global focus.
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === nav.down || key === nav.up)) {
+      if (modKeyOnly(e) && (key === nav.down || key === nav.up)) {
         const activeEl0 = document.activeElement;
         const noteTextInput = document.getElementById("noteText");
 
@@ -5620,7 +5687,7 @@ async function main() {
         e.key === "F2" &&
         !e.ctrlKey &&
         !e.metaKey &&
-        !e.altKey &&
+        !modKeyActive(e) &&
         activeCard instanceof HTMLElement &&
         !inNotesUi &&
         !activeCard.classList.contains("is-flipped") &&
@@ -5642,7 +5709,7 @@ async function main() {
       // - If the editor is in insert mode, Esc exits to normal mode.
       // - If the editor is in visual mode, Esc exits to normal mode.
       // - If already in normal mode, Esc closes the notes editor.
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Escape" && inNotesUi) {
+      if (!e.ctrlKey && !e.metaKey && !modKeyActive(e) && e.key === "Escape" && inNotesUi) {
         e.preventDefault();
         e.stopPropagation();
 
@@ -5691,7 +5758,7 @@ async function main() {
       }
 
       // Attachments exit command: :x (non-typing contexts)
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && inAttachmentsUi) {
+      if (!e.ctrlKey && !e.metaKey && !modKeyActive(e) && inAttachmentsUi) {
         const typingTarget = activeEl && isEditableElement(activeEl);
 
         if (attachmentsExitPending) {
@@ -5734,7 +5801,7 @@ async function main() {
 
       // Attachments navigation (flipped card)
       // Allow the same directional mappings to traverse back-side controls.
-      if (inAttachmentsUi && e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (inAttachmentsUi && modKeyOnly(e)) {
         const isUp = key === nav.up;
         const isDown = key === nav.down;
         const isLeft = key === nav.left;
@@ -5791,13 +5858,11 @@ async function main() {
         }
       }
 
-      // Alt+<layout key> (within notes): insert/toggle checkbox at line start.
+      // mod+<layout key> (within notes): insert/toggle checkbox at line start.
       const checkboxKey = getNotesCheckboxKey(keyLayout);
       if (
         inNotesUi &&
-        e.altKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
+        modKeyOnly(e) &&
         key === checkboxKey
       ) {
         const editor = activeEl instanceof Element ? activeEl.closest(".noteEditorArea") : null;
@@ -5810,12 +5875,10 @@ async function main() {
         }
       }
 
-      // While in notes, Alt+<nav key> should move caret in insert mode, not trigger navigation
+      // While in notes, mod+<nav key> should move caret in insert mode, not trigger navigation
       if (
         inNotesUi &&
-        e.altKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
+        modKeyOnly(e) &&
         (key === nav.left || key === nav.right || key === nav.up || key === nav.down)
       ) {
         // Do not handle navigation if this is the checkbox key (let the checkbox handler above run it)
@@ -5856,7 +5919,7 @@ async function main() {
 
       // Notes exit command: :x
       // We avoid stealing ':' unless focus is in a notes editor.
-      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!e.ctrlKey && !e.metaKey && !modKeyActive(e)) {
         const inNotesEditor =
           activeEl instanceof Element &&
           (activeEl.closest(".noteEditorArea") || activeEl.closest(".noteEditorToolbar"));
@@ -5946,7 +6009,7 @@ async function main() {
         }
       }
 
-      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      if (!modKeyActive(e) || e.ctrlKey || e.metaKey) return;
 
       const focusNewNoteKey = getFocusNewNoteKey(keyLayout);
       if (key === focusNewNoteKey) {
@@ -6420,14 +6483,14 @@ async function main() {
       active instanceof HTMLTextAreaElement ||
       (active instanceof HTMLElement && active.isContentEditable);
 
-    if (!e.altKey && isTypingTarget) return;
+    if (!modKeyActive(e) && isTypingTarget) return;
 
     const idx = Number(key) - 1;
     const board = boards[idx];
     if (!board) return;
 
     e.preventDefault();
-    if (e.altKey) lastBoardShortcutAt = Date.now();
+    if (modKeyActive(e)) lastBoardShortcutAt = Date.now();
     void activateBoard(board, { persistSelection: true });
   });
 
@@ -6435,7 +6498,7 @@ async function main() {
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.key !== "Escape" || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key !== "Escape" || modKeyActive(e) || e.ctrlKey || e.metaKey) return;
       if (window.parent === window) return;
       try {
         window.parent.postMessage({ type: "vim-todo-close" }, "*");
@@ -6450,7 +6513,7 @@ async function main() {
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.key !== "/" || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key !== "/" || modKeyActive(e) || e.ctrlKey || e.metaKey) return;
       const active = document.activeElement;
       const isTypingTarget =
         active instanceof HTMLInputElement ||
@@ -6498,7 +6561,7 @@ async function main() {
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.ctrlKey || e.metaKey || modKeyActive(e)) return;
 
       const target = e.target;
       const directEditor = getActiveNotesEditorFromEventTarget(target);
@@ -8024,7 +8087,7 @@ async function main() {
 
       input.addEventListener("keydown", (e) => {
         // Navigate suggestions using existing Alt+Up/Alt+Down keybindings.
-        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (modKeyOnly(e)) {
           const nav = getNavKeys(keyLayout);
           const key = (e.key || "").toLowerCase();
           const btns = getSuggestionButtons();
@@ -8056,7 +8119,7 @@ async function main() {
 
       // Allow Alt+Up/Alt+Down to continue navigating while focus is on a suggestion button.
       container.addEventListener("keydown", (e) => {
-        if (!e.altKey || e.ctrlKey || e.metaKey) return;
+        if (!modKeyActive(e) || e.ctrlKey || e.metaKey) return;
         const nav = getNavKeys(keyLayout);
         const key = (e.key || "").toLowerCase();
         if (key !== nav.down && key !== nav.up) return;
