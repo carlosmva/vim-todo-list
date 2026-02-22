@@ -1739,8 +1739,8 @@ async function main() {
       <h3>AI (Ollama)</h3>
       <ul>
         <li>If AI is enabled and the status LED gets stuck on “checking”, confirm Ollama is running and reachable at your configured URL</li>
-        <li>For localhost 403 errors: allow extension origins and restart Ollama (Windows: ${keycap('setx OLLAMA_ORIGINS "chrome-extension://*"')}; Mac/Linux: ${keycap('export OLLAMA_ORIGINS="chrome-extension://*"')})</li>
-        <li>For external hosts: enter the full URL (e.g. http://server:11434). Chrome will prompt for permission when you save.</li>
+        <li>For external/remote hosts: enter the full URL (e.g. http://server:11434). Chrome will prompt for permission when you save.</li>
+        <li><b>403 errors</b>: Ollama blocks extension origins by default. Set OLLAMA_ORIGINS on the <b>machine running Ollama</b> (local or remote), then restart Ollama. Windows: ${keycap('setx OLLAMA_ORIGINS "chrome-extension://*"')}; Mac/Linux: ${keycap('export OLLAMA_ORIGINS="chrome-extension://*"')}; systemd: add Environment="OLLAMA_ORIGINS=chrome-extension://*" to the service.</li>
       </ul>
 
       <h3>Navigation</h3>
@@ -1991,111 +1991,40 @@ async function main() {
   }
 
   async function probeOllamaHealth(baseUrl, timeoutMs = 30000, externalSignal, modelOverride) {
-    const url = new URL("/api/tags", baseUrl).toString();
-    const controller = new AbortController();
-    let timedOut = false;
-    let stage = "tags";
-
-    if (externalSignal) {
-      try {
-        if (externalSignal.aborted) controller.abort();
-        else {
-          externalSignal.addEventListener(
-            "abort",
-            () => {
-              try {
-                controller.abort();
-              } catch {
-                // ignore
-              }
-            },
-            { once: true }
-          );
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    const timeout = setTimeout(() => {
-      try {
-        timedOut = true;
-        controller.abort();
-      } catch {
-        // ignore
-      }
-    }, Math.max(50, Number(timeoutMs) || 1500));
-    try {
-      stage = "tags";
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`Ollama tags failed: ${res.status}`);
-      const data = await res.json();
-      const models = Array.isArray(data?.models)
-        ? data.models
-            .map((m) => String(m?.name || "").trim())
-            .filter(Boolean)
-        : [];
-      const defaultName = models[0] || "";
-      if (!defaultName) throw new Error("No Ollama models found");
-
-      const override = String(modelOverride || "").trim();
-      if (override && !models.includes(override)) {
-        const e = new Error(`Model not found: ${override}`);
-        e.code = "model_not_found";
+    // Route through background script to avoid mixed-content blocking when the popup
+    // runs in an iframe on HTTPS pages (e.g. google.com overlay).
+    const abortPromise = externalSignal
+      ? new Promise((_, reject) => {
+          if (externalSignal.aborted) reject(new Error("aborted"));
+          else externalSignal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        })
+      : null;
+    const msgPromise = chrome.runtime.sendMessage({
+      type: "probeOllama",
+      baseUrl,
+      modelOverride: modelOverride || "",
+      timeoutMs: Math.max(50, Number(timeoutMs) || 1500)
+    });
+    const result = await Promise.race(
+      abortPromise ? [msgPromise, abortPromise] : [msgPromise]
+    ).catch((err) => {
+      if (String(err?.message || "").includes("aborted")) {
+        const e = new Error("aborted");
+        e.name = "AbortError";
         throw e;
       }
-
-      const name = override || defaultName;
-
-      // Also verify /api/generate works, since tags can succeed while generate is blocked (e.g. 403).
-      stage = "generate";
-      const genUrl = new URL("/api/generate", baseUrl).toString();
-      const genRes = await fetch(genUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: name, prompt: "ok", stream: false, options: { num_predict: 1 } }),
-        signal: controller.signal
-      });
-      if (!genRes.ok) {
-        let body = "";
-        try {
-          body = String((await genRes.text()) || "");
-        } catch {
-          body = "";
-        }
-        const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
-        const err = new Error(`Ollama generate failed: ${genRes.status}${snippet}`);
-        err.status = genRes.status;
-        err.body = body;
-        throw err;
-      }
-
-      // Best-effort: ensure response shape looks right.
-      try {
-        const genData = await genRes.json();
-        const r = typeof genData?.response === "string" ? genData.response : "";
-        if (!r && r !== "") {
-          throw new Error("Ollama generate returned unexpected response");
-        }
-      } catch {
-        // ignore JSON parsing issues; the HTTP 2xx already indicates the endpoint is reachable.
-      }
-
-      return { ok: true, model: name };
-    } catch (err) {
-      const isAbort = String(err?.name || "")
-        .toLowerCase()
-        .includes("abort");
-      if (isAbort && timedOut) {
-        const e = new Error(`Ollama health check timed out (${stage})`);
-        e.code = "timeout";
-        e.stage = stage;
-        throw e;
-      }
+      return { error: { message: err?.message || "not working" } };
+    });
+    if (result?.error) {
+      const e = result.error;
+      const err = new Error(e.message || "not working");
+      err.code = e.code;
+      err.status = e.status;
+      err.body = e.body;
+      err.stage = e.stage;
       throw err;
-    } finally {
-      clearTimeout(timeout);
     }
+    return result?.ok ? { ok: true, model: result.model } : result;
   }
 
   function queueAiSettingsHealthCheck({ delayMs = 250 } = {}) {
@@ -3835,11 +3764,43 @@ async function main() {
       return { baseText: base, completion: r };
     };
 
+    const ollamaFetchViaBackground = async (url, opts) => {
+      const { method = "GET", body, signal, timeoutMs = 60000 } = opts || {};
+      const abortPromise = signal
+        ? new Promise((_, reject) => {
+            if (signal.aborted) reject(new DOMException("aborted", "AbortError"));
+            signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {
+              once: true
+            });
+          })
+        : null;
+      const msgPromise = chrome.runtime.sendMessage({
+        type: "ollamaFetch",
+        url,
+        method,
+        body,
+        timeoutMs: Math.max(1000, Number(timeoutMs) || 60000)
+      });
+      const r = await Promise.race(
+        abortPromise ? [msgPromise, abortPromise] : [msgPromise]
+      ).catch((err) => {
+        if (err?.name === "AbortError") throw err;
+        return { ok: false, error: err?.message || "fetch failed" };
+      });
+      if (r?.error) throw new Error(r.error);
+      if (!r.ok) {
+        const err = new Error(`Request failed: ${r.status}`);
+        err.status = r.status;
+        err.body = r.text;
+        throw err;
+      }
+      return r;
+    };
+
     const fetchOllamaDefaultModel = async (baseUrl, signal) => {
       const url = new URL("/api/tags", baseUrl).toString();
-      const res = await fetch(url, { signal });
-      if (!res.ok) throw new Error(`Ollama tags failed: ${res.status}`);
-      const data = await res.json();
+      const r = await ollamaFetchViaBackground(url, { method: "GET", signal, timeoutMs: 10000 });
+      const data = r.data;
       const name = data?.models?.[0]?.name;
       if (typeof name !== "string" || !name) throw new Error("No Ollama models found");
       return name;
@@ -3852,42 +3813,22 @@ async function main() {
       const chatUrl = new URL("/api/chat", baseUrl).toString();
 
       const doFetch = async (prompt2, options) => {
-        const res = await fetch(url, {
+        const r = await ollamaFetchViaBackground(url, {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            model,
-            prompt: String(prompt2 || ""),
-            stream: false,
-            options
-          }),
-          signal
+          body: { model, prompt: String(prompt2 || ""), stream: false, options },
+          signal,
+          timeoutMs: 45000
         });
-        if (!res.ok) {
-          let body = "";
-          try {
-            body = String((await res.text()) || "");
-          } catch {
-            body = "";
-          }
-          const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
-          const err = new Error(`Ollama generate failed: ${res.status}${snippet}`);
-          err.status = res.status;
-          err.body = body;
-          err.url = url;
-          throw err;
-        }
-        const data = await res.json();
-        const r = typeof data?.response === "string" ? String(data.response || "") : "";
+        const data = r.data;
+        const text = typeof data?.response === "string" ? String(data.response || "") : "";
         const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
-        return { text: r, meta: doneReason ? `done_reason=${doneReason}` : "" };
+        return { text, meta: doneReason ? `done_reason=${doneReason}` : "" };
       };
 
       const doChatFetch = async (prompt2, options) => {
-        const res = await fetch(chatUrl, {
+        const r = await ollamaFetchViaBackground(chatUrl, {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
+          body: {
             model,
             stream: false,
             messages: [
@@ -3899,24 +3840,11 @@ async function main() {
               { role: "user", content: String(prompt2 || "") }
             ],
             options
-          }),
-          signal
+          },
+          signal,
+          timeoutMs: 45000
         });
-        if (!res.ok) {
-          let body = "";
-          try {
-            body = String((await res.text()) || "");
-          } catch {
-            body = "";
-          }
-          const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
-          const err = new Error(`Ollama chat failed: ${res.status}${snippet}`);
-          err.status = res.status;
-          err.body = body;
-          err.url = chatUrl;
-          throw err;
-        }
-        const data = await res.json();
+        const data = r.data;
         const content = typeof data?.message?.content === "string" ? String(data.message.content || "") : "";
         const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
         return { text: content, meta: doneReason ? `done_reason=${doneReason}` : "" };
@@ -7836,11 +7764,43 @@ async function main() {
         }
       };
 
+      const ollamaFetchViaBackground2 = async (url, opts) => {
+        const { method = "GET", body, signal, timeoutMs = 60000 } = opts || {};
+        const abortPromise = signal
+          ? new Promise((_, reject) => {
+              if (signal.aborted) reject(new DOMException("aborted", "AbortError"));
+              signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {
+                once: true
+              });
+            })
+          : null;
+        const msgPromise = chrome.runtime.sendMessage({
+          type: "ollamaFetch",
+          url,
+          method,
+          body,
+          timeoutMs: Math.max(1000, Number(timeoutMs) || 60000)
+        });
+        const r = await Promise.race(
+          abortPromise ? [msgPromise, abortPromise] : [msgPromise]
+        ).catch((err) => {
+          if (err?.name === "AbortError") throw err;
+          return { ok: false, error: err?.message || "fetch failed" };
+        });
+        if (r?.error) throw new Error(r.error);
+        if (!r.ok) {
+          const err = new Error(`Request failed: ${r.status}`);
+          err.status = r.status;
+          err.body = r.text;
+          throw err;
+        }
+        return r;
+      };
+
       const fetchOllamaDefaultModel = async (baseUrl, signal) => {
         const url = new URL("/api/tags", baseUrl).toString();
-        const res = await fetch(url, { signal });
-        if (!res.ok) throw new Error(`Ollama tags failed: ${res.status}`);
-        const data = await res.json();
+        const r = await ollamaFetchViaBackground2(url, { method: "GET", signal, timeoutMs: 10000 });
+        const data = r.data;
         const name = data?.models?.[0]?.name;
         if (typeof name !== "string" || !name) throw new Error("No Ollama models found");
         return name;
@@ -7853,42 +7813,22 @@ async function main() {
         const chatUrl = new URL("/api/chat", baseUrl).toString();
 
         const doFetch = async (prompt2, options) => {
-          const res = await fetch(url, {
+          const r = await ollamaFetchViaBackground2(url, {
             method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              model,
-              prompt: String(prompt2 || ""),
-              stream: false,
-              options
-            }),
-            signal
+            body: { model, prompt: String(prompt2 || ""), stream: false, options },
+            signal,
+            timeoutMs: 45000
           });
-          if (!res.ok) {
-            let body = "";
-            try {
-              body = String((await res.text()) || "");
-            } catch {
-              body = "";
-            }
-            const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
-            const err = new Error(`Ollama generate failed: ${res.status}${snippet}`);
-            err.status = res.status;
-            err.body = body;
-            err.url = url;
-            throw err;
-          }
-          const data = await res.json();
-          const r = typeof data?.response === "string" ? String(data.response || "") : "";
+          const data = r.data;
+          const text = typeof data?.response === "string" ? String(data.response || "") : "";
           const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
-          return { text: r, meta: doneReason ? `done_reason=${doneReason}` : "" };
+          return { text, meta: doneReason ? `done_reason=${doneReason}` : "" };
         };
 
         const doChatFetch = async (prompt2, options) => {
-          const res = await fetch(chatUrl, {
+          const r = await ollamaFetchViaBackground2(chatUrl, {
             method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+            body: {
               model,
               stream: false,
               messages: [
@@ -7900,24 +7840,11 @@ async function main() {
                 { role: "user", content: String(prompt2 || "") }
               ],
               options
-            }),
-            signal
+            },
+            signal,
+            timeoutMs: 45000
           });
-          if (!res.ok) {
-            let body = "";
-            try {
-              body = String((await res.text()) || "");
-            } catch {
-              body = "";
-            }
-            const snippet = body ? `: ${body.replace(/\s+/g, " ").slice(0, 180)}` : "";
-            const err = new Error(`Ollama chat failed: ${res.status}${snippet}`);
-            err.status = res.status;
-            err.body = body;
-            err.url = chatUrl;
-            throw err;
-          }
-          const data = await res.json();
+          const data = r.data;
           const content = typeof data?.message?.content === "string" ? String(data.message.content || "") : "";
           const doneReason = typeof data?.done_reason === "string" ? data.done_reason : "";
           return { text: content, meta: doneReason ? `done_reason=${doneReason}` : "" };

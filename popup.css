@@ -461,6 +461,12 @@ body {
   font-size: 12px;
 }
 
+.aiSettingsHint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--pf-t--global--text--color--muted, #6a6e73);
+}
+
 .aiSettingsActions {
   display: flex;
   justify-content: flex-end;

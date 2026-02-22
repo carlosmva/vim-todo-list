@@ -75,9 +75,10 @@ The extension can use [Ollama](https://ollama.ai) running locally to suggest com
 **Troubleshooting**
 
 - If the status LED stays on "checking", ensure Ollama is running and reachable at your configured URL.
-- On **403 errors**, Ollama blocks cross-origin requests by default. Allow extension origins and restart Ollama:
+- On **403 errors**, Ollama blocks cross-origin requests by default. Set OLLAMA_ORIGINS on the **machine running Ollama** (local or remote), then restart Ollama:
   - Windows: `setx OLLAMA_ORIGINS "chrome-extension://*"`
   - macOS/Linux: `export OLLAMA_ORIGINS="chrome-extension://*"`
+  - **Remote server**: Configure OLLAMA_ORIGINS on the server where Ollama runs, not on your machine. For systemd: add `Environment="OLLAMA_ORIGINS=chrome-extension://*"` to the Ollama service and restart.
 
 ## Notes Editor Shortcuts
 
