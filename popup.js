@@ -17,17 +17,17 @@ const isMac =
     (navigator.userAgentData && navigator.userAgentData.platform === "macOS"));
 
 function modKeyLabel() {
-  return isMac ? "⌘" : "Alt";
+  return isMac ? "Ctrl" : "Alt";
 }
 
 function modKeyActive(e) {
   if (!e) return false;
-  return isMac ? !!e.metaKey : !!e.altKey;
+  return isMac ? !!e.ctrlKey : !!e.altKey;
 }
 
 function modKeyOnly(e) {
   if (!e) return false;
-  return modKeyActive(e) && !e.ctrlKey && (isMac ? !e.altKey : !e.metaKey);
+  return modKeyActive(e) && (isMac ? !e.metaKey && !e.altKey : !e.ctrlKey && !e.metaKey);
 }
 
 const openNoteEditorIds = new Set();
@@ -1740,7 +1740,7 @@ async function main() {
       <ul>
         <li>If AI is enabled and the status LED gets stuck on “checking”, confirm Ollama is running and reachable at your configured URL</li>
         <li>For external/remote hosts: enter the full URL (e.g. http://server:11434). Chrome will prompt for permission when you save.</li>
-        <li><b>403 errors</b>: Ollama blocks extension origins by default. Set OLLAMA_ORIGINS on the <b>machine running Ollama</b> (local or remote), then restart Ollama. Windows: ${keycap('setx OLLAMA_ORIGINS "chrome-extension://*"')}; Mac/Linux: ${keycap('export OLLAMA_ORIGINS="chrome-extension://*"')}; systemd: add Environment="OLLAMA_ORIGINS=chrome-extension://*" to the service.</li>
+        <li><b>CORS / 403</b>: Set OLLAMA_ORIGINS on the <b>machine running Ollama</b>, then fully restart. <b>Linux</b>: ${keycap('sudo systemctl edit ollama')}, add [Service] and Environment="OLLAMA_ORIGINS=chrome-extension://*", then ${keycap('sudo systemctl daemon-reload && sudo systemctl restart ollama')}. Verify with ${keycap('systemctl show ollama --property=Environment')}.</li>
       </ul>
 
       <h3>Navigation</h3>
@@ -4424,6 +4424,15 @@ async function main() {
       e.preventDefault();
       setAiSettingsMessage("");
       showAiSettingsView();
+      const extId = chrome.runtime?.id || "";
+      const extOriginEl = document.getElementById("aiSettingsExtensionOrigin");
+      if (extOriginEl instanceof HTMLElement && extId) {
+        extOriginEl.textContent = `chrome-extension://${extId}`;
+      }
+      const curlEl = document.getElementById("aiSettingsCurlTest");
+      if (curlEl instanceof HTMLElement && extId) {
+        curlEl.textContent = `curl -H "Origin: chrome-extension://${extId}" http://localhost:11434/api/tags`;
+      }
       if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
         aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
         aiEndpointBaseUrlInput.focus();
@@ -5509,11 +5518,12 @@ async function main() {
     return false;
   }
 
-  // Prevent modifier alone (Alt on Win/Linux, ⌘ on Mac) from activating browser menu and closing the popup
+  // Prevent modifier alone (Alt on Win/Linux, Ctrl on Mac) from activating browser menu and closing the popup
   document.addEventListener(
     "keydown",
     (e) => {
-      if (modKeyActive(e) && (e.key === "Alt" || e.key === "Meta") && !e.ctrlKey && (isMac ? !e.altKey : !e.metaKey)) {
+      const modKey = isMac ? "Control" : "Alt";
+      if (modKeyActive(e) && (e.key === modKey || e.key === "Alt" || e.key === "Meta") && (isMac ? !e.metaKey && !e.altKey : !e.ctrlKey && !e.metaKey)) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -5937,7 +5947,7 @@ async function main() {
         }
       }
 
-      if (!modKeyActive(e) || e.ctrlKey || e.metaKey) return;
+      if (!modKeyActive(e) || (isMac ? (e.metaKey || e.altKey) : (e.ctrlKey || e.metaKey))) return;
 
       const focusNewNoteKey = getFocusNewNoteKey(keyLayout);
       if (key === focusNewNoteKey) {
@@ -8046,7 +8056,7 @@ async function main() {
 
       // Allow Alt+Up/Alt+Down to continue navigating while focus is on a suggestion button.
       container.addEventListener("keydown", (e) => {
-        if (!modKeyActive(e) || e.ctrlKey || e.metaKey) return;
+        if (!modKeyActive(e) || (isMac ? (e.metaKey || e.altKey) : (e.ctrlKey || e.metaKey))) return;
         const nav = getNavKeys(keyLayout);
         const key = (e.key || "").toLowerCase();
         if (key !== nav.down && key !== nav.up) return;

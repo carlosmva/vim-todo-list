@@ -191,7 +191,10 @@
               </div>
             </form>
             <p class="aiSettingsHint">
-              <b>Remote Ollama</b>: Set OLLAMA_ORIGINS=chrome-extension://* on the machine running Ollama (the server), not on your machine. Restart Ollama after changing.
+              <b>CORS / 403</b>: On the machine running Ollama, set OLLAMA_ORIGINS and fully restart. <b>Linux (systemd)</b>: <code>sudo systemctl edit ollama</code>, add <code>[Service]</code> and <code>Environment="OLLAMA_ORIGINS=chrome-extension://*"</code>, then <code>sudo systemctl daemon-reload && sudo systemctl restart ollama</code>. Or use this extension: <code id="aiSettingsExtensionOrigin">chrome-extension://…</code>. Test with <code>OLLAMA_ORIGINS=*</code> if needed.
+            </p>
+            <p class="aiSettingsHint">
+              <b>Test on server</b>: SSH to the Ollama machine and run <code id="aiSettingsCurlTest">curl -H "Origin: chrome-extension://…" http://localhost:11434/api/tags</code>. If 403, OLLAMA_ORIGINS is not applied. Verify: <code>systemctl show ollama --property=Environment</code>.
             </p>
           </div>
         </div>

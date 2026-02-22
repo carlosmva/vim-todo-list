@@ -1,6 +1,6 @@
 # vim-todo-list
 
-Chrome extension for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly). Opens as a centered overlay with backdrop blur over the current page (click the extension icon or press `Alt+R`).
+Chrome extension for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly). Opens as a centered overlay with backdrop blur over the current page (click the extension icon or press `Alt+R` / `Ctrl+R` on Mac).
 
 ![Vim To-Do List showcase](icons/vim-todo-notes-img.png)
 
@@ -55,7 +55,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 
 ## Keyboard
 
-- Open popup: `Alt+R` (same shortcut regardless of in-app QWERTY/DVORAK mode)
+- Open popup: `Alt+R` (Windows/Linux) or `Ctrl+R` (Mac)
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
 - A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
 - **AI**, **Tabs**, and **About** are available in the header links row.
@@ -75,16 +75,21 @@ The extension can use [Ollama](https://ollama.ai) running locally to suggest com
 **Troubleshooting**
 
 - If the status LED stays on "checking", ensure Ollama is running and reachable at your configured URL.
-- On **403 errors**, Ollama blocks cross-origin requests by default. Set OLLAMA_ORIGINS on the **machine running Ollama** (local or remote), then restart Ollama:
-  - Windows: `setx OLLAMA_ORIGINS "chrome-extension://*"`
-  - macOS/Linux: `export OLLAMA_ORIGINS="chrome-extension://*"`
-  - **Remote server**: Configure OLLAMA_ORIGINS on the server where Ollama runs, not on your machine. For systemd: add `Environment="OLLAMA_ORIGINS=chrome-extension://*"` to the Ollama service and restart.
+- On **CORS / 403 errors**, Ollama blocks extension origins by default. Set OLLAMA_ORIGINS on the **machine running Ollama** (local or remote), then **fully restart** Ollama:
+  - **Linux (systemd)**: Run `sudo systemctl edit ollama`, add under `[Service]`:
+    ```ini
+    Environment="OLLAMA_ORIGINS=chrome-extension://*"
+    ```
+    Then run `sudo systemctl daemon-reload && sudo systemctl restart ollama`. Verify with `systemctl show ollama --property=Environment`.
+  - **Windows**: `setx OLLAMA_ORIGINS "chrome-extension://*"` then quit and restart Ollama
+  - **macOS**: `launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"` then restart Ollama
+  - If that fails, test with `OLLAMA_ORIGINS=*` to allow all origins
 
 ## Notes Editor Shortcuts
 
 - **Toggle crossed-out (strikethrough) text for the line:**
-   - QWERTY: <kbd>Alt</kbd>+<kbd>H</kbd>
-   - DVORAK: <kbd>Alt</kbd>+<kbd>D</kbd>
+   - QWERTY: <kbd>Alt</kbd>+<kbd>H</kbd> (Windows/Linux) or <kbd>Ctrl</kbd>+<kbd>H</kbd> (Mac)
+   - DVORAK: <kbd>Alt</kbd>+<kbd>D</kbd> (Windows/Linux) or <kbd>Ctrl</kbd>+<kbd>D</kbd> (Mac)
 - Other navigation and editing shortcuts are shown in the in-app Instructions view.
 
 ## Data storage

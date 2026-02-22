@@ -467,6 +467,14 @@ body {
   color: var(--pf-t--global--text--color--muted, #6a6e73);
 }
 
+.aiSettingsHint code {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
 .aiSettingsActions {
   display: flex;
   justify-content: flex-end;
