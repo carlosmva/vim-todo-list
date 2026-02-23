@@ -1769,6 +1769,8 @@ async function main() {
         <li>${keycap("c")}: (visual mode) cut selection (yank + delete) and enter insert mode</li>
         <li>${keycap("↑")}/${keycap("↓")}/${keycap("←")}/${keycap("→")}: (visual mode) extend selection without Shift</li>
         <li>${combo(mod, fmt(nav.up))}/${combo(mod, fmt(nav.down))}/${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))}: (visual mode) extend selection (layout-dependent keys)</li>
+        <li>${keycap("0")}/${keycap("^")}/${keycap("$")}: (visual mode) extend to start of line / first non-whitespace / end of line</li>
+        <li>${keycap("gg")}/${keycap("G")}: (visual mode) extend to start / end of document</li>
         <li>${keycap('"')} + ${keycap("1")}/${keycap("2")}/${keycap("3")}/${keycap("4")}: choose register for the next yank/paste</li>
         <li>${keycap('"')} + ${keycap("+")}: use the system clipboard register for the next yank/cut</li>
         <li>${keycap("p")}: (normal mode) paste register at caret and enter insert mode</li>
@@ -2538,17 +2540,16 @@ async function main() {
     return editor instanceof HTMLElement ? editor : null;
   }
 
-  function getCurrentBlockElement(editor) {
+  function getCurrentBlockElement(editor, useFocus = false) {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
-    const anchor = sel.anchorNode;
-    if (!anchor) return null;
-    const anchorEl =
-      anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement;
-    if (!(anchorEl instanceof Element)) return null;
-    if (!editor.contains(anchorEl)) return null;
+    const node = useFocus ? sel.focusNode : sel.anchorNode;
+    if (!node) return null;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    if (!(el instanceof Element)) return null;
+    if (!editor.contains(el)) return null;
 
-    const block = anchorEl.closest(
+    const block = el.closest(
       "li, p, div, pre, blockquote, h1, h2, h3, h4, h5, h6"
     );
     if (block instanceof HTMLElement && editor.contains(block) && block !== editor) {
@@ -2975,6 +2976,111 @@ async function main() {
       const active = document.activeElement;
       const editor = active instanceof Element ? active.closest(".noteEditorArea") : null;
       if (editor instanceof HTMLElement) ensureNotesEditorCaretInView(editor);
+    } catch {
+      // ignore
+    }
+  }
+
+  function getTargetPositionForVisual(editor, target) {
+    if (target === "startOfDocument") {
+      const r = document.createRange();
+      r.selectNodeContents(editor);
+      r.collapse(true);
+      return { node: r.startContainer, offset: r.startOffset };
+    }
+    if (target === "endOfDocument") {
+      const r = document.createRange();
+      r.selectNodeContents(editor);
+      r.collapse(false);
+      return { node: r.endContainer, offset: r.endOffset };
+    }
+    const block = getCurrentBlockElement(editor, true) || editor;
+    if (target === "startOfLine") {
+      const firstText = findFirstTextNode(block);
+      if (!firstText) {
+        const r = document.createRange();
+        r.selectNodeContents(block);
+        r.collapse(true);
+        return { node: r.startContainer, offset: r.startOffset };
+      }
+      return { node: firstText, offset: 0 };
+    }
+    if (target === "startOfLineNonWhitespace") {
+      const firstText = findFirstTextNode(block);
+      if (!firstText) {
+        const r = document.createRange();
+        r.selectNodeContents(block);
+        r.collapse(true);
+        return { node: r.startContainer, offset: r.startOffset };
+      }
+      const text = firstText.nodeValue || "";
+      const m = text.match(/^\s*/);
+      const offset = m ? m[0].length : 0;
+      return { node: firstText, offset: Math.min(offset, text.length) };
+    }
+    if (target === "endOfLine") {
+      const lastText = findLastTextNode(block);
+      if (!lastText) {
+        const r = document.createRange();
+        r.selectNodeContents(block);
+        r.collapse(false);
+        return { node: r.endContainer, offset: r.endOffset };
+      }
+      const text = lastText.nodeValue || "";
+      return { node: lastText, offset: text.length };
+    }
+    return null;
+  }
+
+  function comparePositions(nodeA, offsetA, nodeB, offsetB) {
+    const ra = document.createRange();
+    ra.setStart(nodeA, offsetA);
+    ra.collapse(true);
+    const rb = document.createRange();
+    rb.setStart(nodeB, offsetB);
+    rb.collapse(true);
+    return ra.compareBoundaryPoints(Range.START_TO_END, rb);
+  }
+
+  function extendSelectionToTarget(editor, noteId, target) {
+    const anchor = vimVisualAnchorByNoteId.get(noteId);
+    if (!anchor) return;
+    const pos = getTargetPositionForVisual(editor, target);
+    if (!pos) return;
+    try {
+      const cmp = comparePositions(
+        anchor.startContainer,
+        anchor.startOffset,
+        pos.node,
+        pos.offset
+      );
+      const r = document.createRange();
+      if (cmp <= 0) {
+        r.setStart(anchor.startContainer, anchor.startOffset);
+        r.setEnd(pos.node, pos.offset);
+      } else {
+        r.setStart(pos.node, pos.offset);
+        r.setEnd(anchor.startContainer, anchor.startOffset);
+      }
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      if (target === "startOfDocument") {
+        try {
+          editor.scrollTop = 0;
+        } catch {
+          // ignore
+        }
+      } else if (target === "endOfDocument") {
+        try {
+          editor.scrollTop = editor.scrollHeight;
+        } catch {
+          // ignore
+        }
+      }
+      ensureNotesEditorCaretInView(editor);
     } catch {
       // ignore
     }
@@ -5643,17 +5749,23 @@ async function main() {
         flippedCard.contains(activeEl) &&
         !inNotesUi;
 
-      // Esc while in the notes editor UI should not let Chrome close the popup.
+      // Esc while a notes editor is open should not let Chrome close the popup.
       // - If the editor is in insert mode, Esc exits to normal mode.
       // - If the editor is in visual mode, Esc exits to normal mode.
       // - If already in normal mode, Esc closes the notes editor.
-      if (!e.ctrlKey && !e.metaKey && !modKeyActive(e) && e.key === "Escape" && inNotesUi) {
+      // Use openNoteEditorIds so we handle Escape even when focus has moved outside the editor.
+      if (!e.ctrlKey && !e.metaKey && !modKeyActive(e) && e.key === "Escape" && openNoteEditorIds.size > 0) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
 
-        const card = activeCard;
-        const noteId = card ? Number(card.dataset.noteId) : NaN;
-        if (!Number.isFinite(noteId)) return;
+        let card = activeCard;
+        let noteId = card ? Number(card.dataset.noteId) : NaN;
+        if (!Number.isFinite(noteId) || !openNoteEditorIds.has(noteId)) {
+          noteId = [...openNoteEditorIds][0];
+          card = document.querySelector(`.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`);
+        }
+        if (!Number.isFinite(noteId) || !(card instanceof HTMLElement)) return;
 
         const mode = vimGetMode(noteId);
         if (mode === "insert") {
@@ -6433,11 +6545,13 @@ async function main() {
   });
 
   // Escape closes the overlay when popup is in an iframe.
+  // Only close when outside the notes editor: inside notes, Esc goes insert→normal, then normal→close notes, then Esc closes overlay.
   document.addEventListener(
     "keydown",
     (e) => {
       if (e.key !== "Escape" || modKeyActive(e) || e.ctrlKey || e.metaKey) return;
       if (window.parent === window) return;
+      if (openNoteEditorIds.size > 0) return;
       try {
         window.parent.postMessage({ type: "vim-todo-close" }, "*");
       } catch {
@@ -6605,6 +6719,48 @@ async function main() {
           e.preventDefault();
           editor.focus();
           extendSelection("forward", "line");
+          vimClearPending(noteId);
+          return;
+        }
+
+        if (k === "0") {
+          e.preventDefault();
+          editor.focus();
+          extendSelectionToTarget(editor, noteId, "startOfLine");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "^") {
+          e.preventDefault();
+          editor.focus();
+          extendSelectionToTarget(editor, noteId, "startOfLineNonWhitespace");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "$") {
+          e.preventDefault();
+          editor.focus();
+          extendSelectionToTarget(editor, noteId, "endOfLine");
+          vimClearPending(noteId);
+          return;
+        }
+        if (k === "g") {
+          if (vimPendingIs(noteId, "g", 700)) {
+            e.preventDefault();
+            editor.focus();
+            extendSelectionToTarget(editor, noteId, "startOfDocument");
+            vimClearPending(noteId);
+          } else {
+            e.preventDefault();
+            editor.focus();
+            vimSetPending(noteId, "g");
+          }
+          return;
+        }
+        if (k === "G") {
+          e.preventDefault();
+          editor.focus();
+          extendSelectionToTarget(editor, noteId, "endOfDocument");
           vimClearPending(noteId);
           return;
         }
