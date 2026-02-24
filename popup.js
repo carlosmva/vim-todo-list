@@ -9,7 +9,7 @@ const THEME_KEY = "theme_v1";
 const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
 const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
-const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line"];
+const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line", "chalkboard"];
 
 const isMac =
   typeof navigator !== "undefined" &&
@@ -1677,7 +1677,7 @@ async function main() {
   }
 
   const keyLayoutToggle = document.getElementById("keyLayoutToggle");
-  const THEME_LABELS = { light: "Light", dark: "Dark", "solarized-light": "Solarized", "solarized-dark": "Solarized Dark", emacs: "Emacs", "command-line": "Command Line" };
+  const THEME_LABELS = { light: "Light", dark: "Dark", "solarized-light": "Solarized", "solarized-dark": "Solarized Dark", emacs: "Emacs", "command-line": "Command Line", chalkboard: "Chalkboard" };
 
   function applyTheme(t) {
     const value = THEME_ORDER.includes(t) ? t : "light";
@@ -7618,6 +7618,10 @@ async function main() {
           inlineTrail.style.fontWeight = cs.fontWeight;
           inlineTrail.style.letterSpacing = cs.letterSpacing;
           inlineTrail.style.lineHeight = cs.lineHeight;
+          inlineTrail.style.paddingTop = cs.paddingTop;
+          inlineTrail.style.paddingRight = cs.paddingRight;
+          inlineTrail.style.paddingBottom = cs.paddingBottom;
+          inlineTrail.style.paddingLeft = cs.paddingLeft;
         } catch {
           // ignore
         }

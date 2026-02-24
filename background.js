@@ -112,9 +112,10 @@ chrome.action.onClicked.addListener(async (tab) => {
       files: ["overlay.js"]
     });
   } catch {
-    // Restricted page: open Google and inject overlay there
-    const newTab = await chrome.tabs.create({ url: "https://www.google.com" });
-    const tabId = newTab.id;
+    // Restricted page: open Google in new window and inject overlay there
+    const win = await chrome.windows.create({ url: "https://www.google.com", focused: true });
+    const tabId = win.tabs?.[0]?.id;
+    if (!tabId) return;
 
     const injectWhenReady = () => {
       chrome.scripting.executeScript({
@@ -123,19 +124,8 @@ chrome.action.onClicked.addListener(async (tab) => {
       }).catch(() => {});
     };
 
-    // Try injecting when tab finishes loading
-    const listener = (id, info) => {
-      if (id === tabId && info.status === "complete") {
-        chrome.tabs.onUpdated.removeListener(listener);
-        injectWhenReady();
-      }
-    };
-    chrome.tabs.onUpdated.addListener(listener);
-
-    // Fallback: try after a short delay in case listener missed it
-    setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
-      chrome.tabs.get(tabId).then(() => injectWhenReady()).catch(() => {});
-    }, 2000);
+    // Inject after delays to allow the page to load (retry if first attempt fails)
+    setTimeout(injectWhenReady, 1000);
+    setTimeout(injectWhenReady, 2500);
   }
 });

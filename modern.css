@@ -1,5 +1,6 @@
 :root {
-  --modern-font-sans: "IBM Plex Sans", sans-serif;
+  --modern-font-sans: "Montserrat", "IBM Plex Sans", sans-serif;
+  --modern-font-size-base: 18px;
   --modern-bg: linear-gradient(160deg, #eaf1ff 0%, #f7fbff 55%, #f1f7f4 100%);
   --modern-surface-1: rgba(255, 255, 255, 0.86);
   --modern-surface-2: #ffffff;
@@ -14,11 +15,11 @@
   --modern-radius-sm: 8px;
   --modern-radius-md: 12px;
   --modern-radius-lg: 16px;
-  --modern-space-1: 6px;
-  --modern-space-2: 10px;
-  --modern-space-3: 14px;
-  --modern-space-4: 18px;
-  --modern-space-5: 24px;
+  --modern-space-1: 8px;
+  --modern-space-2: 12px;
+  --modern-space-3: 16px;
+  --modern-space-4: 20px;
+  --modern-space-5: 28px;
   --motion-ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
   --motion-fast: 120ms;
   --motion-base: 180ms;
@@ -113,6 +114,50 @@
   --modern-link-hover: #0000aa;
 }
 
+/* Chalkboard - green chalkboard with Walter Turncoat */
+[data-theme="chalkboard"] {
+  --modern-font-sans: "Walter Turncoat", cursive;
+  --modern-bg: #497959;
+  --modern-surface-1: rgba(73, 121, 89, 0.92);
+  --modern-surface-2: #3d6b4a;
+  --cds-layer: #1a1a1a;
+  --cds-field: #1a1a1a;
+  --modern-surface-muted: rgba(61, 107, 74, 0.95);
+  --modern-text: #e8e8e8;
+  --modern-text-subtle: #c8d8c8;
+  --modern-border: #5a8a68;
+  --modern-border-strong: #b78240;
+  --modern-shadow-sm: -1px 2px 2px 0 rgba(0, 0, 0, 0.3), inset 0 0 10px 0 rgba(0, 0, 0, 0.2);
+  --modern-shadow-md: -2px 4px 4px 0 rgba(0, 0, 0, 0.35), inset 0 0 12px 0 rgba(0, 0, 0, 0.25);
+  --modern-focus: #ff0;
+  --modern-link: #ff0;
+  --modern-link-hover: #ffff66;
+  --modern-muted-on-dark: #c8d8c8;
+  --modern-radius-sm: 10px;
+  --modern-radius-md: 10px;
+  --modern-radius-lg: 10px;
+}
+
+[data-theme="chalkboard"] html,
+[data-theme="chalkboard"] body {
+  background: #1a1a1a !important;
+}
+
+[data-theme="chalkboard"] .app {
+  background: transparent;
+}
+
+[data-theme="chalkboard"] .col,
+[data-theme="chalkboard"] .noteCard,
+[data-theme="chalkboard"] .header {
+  border: 3px solid #b78240;
+  box-shadow: -1px 2px 2px 0 rgba(0, 0, 0, 0.3), inset 0 0 8px 0 rgba(0, 0, 0, 0.15);
+}
+
+html {
+  font-size: var(--modern-font-size-base);
+}
+
 html,
 body {
   font-family: var(--modern-font-sans);
@@ -189,7 +234,25 @@ button,
 [data-theme="command-line"] .noteAttachments,
 [data-theme="command-line"] .noteAttachmentsTitle,
 [data-theme="command-line"] .noteBackBody,
-[data-theme="command-line"] .noteText {
+[data-theme="command-line"] .noteText,
+[data-theme="chalkboard"] body,
+[data-theme="chalkboard"] .app,
+[data-theme="chalkboard"] .header,
+[data-theme="chalkboard"] .create,
+[data-theme="chalkboard"] .col,
+[data-theme="chalkboard"] .noteCard,
+[data-theme="chalkboard"] .instructionsContent,
+[data-theme="chalkboard"] .instructionsHeader,
+[data-theme="chalkboard"] .instructionsTitle,
+[data-theme="chalkboard"] .dashboardTable,
+[data-theme="chalkboard"] .dashboardTable th,
+[data-theme="chalkboard"] .dashboardTable td,
+[data-theme="chalkboard"] .manageTabsMessage,
+[data-theme="chalkboard"] .manageTabsName,
+[data-theme="chalkboard"] .noteAttachments,
+[data-theme="chalkboard"] .noteAttachmentsTitle,
+[data-theme="chalkboard"] .noteBackBody,
+[data-theme="chalkboard"] .noteText {
   color: var(--modern-text);
 }
 
@@ -338,8 +401,22 @@ button,
 [data-theme="solarized-dark"] textarea,
 [data-theme="command-line"] .bx--text-input,
 [data-theme="command-line"] input,
-[data-theme="command-line"] textarea {
+[data-theme="command-line"] textarea,
+[data-theme="chalkboard"] .bx--text-input,
+[data-theme="chalkboard"] input,
+[data-theme="chalkboard"] textarea {
   color: var(--modern-text);
+  background: var(--modern-surface-2) !important;
+}
+
+[data-theme="chalkboard"] .create .bx--text-input,
+[data-theme="chalkboard"] .create input,
+[data-theme="chalkboard"] .cardFilterRow .bx--text-input,
+[data-theme="chalkboard"] .aiSettingsForm .bx--text-input,
+[data-theme="chalkboard"] .aiSettingsForm textarea.bx--text-input,
+[data-theme="chalkboard"] .manageTabsAdd .bx--text-input,
+[data-theme="chalkboard"] .linkForm .bx--text-input {
+  background: #1a1a1a !important;
 }
 
 [data-theme="dark"] .bx--text-input::placeholder,
@@ -350,7 +427,10 @@ button,
 [data-theme="solarized-dark"] textarea::placeholder,
 [data-theme="command-line"] .bx--text-input::placeholder,
 [data-theme="command-line"] input::placeholder,
-[data-theme="command-line"] textarea::placeholder {
+[data-theme="command-line"] textarea::placeholder,
+[data-theme="chalkboard"] .bx--text-input::placeholder,
+[data-theme="chalkboard"] input::placeholder,
+[data-theme="chalkboard"] textarea::placeholder {
   color: var(--modern-muted-on-dark);
 }
 
@@ -372,13 +452,15 @@ button,
 
 [data-theme="dark"] a,
 [data-theme="solarized-dark"] a,
-[data-theme="command-line"] a {
+[data-theme="command-line"] a,
+[data-theme="chalkboard"] a {
   color: var(--modern-link);
 }
 
 [data-theme="dark"] a:hover,
 [data-theme="solarized-dark"] a:hover,
-[data-theme="command-line"] a:hover {
+[data-theme="command-line"] a:hover,
+[data-theme="chalkboard"] a:hover {
   color: var(--modern-link-hover);
 }
 
@@ -396,7 +478,12 @@ button,
 [data-theme="command-line"] .monoLinkButton,
 [data-theme="command-line"] .noteActions .monoLinkButton,
 [data-theme="command-line"] .noteBackButtonsRow .monoLinkButton,
-[data-theme="command-line"] .createButtons .monoLinkButton {
+[data-theme="command-line"] .createButtons .monoLinkButton,
+[data-theme="chalkboard"] .headerLink,
+[data-theme="chalkboard"] .monoLinkButton,
+[data-theme="chalkboard"] .noteActions .monoLinkButton,
+[data-theme="chalkboard"] .noteBackButtonsRow .monoLinkButton,
+[data-theme="chalkboard"] .createButtons .monoLinkButton {
   color: var(--modern-text) !important;
 }
 
@@ -413,6 +500,11 @@ button,
 [data-theme="command-line"] .headerLink:hover,
 [data-theme="command-line"] .monoLinkButton:hover:not(:disabled) {
   color: #33ff66 !important;
+}
+
+[data-theme="chalkboard"] .headerLink:hover,
+[data-theme="chalkboard"] .monoLinkButton:hover:not(:disabled) {
+  color: #ffff66 !important;
 }
 
 .monoLinkButton:focus-visible,
@@ -538,7 +630,7 @@ button,
   min-width: 0;
   padding: 0 0.6rem !important;
   margin: 0 !important;
-  font-size: 11px;
+  font-size: 0.7rem;
   line-height: 1.1 !important;
   text-align: center;
   color: var(--tab-text);
@@ -608,6 +700,13 @@ button,
   --tab-text-active: #00ff41;
 }
 
+[data-theme="chalkboard"] .tabs {
+  --tab-bg: #3d6b4a;
+  --tab-text: #c8d8c8;
+  --tab-bg-active: #5a8a68;
+  --tab-text-active: #e8e8e8;
+}
+
 .tabs .bx--tabs__nav-link:focus,
 .tabs .bx--tabs__nav-link:focus-visible {
   outline: 2px solid var(--modern-focus);
@@ -663,9 +762,9 @@ button,
 
 .board {
   gap: var(--modern-space-3);
-  overflow: auto !important;
-  align-content: start;
-  grid-auto-rows: max-content;
+  overflow: hidden;
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .col {
@@ -674,7 +773,9 @@ button,
   background: var(--modern-surface-1);
   box-shadow: var(--modern-shadow-sm);
   overflow: hidden;
-  align-self: start;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .colTitle {
@@ -694,6 +795,10 @@ button,
   color: #00cc33;
 }
 
+[data-theme="chalkboard"] .colTitle {
+  color: #c8d8c8;
+}
+
 [data-theme="solarized-light"] .colTitle {
   color: #586e75;
 }
@@ -707,6 +812,14 @@ button,
   text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
   -webkit-text-stroke: 1px #003300;
   paint-order: stroke fill;
+}
+
+[data-theme="chalkboard"] .headerTitle {
+  color: #e8e8e8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  -webkit-text-stroke: 1px #2d4a35;
+  paint-order: stroke fill;
+  font-family: "Walter Turncoat", cursive;
 }
 
 #aboutContent {
@@ -743,16 +856,16 @@ button,
 
 .list {
   gap: var(--modern-space-2);
-  overflow: visible !important;
-  flex: 0 0 auto !important;
-  max-height: none !important;
-  padding-right: 0;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
 }
 
 .noteCard {
   height: auto !important;
-  max-height: 240px;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
   border: 1px solid var(--modern-border);
   border-radius: var(--modern-radius-md);
   background: var(--modern-surface-2);
@@ -811,6 +924,17 @@ button,
   color: var(--modern-text);
 }
 
+[data-theme="chalkboard"] .attachmentPill {
+  background: #3d6b4a;
+  color: var(--modern-text);
+  border-color: #b78240;
+}
+
+[data-theme="chalkboard"] .noteAutocomplete {
+  background: #1a1a1a;
+  border-color: #b78240;
+}
+
 .noteEditorArea {
   max-height: 220px;
   overflow: auto;
@@ -834,6 +958,12 @@ button,
   color: #00ff41;
 }
 
+[data-theme="chalkboard"] .noteEditorArea {
+  background: #3d6b4a;
+  color: #e8e8e8;
+  border-color: #b78240;
+}
+
 [data-theme="dark"] .noteTextRenameInput {
   background: #1b2433;
   color: #e8eef8;
@@ -850,6 +980,12 @@ button,
   background: #0d0d0d;
   color: #00ff41;
   border-color: var(--modern-border-strong);
+}
+
+[data-theme="chalkboard"] .noteTextRenameInput {
+  background: #3d6b4a;
+  color: #e8e8e8;
+  border-color: #b78240;
 }
 
 [data-theme="dark"] .noteCard[data-priority="low"] .noteText {
@@ -888,9 +1024,22 @@ button,
   color: #ff6b6b !important;
 }
 
+[data-theme="chalkboard"] .noteCard[data-priority="low"] .noteText {
+  color: #c8d8c8 !important;
+}
+
+[data-theme="chalkboard"] .noteCard[data-priority="normal"] .noteText {
+  color: #e8e8e8 !important;
+}
+
+[data-theme="chalkboard"] .noteCard[data-priority="high"] .noteText {
+  color: #ffcc66 !important;
+}
+
 [data-theme="dark"] .instructionsContent kbd,
 [data-theme="solarized-dark"] .instructionsContent kbd,
-[data-theme="command-line"] .instructionsContent kbd {
+[data-theme="command-line"] .instructionsContent kbd,
+[data-theme="chalkboard"] .instructionsContent kbd {
   color: var(--modern-text);
   border-color: var(--modern-border-strong);
 }

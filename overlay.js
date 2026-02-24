@@ -12,7 +12,8 @@
     "solarized-light": "rgba(253, 246, 227, 0.45)",
     "solarized-dark": "rgba(0, 43, 54, 0.55)",
     emacs: "rgba(245, 245, 245, 0.45)",
-    "command-line": "rgba(10, 10, 10, 0.6)"
+    "command-line": "rgba(10, 10, 10, 0.6)",
+    chalkboard: "rgba(73, 121, 89, 0.55)"
   };
 
   const overlay = document.createElement("div");
@@ -39,6 +40,7 @@
   window.addEventListener("message", (e) => {
     if (e.data?.type === "vim-todo-theme" && typeof e.data.theme === "string") {
       setBackdropTheme(e.data.theme);
+      setIframeTheme(e.data.theme);
     }
     if (e.data?.type === "vim-todo-close") {
       closeOverlay();
@@ -56,8 +58,19 @@
     box-sizing: border-box;
   `;
 
+  const IFRAME_BG = {
+    light: "#f4f4f4",
+    dark: "#141a24",
+    "solarized-light": "#fdf6e3",
+    "solarized-dark": "#002b36",
+    emacs: "#f5f5f5",
+    "command-line": "#0a0a0a",
+    chalkboard: "#497959"
+  };
+
   const iframe = document.createElement("iframe");
   iframe.src = chrome.runtime.getURL("popup.html");
+  iframe.dataset.theme = "light";
   iframe.style.cssText = `
     width: 864px;
     height: 720px;
@@ -66,8 +79,13 @@
     border: none;
     border-radius: 12px;
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
-    background: #f4f4f4;
+    background: ${IFRAME_BG.light};
   `;
+
+  function setIframeTheme(theme) {
+    iframe.style.background = IFRAME_BG[theme] || IFRAME_BG.light;
+    iframe.dataset.theme = theme;
+  }
 
   function closeOverlay() {
     overlay.remove();
