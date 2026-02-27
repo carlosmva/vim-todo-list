@@ -1743,9 +1743,14 @@ async function main() {
         <li><b>CORS / 403</b>: Set OLLAMA_ORIGINS on the <b>machine running Ollama</b>, then fully restart. <b>Linux</b>: ${keycap('sudo systemctl edit ollama')}, add [Service] and Environment="OLLAMA_ORIGINS=chrome-extension://*", then ${keycap('sudo systemctl daemon-reload && sudo systemctl restart ollama')}. Verify with ${keycap('systemctl show ollama --property=Environment')}.</li>
       </ul>
 
-      <h3>Navigation</h3>
+      <h3>Keyboard shortcut (open popup)</h3>
       <ul>
         <li>${combo(mod, fmt(openPopupKey))}: open the popup</li>
+        <li><b>If the shortcut doesn't work</b>: Go to ${keycap("chrome://extensions/shortcuts")}, find vim-todo-list, and assign ${combo(mod, fmt(openPopupKey))} to "Open vim-todo-list popup". The shortcut only works when Chrome has focus.</li>
+      </ul>
+
+      <h3>Navigation</h3>
+      <ul>
         <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
         <li><b>AI</b>: focus the AI header link and press Enter</li>
         <li>${combo(mod, fmt(nav.down))}: move down</li>
@@ -7155,21 +7160,6 @@ async function main() {
       listEl.addEventListener("dragend", async () => {
         if (!dragging) return;
         const list = dragging.parentElement;
-        const cards = list ? [...list.querySelectorAll(".noteCard[data-note-id]")] : [];
-        const idx = cards.indexOf(dragging);
-        // Update dragged card's priority to match its new position (card above, or below if at top)
-        if (idx >= 0 && idx < cards.length) {
-          const refCard = idx > 0 ? cards[idx - 1] : (cards[idx + 1] || null);
-          if (refCard instanceof HTMLElement) {
-            const refPriority = String(refCard.dataset.priority || "normal");
-            dragging.dataset.priority = refPriority;
-            const priorityBtn = dragging.querySelector("button[data-action='togglePriority']");
-            if (priorityBtn instanceof HTMLElement) {
-              priorityBtn.textContent = `Priority: ${formatPriorityLabel(refPriority)}`;
-              priorityBtn.setAttribute("aria-label", `Priority: ${formatPriorityLabel(refPriority)}. Activate to change.`);
-            }
-          }
-        }
         dragging.classList.remove("is-dragging");
         dragging.setAttribute("aria-grabbed", "false");
         dragging = null;
@@ -8434,27 +8424,11 @@ async function main() {
       if (swapIdx < 0 || swapIdx >= cards.length) return;
 
       const otherCard = cards[swapIdx];
-      const cardPriority = String(card.dataset.priority || "normal");
-      const otherPriority = String(otherCard.dataset.priority || "normal");
 
       if (action === "moveUp") {
         list.insertBefore(card, otherCard);
       } else {
         list.insertBefore(otherCard, card);
-      }
-
-      // Swap priorities so the moved card takes on the priority of its new position
-      card.dataset.priority = otherPriority;
-      otherCard.dataset.priority = cardPriority;
-      const cardPriorityBtn = card.querySelector("button[data-action='togglePriority']");
-      const otherPriorityBtn = otherCard.querySelector("button[data-action='togglePriority']");
-      if (cardPriorityBtn instanceof HTMLElement) {
-        cardPriorityBtn.textContent = `Priority: ${formatPriorityLabel(otherPriority)}`;
-        cardPriorityBtn.setAttribute("aria-label", `Priority: ${formatPriorityLabel(otherPriority)}. Activate to change.`);
-      }
-      if (otherPriorityBtn instanceof HTMLElement) {
-        otherPriorityBtn.textContent = `Priority: ${formatPriorityLabel(cardPriority)}`;
-        otherPriorityBtn.setAttribute("aria-label", `Priority: ${formatPriorityLabel(cardPriority)}. Activate to change.`);
       }
 
       const status = card.dataset.status;

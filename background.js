@@ -1,3 +1,21 @@
+// On install, check if the keyboard shortcut was assigned (it can be unassigned due to conflicts).
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    chrome.commands.getAll().then((commands) => {
+      const actionCmd = commands.find((c) => c.name === "_execute_action");
+      if (actionCmd?.shortcut === "") {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: "vim-todo-list",
+          message:
+            "Alt+R may be unassigned. Go to chrome://extensions/shortcuts to assign it."
+        });
+      }
+    });
+  }
+});
+
 // Probe Ollama health from extension context to avoid mixed-content blocking
 // when the popup runs in an iframe on HTTPS pages (e.g. google.com overlay).
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
