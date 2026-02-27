@@ -279,6 +279,13 @@ body {
   font-weight: 600;
 }
 
+.manageTabsRenameInput {
+  flex: 1;
+  min-width: 80px;
+  font: inherit;
+  font-weight: 600;
+}
+
 .headerTitle {
   font-size: 0.85rem;
   font-weight: 600;
@@ -746,6 +753,226 @@ body {
 .noteTextRenameInput:focus {
   outline: 2px solid var(--cds-focus, #0f62fe);
   outline-offset: -2px;
+}
+
+/* Due date row on card front */
+.noteDueDateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 6px;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.noteDueDateBtn,
+.noteDueDateClear,
+.noteDueDateAdd {
+  padding: 2px 4px;
+}
+
+.noteDueDateInput {
+  max-width: 140px;
+  font-size: 0.85rem;
+}
+
+/* Hide calendar icon on date inputs (keyboard-driven app) */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none;
+  -webkit-appearance: none;
+}
+
+/* Calendar view */
+.calendarLayout {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.calendarContent {
+  flex: 1 1 auto;
+  padding: 16px;
+  overflow-x: auto;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.calendarRightPane {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-left: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.calendarDayLabel {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.calendarDayTasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.calendarTaskLink {
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 0;
+}
+
+.calendarDayCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 100%;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border-radius: 3px;
+}
+
+.calendarDayCell:hover,
+.calendarDayCell:focus,
+.calendarDayCell:focus-visible {
+  outline: 2px solid var(--modern-focus, var(--cds-focus, #0f62fe));
+  outline-offset: 1px;
+  background: var(--cds-layer-hover, rgba(0, 0, 0, 0.04));
+}
+
+.calendarCellDots {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendarDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  min-width: min-content;
+}
+
+.calendarMonth {
+  flex: 0 0 auto;
+  min-width: 200px;
+}
+
+.calendarMonthTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: inherit;
+}
+
+.calendarTable {
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.calendarTable th,
+.calendarTable td {
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  padding: 4px;
+  text-align: center;
+  vertical-align: top;
+  color: inherit;
+}
+
+.calendarTable th {
+  font-weight: 600;
+  background: var(--modern-surface-1, var(--cds-layer-01, #f4f4f4));
+}
+
+.calendarCell {
+  min-width: 24px;
+  min-height: 32px;
+}
+
+.calendarCell--empty {
+  background: var(--modern-surface-2, var(--cds-layer-02, #fff));
+}
+
+.calendarCellDay {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.calendarCellTasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: stretch;
+}
+
+.calendarTask {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 2px 4px;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  appearance: none;
+  background: var(--cds-layer-accent, #e0e0e0);
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.calendarTask:hover {
+  text-decoration: underline;
+}
+
+.calendarTask:focus,
+.calendarTask:focus-visible {
+  outline: 2px solid var(--cds-focus, #0f62fe);
+  outline-offset: 1px;
+}
+
+/* Create form: note + due date in same row (80% / 20%) */
+.createNoteRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.createNoteTextCell {
+  flex: 4 1 0;
+  min-width: 0;
+}
+
+.createDueDateCell {
+  flex: 1 0 0;
+  min-width: 0;
+}
+
+.createDueDateCell input {
+  width: 100%;
 }
 
 /* Priority styling (color-code note text)

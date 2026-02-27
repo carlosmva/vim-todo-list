@@ -477,6 +477,13 @@ function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
     // ignore (already exists)
   }
 
+  // Migrate older DBs that predate due_at
+  try {
+    db.run("ALTER TABLE notes ADD COLUMN due_at INTEGER");
+  } catch {
+    // ignore (already exists)
+  }
+
   // Default any missing board to default.
   db.run("UPDATE notes SET board = ? WHERE board IS NULL OR board = ''", [defaultBoard]);
 
@@ -648,6 +655,24 @@ function addBoard(db, name) {
   return true;
 }
 
+function renameBoard(db, oldName, newName) {
+  const oldN = normalizeBoardName(oldName);
+  const newN = normalizeBoardName(newName);
+  if (!oldN || !newN || oldN === newN) return false;
+  const existing = queryBoards(db);
+  if (existing.includes(newN)) return false;
+  db.run("BEGIN");
+  try {
+    db.run("UPDATE notes SET board = ? WHERE board = ?", [newN, oldN]);
+    db.run("UPDATE boards SET name = ? WHERE name = ?", [newN, oldN]);
+    db.run("COMMIT");
+  } catch (err) {
+    db.run("ROLLBACK");
+    return false;
+  }
+  return true;
+}
+
 function deleteBoardCascade(db, name) {
   const n = normalizeBoardName(name);
   if (!n) return;
@@ -806,6 +831,22 @@ function formatDate(ts) {
   return `${y}-${m}-${day} ${h}:${min}`;
 }
 
+function formatDueDate(ts) {
+  if (!ts || !Number.isFinite(ts)) return "";
+  const d = new Date(ts);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+function dueAtToDateString(ts) {
+  if (!ts || !Number.isFinite(ts)) return "";
+  const d = new Date(ts);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function formatRelative(ts) {
   if (!ts || !Number.isFinite(ts)) return "—";
   const diff = Date.now() - ts;
@@ -822,7 +863,7 @@ function formatRelative(ts) {
 function queryNotes(db, board) {
   const res = db.exec(
     `
-      SELECT id, text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board
+      SELECT id, text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board, due_at
       FROM notes
       WHERE board = ?
       ORDER BY
@@ -848,7 +889,8 @@ function queryNotes(db, board) {
     completed_at: row[idx.completed_at],
     notes_html: row[idx.notes_html],
     sort_order: row[idx.sort_order],
-    board: row[idx.board]
+    board: row[idx.board],
+    due_at: row[idx.due_at] != null ? row[idx.due_at] : null
   }));
 }
 
@@ -863,12 +905,38 @@ function getNextPendingSortOrder(db, board) {
   return Number.isFinite(n) ? n + 1 : 0;
 }
 
-function insertNote(db, board, text) {
+function queryNotesByDueRange(db, startTs, endTs) {
+  const stmt = db.prepare(
+    "SELECT id, text, board, due_at, priority FROM notes WHERE status = 'pending' AND due_at IS NOT NULL AND due_at >= ? AND due_at < ? ORDER BY due_at ASC, id ASC"
+  );
+  stmt.bind([startTs, endTs]);
+  const rows = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    rows.push({
+      id: row.id,
+      text: row.text,
+      board: row.board,
+      due_at: row.due_at,
+      priority: normalizePriority(row.priority)
+    });
+  }
+  stmt.free();
+  return rows;
+}
+
+function insertNote(db, board, text, dueAt = null) {
   const now = Date.now();
   const stmt = db.prepare(
-    "INSERT INTO notes(text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board) VALUES (?, 'pending', 'normal', ?, ?, NULL, '', ?, ?)"
+    "INSERT INTO notes(text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board, due_at) VALUES (?, 'pending', 'normal', ?, ?, NULL, '', ?, ?, ?)"
   );
-  stmt.run([text.trim(), now, now, getNextPendingSortOrder(db, board), board]);
+  stmt.run([text.trim(), now, now, getNextPendingSortOrder(db, board), board, dueAt]);
+  stmt.free();
+}
+
+function updateNoteDueAt(db, noteId, dueAt) {
+  const stmt = db.prepare("UPDATE notes SET due_at = ?, updated_at = ? WHERE id = ?");
+  stmt.run([dueAt, Date.now(), noteId]);
   stmt.free();
 }
 
@@ -1028,6 +1096,37 @@ function renderNotes(db, notes) {
     // Front
     const front = document.createElement("div");
     front.className = "noteFace";
+
+    const dueRow = document.createElement("div");
+    dueRow.className = "noteDueDateRow";
+    if (note.due_at != null && Number.isFinite(note.due_at)) {
+      const dueBtn = document.createElement("button");
+      dueBtn.type = "button";
+      dueBtn.className = "monoLinkButton noteDueDateBtn";
+      dueBtn.dataset.action = "editDueDate";
+      dueBtn.dataset.noteId = String(note.id);
+      dueBtn.textContent = `Due: ${formatDueDate(note.due_at)}`;
+      dueBtn.setAttribute("aria-label", `Due date: ${formatDueDate(note.due_at)}. Activate to change or clear.`);
+      const clearDueBtn = document.createElement("button");
+      clearDueBtn.type = "button";
+      clearDueBtn.className = "monoLinkButton noteDueDateClear";
+      clearDueBtn.textContent = "Clear";
+      clearDueBtn.dataset.action = "clearDueDate";
+      clearDueBtn.dataset.noteId = String(note.id);
+      clearDueBtn.setAttribute("aria-label", "Clear due date");
+      dueRow.appendChild(dueBtn);
+      dueRow.appendChild(clearDueBtn);
+    } else {
+      const addDueBtn = document.createElement("button");
+      addDueBtn.type = "button";
+      addDueBtn.className = "monoLinkButton noteDueDateAdd";
+      addDueBtn.dataset.action = "addDueDate";
+      addDueBtn.dataset.noteId = String(note.id);
+      addDueBtn.textContent = "Add due date";
+      addDueBtn.setAttribute("aria-label", "Add due date");
+      dueRow.appendChild(addDueBtn);
+    }
+    front.appendChild(dueRow);
 
     const body = document.createElement("div");
     body.className = "noteText";
@@ -1464,6 +1563,7 @@ function exportAllTasksCsv(db) {
         n.updated_at,
         n.completed_at,
         n.notes_html,
+        n.due_at,
         COUNT(l.id) AS attachment_count,
         COALESCE(
           GROUP_CONCAT(
@@ -1499,12 +1599,17 @@ function exportAllTasksCsv(db) {
     "updated_at",
     "completed_at",
     "notes_html",
+    "due_at",
     "attachment_count",
     "attachments"
   ];
 
   const lines = [header.map(csvEscape).join(",")];
   for (const row of rows) {
+    const dueAt = row[idx.due_at];
+    const dueAtMdy = dueAt != null && Number.isFinite(Number(dueAt))
+      ? toMdy(Number(dueAt))
+      : "";
     lines.push(
       [
         row[idx.id],
@@ -1517,6 +1622,7 @@ function exportAllTasksCsv(db) {
         toMdy(row[idx.updated_at]),
         toMdy(row[idx.completed_at]),
         htmlToReadableText(row[idx.notes_html]),
+        dueAtMdy,
         row[idx.attachment_count],
         row[idx.attachments]
       ]
@@ -1550,6 +1656,7 @@ async function main() {
   const instructionsView = document.getElementById("instructionsView");
   const aboutView = document.getElementById("aboutView");
   const dashboardView = document.getElementById("dashboardView");
+  const calendarView = document.getElementById("calendarView");
   const aiSettingsView = document.getElementById("aiSettingsView");
   const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
@@ -1560,10 +1667,12 @@ async function main() {
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
   const closeAboutBtn = document.getElementById("closeAboutBtn");
   const closeDashboardBtn = document.getElementById("closeDashboardBtn");
+  const closeCalendarBtn = document.getElementById("closeCalendarBtn");
   const closeAiSettingsBtn = document.getElementById("closeAiSettingsBtn");
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
   const instructionsContent = document.getElementById("instructionsContent");
   const dashboardContent = document.getElementById("dashboardContent");
+  const calendarContent = document.getElementById("calendarContent");
   const aiSettingsMessage = document.getElementById("aiSettingsMessage");
   const aiSettingsForm = document.getElementById("aiSettingsForm");
   const aiEndpointBaseUrlInput = document.getElementById("aiEndpointBaseUrl");
@@ -1627,6 +1736,7 @@ async function main() {
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
@@ -1636,6 +1746,7 @@ async function main() {
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = false;
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
@@ -1645,6 +1756,7 @@ async function main() {
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (aboutView instanceof HTMLElement) aboutView.hidden = false;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
@@ -1654,8 +1766,18 @@ async function main() {
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = false;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
+  }
+
+  function showCalendarView() {
+    if (notesView instanceof HTMLElement) notesView.hidden = true;
+    if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
+    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
+    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = false;
+    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
   }
 
   function showAiSettingsView() {
@@ -1663,6 +1785,7 @@ async function main() {
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = false;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
@@ -1672,6 +1795,7 @@ async function main() {
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
+    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
@@ -1749,6 +1873,23 @@ async function main() {
         <li><b>If the shortcut doesn't work</b>: Go to ${keycap("chrome://extensions/shortcuts")}, find vim-todo-list, and assign ${combo(mod, fmt(openPopupKey))} to "Open vim-todo-list popup". The shortcut only works when Chrome has focus.</li>
       </ul>
 
+      <h3>Due dates</h3>
+      <ul>
+        <li>When adding a note, optionally set a due date in the form</li>
+        <li>On each card: click the due date to edit, or "Clear" to remove</li>
+        <li>Use "Add due date" on cards without a due date</li>
+        <li>Create form keyboard: ${combo(mod, fmt(nav.right))} from new note → due date; ${combo(mod, fmt(nav.left))} from due date → new note; ${combo(mod, fmt(nav.up))} from Export DB → due date; ${combo(mod, fmt(nav.down))} from due date → Export DB</li>
+        <li>Card due date row: reachable via ${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))} from the action buttons; ${combo(mod, fmt(nav.down))} from due row → attachments or actions; ${combo(mod, fmt(nav.up))} from actions → due row</li>
+      </ul>
+
+      <h3>Calendar</h3>
+      <ul>
+        <li>Click <b>Calendar</b> (next to Dashboard) to see the current month and 3 months ahead</li>
+        <li>Each day shows colored dots for pending tasks: red (high), blue (normal), gray (low) priority</li>
+        <li>${combo(mod, fmt(nav.up))}/${combo(mod, fmt(nav.down))}: move between rows (or to month above/below in 2×2 grid); ${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))}: move between days (right at week end → next month)</li>
+        <li>Click a day with tasks (or ${keycap("Enter")}) to focus the right pane; ${keycap("Esc")} exits right pane, ${keycap("Esc")} again closes calendar</li>
+      </ul>
+
       <h3>Navigation</h3>
       <ul>
         <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
@@ -1760,7 +1901,7 @@ async function main() {
         <li>${combo(mod, fmt(focusNewNoteKey))}: focus new note input</li>
         <li>${keycap("/")}: focus card filter for current tab</li>
         <li>${keycap("Enter")}: activate the focused button</li>
-        <li>${keycap("F2")}: rename task (when focus is on a card)</li>
+        <li>${keycap("F2")}: rename task (when focus is on a card) or rename tab (when focus is in Tabs view)</li>
       </ul>
 
       <h3>Notes editor</h3>
@@ -1843,6 +1984,181 @@ async function main() {
 
     if (typeof d3 !== "undefined") {
       renderDashboardCharts(s);
+    }
+  }
+
+  function renderCalendar() {
+    if (!(calendarContent instanceof HTMLElement)) return;
+    const now = new Date();
+    const startTs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const endTs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 4, 1);
+    const notes = queryNotesByDueRange(db, startTs, endTs);
+
+    const byDate = new Map();
+    for (const n of notes) {
+      const key = String(n.due_at);
+      if (!byDate.has(key)) byDate.set(key, []);
+      byDate.get(key).push(n);
+    }
+
+    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+    const getMonthData = (y, m) => {
+      const first = new Date(Date.UTC(y, m, 1));
+      const last = new Date(Date.UTC(y, m + 1, 0));
+      const firstDay = first.getUTCDay();
+      const daysInMonth = last.getUTCDate();
+      const days = [];
+      for (let i = 0; i < firstDay; i++) days.push(null);
+      for (let d = 1; d <= daysInMonth; d++) {
+        const ts = Date.UTC(y, m, d);
+        days.push(ts);
+      }
+      return { year: y, month: m, days, monthName: monthNames[m] };
+    };
+
+    const priorityColors = { low: "#8d8d8d", normal: "#0f62fe", high: "#da1e28" };
+    const priorityOrder = ["high", "normal", "low"];
+
+    let html = '<div class="calendarGrid">';
+    for (let monthIdx = 0; monthIdx < 4; monthIdx++) {
+      const y = now.getUTCFullYear();
+      const m = now.getUTCMonth() + monthIdx;
+      const adj = Math.floor(m / 12);
+      const year = y + adj;
+      const month = ((m % 12) + 12) % 12;
+      const data = getMonthData(year, month);
+      html += `<div class="calendarMonth" data-month-idx="${monthIdx}"><h3 class="calendarMonthTitle">${data.monthName} ${year}</h3>`;
+      html += '<table class="calendarTable"><thead><tr>';
+      for (const d of dayNames) html += `<th>${d}</th>`;
+      html += '</tr></thead><tbody><tr>';
+      let col = 0;
+      for (const cell of data.days) {
+        if (col > 0 && col % 7 === 0) html += '</tr><tr>';
+        const row = Math.floor(col / 7);
+        const colInRow = col % 7;
+        if (cell === null) {
+          html += '<td class="calendarCell calendarCell--empty"></td>';
+        } else {
+          const tasks = byDate.get(String(cell)) || [];
+          const dayNum = new Date(cell).getUTCDate();
+          const byPriority = { low: 0, normal: 0, high: 0 };
+          for (const t of tasks) {
+            const p = t.priority || "normal";
+            if (byPriority[p] !== undefined) byPriority[p]++;
+          }
+          const dotsHtml = priorityOrder
+            .filter((p) => byPriority[p] > 0)
+            .map((p) => {
+              const count = byPriority[p];
+              const color = priorityColors[p];
+              return `<span class="calendarDot calendarDot--${p}" style="background-color:${color}" title="${p}: ${count}" aria-hidden="true"></span>`;
+            })
+            .join("");
+          const dateStr = formatDate(cell);
+          const escapedDate = escapeHtml(dateStr);
+          html += `<td class="calendarCell"><button type="button" class="calendarDayCell" data-date-ts="${cell}" data-month-idx="${monthIdx}" data-row="${row}" data-col="${colInRow}" data-has-tasks="${tasks.length > 0}" aria-label="${tasks.length} task${tasks.length === 1 ? "" : "s"} due ${escapedDate}"><span class="calendarCellDay">${dayNum}</span><span class="calendarCellDots">${dotsHtml}</span></button></td>`;
+        }
+        col++;
+      }
+      while (col % 7 !== 0) {
+        html += '<td class="calendarCell calendarCell--empty"></td>';
+        col++;
+      }
+      html += '</tr></tbody></table></div>';
+    }
+    html += '</div>';
+    calendarContent.innerHTML = html;
+
+    const calendarDayLabel = document.getElementById("calendarDayLabel");
+    const calendarDayTasks = document.getElementById("calendarDayTasks");
+    const calendarRightPane = document.getElementById("calendarRightPane");
+
+    function renderCalendarRightPane(dateTs) {
+      if (!(calendarDayLabel instanceof HTMLElement) || !(calendarDayTasks instanceof HTMLElement)) return;
+      const tasks = byDate.get(String(dateTs)) || [];
+      const d = new Date(dateTs);
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const dateStr = `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+      calendarDayLabel.textContent = dateStr;
+      calendarDayTasks.innerHTML = "";
+      for (const t of tasks) {
+        const text = String(t.text || "").trim() || "Untitled";
+        const displayText = text.slice(0, 60) + (text.length > 60 ? "…" : "");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "calendarTaskLink monoLinkButton";
+        btn.dataset.noteId = String(t.id);
+        btn.dataset.board = String(t.board || "");
+        btn.textContent = displayText;
+        btn.setAttribute("aria-label", `Go to card: ${escapeHtml(text)}`);
+        btn.addEventListener("click", async () => {
+          const noteId = Number(btn.dataset.noteId);
+          const board = btn.dataset.board || activeBoard;
+          if (!Number.isFinite(noteId)) return;
+          activeBoard = board;
+          await saveActiveBoard(activeBoard);
+          renderBoardTabs(boards, activeBoard);
+          setActiveTabUi(activeBoard);
+          showNotesView();
+          await refresh();
+          const card = document.querySelector(`.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`);
+          if (card instanceof HTMLElement) {
+            keepCardInView(card);
+            const firstBtn = card.querySelector("button");
+            if (firstBtn instanceof HTMLElement) safeFocus(firstBtn);
+          }
+        });
+        calendarDayTasks.appendChild(btn);
+      }
+      if (calendarRightPane instanceof HTMLElement) {
+        calendarRightPane.hidden = false;
+      }
+    }
+
+    function clearCalendarRightPane() {
+      if (!(calendarDayLabel instanceof HTMLElement) || !(calendarDayTasks instanceof HTMLElement)) return;
+      calendarDayLabel.textContent = "Select a day";
+      calendarDayTasks.innerHTML = "";
+      if (calendarRightPane instanceof HTMLElement) {
+        calendarRightPane.hidden = false;
+      }
+    }
+
+    calendarContent.querySelectorAll(".calendarDayCell").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const ts = Number(btn.dataset.dateTs);
+        if (Number.isFinite(ts)) {
+          renderCalendarRightPane(ts);
+          calendarSelectedDayCell = btn;
+          if (btn.dataset.hasTasks === "true") {
+            const firstLink = calendarDayTasks?.querySelector(".calendarTaskLink");
+            if (firstLink instanceof HTMLElement) safeFocus(firstLink);
+          }
+        }
+      });
+      btn.addEventListener("focus", () => {
+        const ts = Number(btn.dataset.dateTs);
+        if (Number.isFinite(ts)) {
+          renderCalendarRightPane(ts);
+          calendarSelectedDayCell = btn;
+        }
+      });
+      btn.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter") return;
+        if (btn.dataset.hasTasks !== "true") return;
+        ev.preventDefault();
+        const firstLink = calendarDayTasks?.querySelector(".calendarTaskLink");
+        if (firstLink instanceof HTMLElement) safeFocus(firstLink);
+      });
+    });
+
+    const firstDayWithTasks = calendarContent.querySelector(".calendarDayCell[data-has-tasks='true']");
+    if (firstDayWithTasks instanceof HTMLElement) {
+      renderCalendarRightPane(Number(firstDayWithTasks.dataset.dateTs));
+    } else {
+      clearCalendarRightPane();
     }
   }
 
@@ -4586,6 +4902,15 @@ async function main() {
       if (closeDashboardBtn instanceof HTMLElement) closeDashboardBtn.focus();
     });
   }
+  const calendarBtn = document.getElementById("calendarBtn");
+  if (calendarBtn instanceof HTMLElement) {
+    calendarBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      renderCalendar();
+      showCalendarView();
+      if (closeCalendarBtn instanceof HTMLElement) closeCalendarBtn.focus();
+    });
+  }
   if (closeInstructionsBtn instanceof HTMLElement) {
     closeInstructionsBtn.addEventListener("click", () => {
       showNotesView();
@@ -4636,6 +4961,13 @@ async function main() {
       showNotesView();
       const input = document.getElementById("noteText");
       if (input instanceof HTMLElement) input.focus();
+    });
+  }
+  if (closeCalendarBtn instanceof HTMLElement) {
+    closeCalendarBtn.addEventListener("click", () => {
+      showNotesView();
+      const dashboardBtn = document.getElementById("dashboardBtn");
+      if (dashboardBtn instanceof HTMLElement) dashboardBtn.focus();
     });
   }
 
@@ -5117,6 +5449,68 @@ async function main() {
     input.select();
   }
 
+  function startRenameTab(rowEl) {
+    if (!(rowEl instanceof HTMLElement)) return;
+    const oldName = rowEl.dataset.board;
+    if (!oldName) return;
+    const nameEl = rowEl.querySelector(".manageTabsName");
+    if (!(nameEl instanceof HTMLElement)) return;
+    if (rowEl.querySelector(".manageTabsRenameInput")) return;
+
+    const currentName = (nameEl.textContent || "").trim();
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "manageTabsRenameInput bx--text-input";
+    input.value = currentName;
+    input.setAttribute("aria-label", "Rename tab");
+    input.dataset.board = oldName;
+
+    const finish = (save) => {
+      input.remove();
+      nameEl.hidden = false;
+      const newName = (input.value || "").trim();
+      if (save && newName && newName !== oldName) {
+        if (renameBoard(db, oldName, newName)) {
+          boards = queryBoards(db);
+          if (activeBoard === oldName) activeBoard = newName;
+          renderBoardTabs(boards, activeBoard);
+          setActiveTabUi(activeBoard);
+          persist().then(() => {
+            refresh();
+            renderManageTabs();
+            restoreManageTabsFocus(newName, "remove");
+          });
+        } else {
+          setManageTabsMessage("Tab name already exists or invalid.");
+          nameEl.textContent = currentName;
+          renderManageTabs();
+        }
+      } else {
+        nameEl.textContent = currentName;
+        restoreManageTabsFocus(oldName, "remove");
+      }
+    };
+
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      }
+    });
+
+    input.addEventListener("blur", () => finish(true));
+
+    nameEl.hidden = true;
+    nameEl.parentNode.insertBefore(input, nameEl);
+    input.focus();
+    input.select();
+  }
+
   function moveCardFocus(delta) {
     const cards = getAllCardsInDomOrder();
     if (!cards.length) return;
@@ -5173,12 +5567,18 @@ async function main() {
     const targetCard = cards[nextIdx];
     if (!(targetCard instanceof HTMLElement)) return false;
     if (focusFrontAttachmentInCard(targetCard, delta < 0)) return true;
-    focusCardPrimaryAction(targetCard);
+    focusCardFrontAttachmentsOrPrimary(targetCard);
     return true;
   }
 
   function focusCardFrontAttachmentsOrPrimary(card) {
     if (!(card instanceof HTMLElement)) return false;
+    const buttons = getCardFrontFocusableButtons(card);
+    const dueButtons = buttons.filter((b) => b.closest(".noteDueDateRow"));
+    if (dueButtons.length && safeFocus(dueButtons[0])) {
+      ensureCardFullyVisible(card);
+      return true;
+    }
     if (focusFrontAttachmentInCard(card, false)) return true;
     focusCardPrimaryAction(card);
     return true;
@@ -5193,17 +5593,29 @@ async function main() {
     if (nextIdx < 0 || nextIdx >= cards.length) return false;
     const targetCard = cards[nextIdx];
     if (!(targetCard instanceof HTMLElement)) return false;
-    focusCardPrimaryAction(targetCard);
+    focusCardFrontAttachmentsOrPrimary(targetCard);
     return true;
+  }
+
+  function getCardFrontFocusableButtons(card) {
+    if (!(card instanceof HTMLElement)) return [];
+    const buttons = [];
+    const dueRow = card.querySelector(".noteDueDateRow");
+    if (dueRow instanceof HTMLElement) {
+      buttons.push(...dueRow.querySelectorAll("button"));
+    }
+    const footer = card.querySelector(".noteActions");
+    if (footer instanceof HTMLElement) {
+      buttons.push(...footer.querySelectorAll("button"));
+    }
+    return buttons.filter(
+      (b) => b instanceof HTMLButtonElement && !b.disabled
+    );
   }
 
   function moveButtonFocusWithinCard(card, delta) {
     if (!(card instanceof HTMLElement)) return;
-    const footer = card.querySelector(".noteActions");
-    if (!(footer instanceof HTMLElement)) return;
-    const buttons = [...footer.querySelectorAll("button")].filter(
-      (b) => b instanceof HTMLButtonElement && !b.disabled
-    );
+    const buttons = getCardFrontFocusableButtons(card);
     if (!buttons.length) return;
 
     const activeEl = document.activeElement;
@@ -5444,6 +5856,70 @@ async function main() {
   let notesExitPending = null;
   let attachmentsExitPending = null;
   let lastBoardShortcutAt = 0;
+  let calendarSelectedDayCell = null;
+
+  function moveCalendarFocus(dr, dc) {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !active.classList.contains("calendarDayCell")) return false;
+    const monthIdx = Number(active.dataset.monthIdx);
+    const row = Number(active.dataset.row);
+    const col = Number(active.dataset.col);
+    if (!Number.isFinite(monthIdx) || !Number.isFinite(row) || !Number.isFinite(col)) return false;
+
+    const getMonth = (idx) => calendarContent?.querySelector(`.calendarMonth[data-month-idx="${idx}"]`);
+    const getCellAt = (mi, r, c) => {
+      const month = getMonth(mi);
+      if (!(month instanceof HTMLElement)) return null;
+      const rows = month.querySelectorAll("tbody tr");
+      if (r < 0 || r >= rows.length) return null;
+      const tr = rows[r];
+      if (!(tr instanceof HTMLElement)) return null;
+      const cells = tr.querySelectorAll("td");
+      if (c < 0 || c >= cells.length) return null;
+      const td = cells[c];
+      if (!(td instanceof HTMLElement)) return null;
+      return td.querySelector(".calendarDayCell");
+    };
+
+    let targetMonthIdx = monthIdx;
+    let targetRow = row + dr;
+    let targetCol = col + dc;
+
+    if (dc === 1 && targetCol >= 7) {
+      targetMonthIdx = monthIdx + 1;
+      targetCol = 0;
+      if (targetMonthIdx >= 4) return false;
+      const targetMonth = getMonth(targetMonthIdx);
+      const targetNumRows = targetMonth ? targetMonth.querySelectorAll("tbody tr").length : 0;
+      targetRow = Math.min(row, targetNumRows - 1);
+    } else if (dc === -1 && targetCol < 0) {
+      targetMonthIdx = monthIdx - 1;
+      targetCol = 6;
+      if (targetMonthIdx < 0) return false;
+      const targetMonth = getMonth(targetMonthIdx);
+      const targetNumRows = targetMonth ? targetMonth.querySelectorAll("tbody tr").length : 0;
+      targetRow = Math.min(row, targetNumRows - 1);
+    } else if (dr === 1) {
+      const month = getMonth(monthIdx);
+      const numRows = month ? month.querySelectorAll("tbody tr").length : 0;
+      if (targetRow >= numRows) {
+        targetMonthIdx = monthIdx + 2;
+        if (targetMonthIdx >= 4) return false;
+        targetRow = 0;
+      }
+    } else if (dr === -1 && targetRow < 0) {
+      targetMonthIdx = monthIdx - 2;
+      if (targetMonthIdx < 0) return false;
+      const targetMonth = getMonth(targetMonthIdx);
+      const targetNumRows = targetMonth ? targetMonth.querySelectorAll("tbody tr").length : 0;
+      targetRow = Math.max(0, targetNumRows - 1);
+    }
+
+    const targetBtn = getCellAt(targetMonthIdx, targetRow, targetCol);
+    if (!(targetBtn instanceof HTMLButtonElement)) return false;
+    safeFocus(targetBtn);
+    return true;
+  }
 
   function isElementInVisibleView(node) {
     if (!(node instanceof HTMLElement)) return false;
@@ -5494,22 +5970,27 @@ async function main() {
     const instructionsVisible = instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
     const aboutVisible = aboutView instanceof HTMLElement && !aboutView.hasAttribute("hidden");
     const dashboardVisible = dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
+    const calendarVisible = calendarView instanceof HTMLElement && !calendarView.hasAttribute("hidden");
     const aiSettingsVisible = aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
     const manageTabsVisible = manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
     if (notesVisible) {
       const noteText = document.getElementById("noteText");
+      const noteDueDate = document.getElementById("noteDueDate");
       const exportDbBtn = document.getElementById("exportDbBtn");
       const importDbBtn = document.getElementById("importDbBtn");
       const dashboardBtn = document.getElementById("dashboardBtn");
+      const calendarBtn = document.getElementById("calendarBtn");
       const exportBtn = document.getElementById("exportBtn");
       const addBtn = document.querySelector("#createForm button[type='submit']");
       const cardFilterInput = document.getElementById("cardFilterInput");
 
       if (noteText instanceof HTMLElement) targets.push(noteText);
+      if (noteDueDate instanceof HTMLElement) targets.push(noteDueDate);
       if (exportDbBtn instanceof HTMLElement) targets.push(exportDbBtn);
       if (importDbBtn instanceof HTMLElement) targets.push(importDbBtn);
       if (dashboardBtn instanceof HTMLElement) targets.push(dashboardBtn);
+      if (calendarBtn instanceof HTMLElement) targets.push(calendarBtn);
       if (exportBtn instanceof HTMLElement) targets.push(exportBtn);
       if (addBtn instanceof HTMLElement) targets.push(addBtn);
       if (cardFilterInput instanceof HTMLElement) targets.push(cardFilterInput);
@@ -5533,10 +6014,12 @@ async function main() {
     if (aiSettingsVisible) {
       const closeBtn = document.getElementById("closeAiSettingsBtn");
       const endpoint = document.getElementById("aiEndpointBaseUrl");
+      const model = document.getElementById("aiEndpointModel");
       const customWords = document.getElementById("aiCustomWords");
       const saveBtn = document.getElementById("saveAiSettingsBtn");
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
       if (endpoint instanceof HTMLElement) targets.push(endpoint);
+      if (model instanceof HTMLElement) targets.push(model);
       if (customWords instanceof HTMLElement) targets.push(customWords);
       if (saveBtn instanceof HTMLElement) targets.push(saveBtn);
     }
@@ -5544,6 +6027,15 @@ async function main() {
     if (dashboardVisible) {
       const closeBtn = document.getElementById("closeDashboardBtn");
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+    }
+
+    if (calendarVisible) {
+      const closeBtn = document.getElementById("closeCalendarBtn");
+      if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+      const calendarDayCells = calendarContent?.querySelectorAll(".calendarDayCell");
+      if (calendarDayCells) targets.push(...calendarDayCells);
+      const calendarTaskLinks = document.querySelectorAll(".calendarTaskLink");
+      if (calendarTaskLinks) targets.push(...calendarTaskLinks);
     }
 
     if (manageTabsVisible) {
@@ -5604,11 +6096,15 @@ async function main() {
       pushContainer(active.closest(".list"));
       pushContainer(active.closest(".board"));
       pushContainer(active.closest(".instructionsContent"));
+      pushContainer(active.closest(".calendarContent"));
+      pushContainer(active.closest(".calendarRightPane"));
     }
 
     pushContainer(document.querySelector(".list"));
     pushContainer(document.querySelector(".board"));
     pushContainer(document.getElementById("dashboardContent"));
+    pushContainer(document.getElementById("calendarContent"));
+    pushContainer(document.getElementById("calendarRightPane"));
 
     for (const container of containers) {
       const maxScroll = container.scrollHeight - container.clientHeight;
@@ -5648,6 +6144,49 @@ async function main() {
       const key = (e.key || "").toLowerCase();
       const nav = getNavKeys(keyLayout);
 
+      // ESC in overlay views → go to main view (AI, Tabs, Instructions, About, Calendar).
+      if (!modKeyActive(e) && !e.ctrlKey && !e.metaKey && key === "escape") {
+        const activeEl = document.activeElement;
+        const calendarViewEl = document.getElementById("calendarView");
+        const calendarVisible =
+          calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden");
+        const inCalendar = calendarVisible && activeEl instanceof Element && activeEl.closest("#calendarView") !== null;
+        if (inCalendar) {
+          const inRightPane = activeEl instanceof Element && activeEl.closest(".calendarRightPane") !== null;
+          if (inRightPane && calendarSelectedDayCell instanceof HTMLElement) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            safeFocus(calendarSelectedDayCell);
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          showNotesView();
+          const calendarBtn = document.getElementById("calendarBtn");
+          if (calendarBtn instanceof HTMLElement) safeFocus(calendarBtn);
+          return;
+        }
+        const aiSettingsViewEl = document.getElementById("aiSettingsView");
+        const manageTabsViewEl = document.getElementById("manageTabsView");
+        const instructionsViewEl = document.getElementById("instructionsView");
+        const aboutViewEl = document.getElementById("aboutView");
+        const inAiSettings = aiSettingsViewEl instanceof HTMLElement && !aiSettingsViewEl.hasAttribute("hidden");
+        const inManageTabs = manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden");
+        const inInstructions = instructionsViewEl instanceof HTMLElement && !instructionsViewEl.hasAttribute("hidden");
+        const inAbout = aboutViewEl instanceof HTMLElement && !aboutViewEl.hasAttribute("hidden");
+        if (inAiSettings || inManageTabs || inInstructions || inAbout) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          showNotesView();
+          const noteText = document.getElementById("noteText");
+          if (noteText instanceof HTMLElement) safeFocus(noteText);
+          return;
+        }
+      }
+
       // Autocomplete suggestion navigation (capture-phase):
       // When suggestions are visible for the New note input, mod+Up/mod+Down should
       // traverse the suggestion buttons rather than moving global focus.
@@ -5669,8 +6208,10 @@ async function main() {
                 )
               : [];
 
-          if (btns.length) {
-            let idx = activeEl0 instanceof HTMLElement ? btns.indexOf(activeEl0) : -1;
+          let idx = activeEl0 instanceof HTMLElement ? btns.indexOf(activeEl0) : -1;
+          // When on the new note input (not a suggestion) and pressing up, go to header, not autocomplete.
+          const skipAutocompleteForUp = inNewNoteInput && key === nav.up && idx < 0;
+          if (!skipAutocompleteForUp && btns.length) {
             // If we're on the last suggestion and moving "down", exit suggestions to the next row.
             if (idx === btns.length - 1 && key === nav.down) {
               e.preventDefault();
@@ -5730,6 +6271,29 @@ async function main() {
         (activeCard && activeCard.classList.contains("is-flipped")
           ? activeCard
           : document.querySelector(".noteCard.is-flipped")) || null;
+
+      // F2: rename tab when focus is in manage tabs view
+      if (
+        e.key === "F2" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !modKeyActive(e) &&
+        !(activeEl instanceof Element && activeEl.closest(".manageTabsRenameInput"))
+      ) {
+        const manageTabsViewEl = document.getElementById("manageTabsView");
+        const manageTabsVisible =
+          manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden");
+        const inManageTabs =
+          manageTabsVisible && activeEl instanceof Element && activeEl.closest("#manageTabsView") !== null;
+        const manageTabsRow =
+          activeEl instanceof Element && activeEl.closest(".manageTabsRow");
+        if (inManageTabs && manageTabsRow instanceof HTMLElement) {
+          e.preventDefault();
+          e.stopPropagation();
+          startRenameTab(manageTabsRow);
+          return;
+        }
+      }
 
       // F2: rename task when focus is on a card (front face, not in notes editor)
       if (
@@ -6081,9 +6645,10 @@ async function main() {
       }
 
       if (key === nav.down) {
+        const activeEl2 = document.activeElement;
+        if (activeEl2 instanceof Element && (activeEl2.closest(".noteDueDateInput") || activeEl2.closest(".noteTextRenameInput") || activeEl2.closest(".manageTabsRenameInput"))) return;
         e.preventDefault();
         e.stopPropagation();
-        const activeEl2 = document.activeElement;
 
         // Manage Tabs: down moves to next tab row (not across row buttons).
         {
@@ -6105,15 +6670,45 @@ async function main() {
           }
         }
 
+        // Calendar: down moves to next row (same column); on task link, move to next link.
+        {
+          const calendarViewEl = document.getElementById("calendarView");
+          const calendarVisible =
+            calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden");
+          const inCalendar =
+            calendarVisible && activeEl2 instanceof Element && activeEl2.closest("#calendarView") !== null;
+          const onCalendarDayCell = activeEl2 instanceof Element && activeEl2.classList.contains("calendarDayCell");
+          const onCalendarTaskLink = activeEl2 instanceof Element && activeEl2.classList.contains("calendarTaskLink");
+          if (inCalendar && onCalendarDayCell && moveCalendarFocus(1, 0)) return;
+          if (inCalendar && onCalendarTaskLink) {
+            const links = document.querySelectorAll(".calendarTaskLink");
+            const idx = activeEl2 ? [...links].indexOf(activeEl2) : -1;
+            if (idx >= 0 && idx < links.length - 1 && links[idx + 1] instanceof HTMLElement) {
+              safeFocus(links[idx + 1]);
+              return;
+            }
+          }
+        }
+
         const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
         if (activeCard2 instanceof HTMLElement) {
           const inFrontAttachments2 =
             activeEl2 instanceof Element && activeEl2.closest(".noteAttachmentsItems") !== null;
           const inCardActions2 =
             activeEl2 instanceof Element && activeEl2.closest(".noteActions") !== null;
+          const inNoteDueDateRow2 =
+            activeEl2 instanceof Element && activeEl2.closest(".noteDueDateRow") !== null;
 
           // Vertical levels:
-          // attachments row -> same card action row -> next card attachments/action row
+          // due date row -> attachments row -> action row -> next card
+          if (inNoteDueDateRow2) {
+            const links = getFrontAttachmentLinks(activeCard2);
+            if (links.length) {
+              if (safeFocus(links[0])) return;
+            }
+            focusCardPrimaryAction(activeCard2);
+            return;
+          }
           if (inFrontAttachments2) {
             focusCardPrimaryAction(activeCard2);
             return;
@@ -6131,6 +6726,12 @@ async function main() {
           activeEl2 instanceof Element &&
           activeEl2.closest("#dashboardView") !== null;
 
+        const inCalendar =
+          calendarView instanceof HTMLElement &&
+          !calendarView.hasAttribute("hidden") &&
+          activeEl2 instanceof Element &&
+          activeEl2.closest("#calendarView") !== null;
+
         const belowTabs =
           activeEl2 instanceof Element &&
           (
@@ -6140,7 +6741,7 @@ async function main() {
             activeEl2.closest(".noteEditor") !== null ||
             activeEl2.closest(".noteBackBody") !== null
           );
-        if ((belowTabs || inDashboard) && tryScrollBeforeSectionMove(+1)) return;
+        if ((belowTabs || inDashboard || inCalendar) && tryScrollBeforeSectionMove(+1)) return;
 
         // If the user just switched boards via Alt+1..Alt+9, "down" should enter
         // the cards area (first card) rather than stepping through global UI.
@@ -6206,13 +6807,21 @@ async function main() {
           }
 
           if (aiSettingsVisible) {
-            const endpoint = document.getElementById("aiEndpointBaseUrl");
-            if (endpoint instanceof HTMLElement) safeFocus(endpoint);
+            const closeBtn = document.getElementById("closeAiSettingsBtn");
+            if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
             return;
           }
 
           if (dashboardVisible) {
             const closeBtn = document.getElementById("closeDashboardBtn");
+            if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
+            return;
+          }
+
+          const calendarVisible =
+            calendarView instanceof HTMLElement && !calendarView.hasAttribute("hidden");
+          if (calendarVisible) {
+            const closeBtn = document.getElementById("closeCalendarBtn");
             if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
             return;
           }
@@ -6230,16 +6839,30 @@ async function main() {
           }
         }
 
+        // Down from new note or date field → Export DB.
+        {
+          const noteText = document.getElementById("noteText");
+          const noteDueDate = document.getElementById("noteDueDate");
+          const exportDbBtn = document.getElementById("exportDbBtn");
+          const inCreateNoteRow =
+            activeEl2 === noteText ||
+            activeEl2 === noteDueDate ||
+            (activeEl2 instanceof Element && activeEl2.closest(".createNoteRow") !== null);
+          if (inCreateNoteRow && exportDbBtn instanceof HTMLElement && safeFocus(exportDbBtn)) return;
+        }
+
         // If focus is on the create actions row, "down" should go to the tabs.
         const exportDbBtn = document.getElementById("exportDbBtn");
         const importDbBtn = document.getElementById("importDbBtn");
         const dashboardBtn = document.getElementById("dashboardBtn");
+        const calendarBtn = document.getElementById("calendarBtn");
         const exportBtn = document.getElementById("exportBtn");
         const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
         const isCreateActionEl =
           activeEl2 === exportDbBtn ||
           activeEl2 === importDbBtn ||
           activeEl2 === dashboardBtn ||
+          activeEl2 === calendarBtn ||
           activeEl2 === exportBtn ||
           activeEl2 === createSubmitBtn ||
           (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
@@ -6299,11 +6922,25 @@ async function main() {
       }
 
       if (key === nav.up) {
+        const activeEl2 = document.activeElement;
+        if (activeEl2 instanceof Element && (activeEl2.closest(".noteDueDateInput") || activeEl2.closest(".noteTextRenameInput") || activeEl2.closest(".manageTabsRenameInput"))) return;
         e.preventDefault();
         e.stopPropagation();
-        const activeEl2 = document.activeElement;
 
-        // Manage Tabs: up moves to previous tab row (not across row buttons).
+        // AI view: up moves through Save → Custom Words → Model → Endpoint → Close → header.
+        {
+          const aiSettingsView = document.getElementById("aiSettingsView");
+          const aiSettingsVisible =
+            aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
+          const inAiView =
+            aiSettingsVisible && activeEl2 instanceof Element && activeEl2.closest("#aiSettingsView") !== null;
+          if (inAiView) {
+            moveGlobalFocus(-1);
+            return;
+          }
+        }
+
+        // Manage Tabs: up moves to previous tab row, or from add form to Close.
         {
           const manageTabsView = document.getElementById("manageTabsView");
           const manageTabsVisible =
@@ -6315,9 +6952,117 @@ async function main() {
               activeEl2 instanceof Element &&
               activeEl2.closest(".headerLinks") !== null;
             const inManageTabsRow = activeEl2 instanceof Element && activeEl2.closest(".manageTabsRow") !== null;
+            const addTabName = document.getElementById("addTabName");
+            const addTabForm = document.getElementById("addTabForm");
+            const inAddTabForm =
+              activeEl2 === addTabName ||
+              (addTabForm instanceof HTMLElement && addTabForm.contains(activeEl2));
+            const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
+            if (activeEl2 === closeManageTabsBtn && closeManageTabsBtn instanceof HTMLElement) {
+              moveGlobalFocus(-1);
+              return;
+            }
+            if (inAddTabForm) {
+              if (closeManageTabsBtn instanceof HTMLElement && safeFocus(closeManageTabsBtn)) return;
+            }
             if (!inHeaderLinks && inManageTabsRow) {
               if (moveFocusAcrossManageTabsRows(-1)) return;
             }
+          }
+        }
+
+        // Calendar: up moves to previous row (same column).
+        {
+          const calendarViewEl = document.getElementById("calendarView");
+          const calendarVisible =
+            calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden");
+          const inCalendar =
+            calendarVisible && activeEl2 instanceof Element && activeEl2.closest("#calendarView") !== null;
+          const onCalendarDayCell = activeEl2 instanceof Element && activeEl2.classList.contains("calendarDayCell");
+          const onCalendarTaskLink = activeEl2 instanceof Element && activeEl2.classList.contains("calendarTaskLink");
+          if (inCalendar && onCalendarDayCell && moveCalendarFocus(-1, 0)) return;
+          if (inCalendar && onCalendarTaskLink) {
+            const links = document.querySelectorAll(".calendarTaskLink");
+            const idx = activeEl2 ? [...links].indexOf(activeEl2) : -1;
+            if (idx <= 0 && calendarSelectedDayCell instanceof HTMLElement) {
+              safeFocus(calendarSelectedDayCell);
+              return;
+            }
+            if (idx > 0 && links[idx - 1] instanceof HTMLElement) {
+              safeFocus(links[idx - 1]);
+              return;
+            }
+          }
+        }
+
+        // Create form: up from Export DB row → new note row; up from new note row → header.
+        {
+          const noteText = document.getElementById("noteText");
+          const noteDueDate = document.getElementById("noteDueDate");
+          const exportDbBtn = document.getElementById("exportDbBtn");
+          const importDbBtn = document.getElementById("importDbBtn");
+          const dashboardBtn = document.getElementById("dashboardBtn");
+          const calendarBtn = document.getElementById("calendarBtn");
+          const exportBtn = document.getElementById("exportBtn");
+          const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
+          const inCreateButtons =
+            activeEl2 === exportDbBtn ||
+            activeEl2 === importDbBtn ||
+            activeEl2 === dashboardBtn ||
+            activeEl2 === calendarBtn ||
+            activeEl2 === exportBtn ||
+            activeEl2 === createSubmitBtn ||
+            (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
+          const inCreateNoteRow =
+            activeEl2 === noteText ||
+            activeEl2 === noteDueDate ||
+            (activeEl2 instanceof Element && activeEl2.closest(".createNoteRow") !== null);
+
+          if (inCreateButtons) {
+            if (noteText instanceof HTMLElement && safeFocus(noteText)) return;
+            return;
+          }
+          if (inCreateNoteRow) {
+            const themeToggle = document.getElementById("themeToggle");
+            if (themeToggle instanceof HTMLElement && safeFocus(themeToggle)) return;
+            return;
+          }
+        }
+
+        // Board tabs: up moves to create actions row (before card handling, which may scroll).
+        {
+          const inBoardTabs =
+            activeEl2 instanceof Element &&
+            activeEl2.closest("#boardTabs") !== null;
+
+          if (inBoardTabs) {
+            const cardFilterInput = document.getElementById("cardFilterInput");
+            if (cardFilterInput instanceof HTMLElement && isElementInVisibleView(cardFilterInput) && safeFocus(cardFilterInput)) return;
+
+            const exportDbBtn = document.getElementById("exportDbBtn");
+            const importDbBtn = document.getElementById("importDbBtn");
+            const dashboardBtn = document.getElementById("dashboardBtn");
+            const exportBtn = document.getElementById("exportBtn");
+            const calendarBtn = document.getElementById("calendarBtn");
+            const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
+            if (
+              (exportDbBtn instanceof HTMLElement && safeFocus(exportDbBtn)) ||
+              (importDbBtn instanceof HTMLElement && safeFocus(importDbBtn)) ||
+              (dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) ||
+              (calendarBtn instanceof HTMLElement && safeFocus(calendarBtn)) ||
+              (exportBtn instanceof HTMLElement && safeFocus(exportBtn)) ||
+              (createSubmitBtn instanceof HTMLElement && safeFocus(createSubmitBtn))
+            ) {
+              return;
+            }
+
+            const noteDueDate = document.getElementById("noteDueDate");
+            const noteText = document.getElementById("noteText");
+            if (noteDueDate instanceof HTMLElement && safeFocus(noteDueDate)) return;
+            if (noteText instanceof HTMLElement && safeFocus(noteText)) return;
+            // Fallback: moveGlobalFocus finds the previous focusable in the global order.
+            moveGlobalFocus(-1);
+            return;
           }
         }
 
@@ -6327,19 +7072,48 @@ async function main() {
             activeEl2 instanceof Element && activeEl2.closest(".noteAttachmentsItems") !== null;
           const inCardActions2 =
             activeEl2 instanceof Element && activeEl2.closest(".noteActions") !== null;
+          const inNoteDueDateRow2 =
+            activeEl2 instanceof Element && activeEl2.closest(".noteDueDateRow") !== null;
 
           // Vertical levels:
-          // next card action row <- same card action row <- same card attachments row
+          // next card <- action row <- attachments row <- due date row
           if (inCardActions2) {
             const links = getFrontAttachmentLinks(activeCard2);
             if (links.length) {
               const target = links[links.length - 1];
               if (safeFocus(target)) return;
             }
+            const dueButtons = getCardFrontFocusableButtons(activeCard2).filter(
+              (b) => b.closest(".noteDueDateRow") !== null
+            );
+            if (dueButtons.length) {
+              const lastDue = dueButtons[dueButtons.length - 1];
+              if (safeFocus(lastDue)) return;
+            }
             if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
           }
           if (inFrontAttachments2) {
+            const dueButtons = getCardFrontFocusableButtons(activeCard2).filter(
+              (b) => b.closest(".noteDueDateRow") !== null
+            );
+            if (dueButtons.length) {
+              const lastDue = dueButtons[dueButtons.length - 1];
+              if (safeFocus(lastDue)) return;
+            }
             if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
+          }
+          if (inNoteDueDateRow2) {
+            if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
+            const cards = getAllCardsInDomOrder();
+            const idx = cards.indexOf(activeCard2);
+            if (idx <= 0) {
+              const activeTab = document.querySelector(
+                "#boardTabs [role='tab'][aria-selected='true']"
+              );
+              if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
+              const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+              if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+            }
           }
         }
         const dashboardViewForScroll = document.getElementById("dashboardView");
@@ -6350,6 +7124,12 @@ async function main() {
           activeEl2 instanceof Element &&
           activeEl2.closest("#dashboardView") !== null;
 
+        const inCalendar =
+          calendarView instanceof HTMLElement &&
+          !calendarView.hasAttribute("hidden") &&
+          activeEl2 instanceof Element &&
+          activeEl2.closest("#calendarView") !== null;
+
         const belowTabs =
           activeEl2 instanceof Element &&
           (
@@ -6359,7 +7139,7 @@ async function main() {
             activeEl2.closest(".noteEditor") !== null ||
             activeEl2.closest(".noteBackBody") !== null
           );
-        if ((belowTabs || inDashboard) && tryScrollBeforeSectionMove(-1)) return;
+        if ((belowTabs || inDashboard || inCalendar) && tryScrollBeforeSectionMove(-1)) return;
         const card = getCardFromElement(activeEl2);
         if (card) {
           const cards = getAllCardsInDomOrder();
@@ -6379,26 +7159,6 @@ async function main() {
           return;
         }
 
-        // If focus is on the create actions row, "up" should go back to the input.
-        {
-          const exportDbBtn = document.getElementById("exportDbBtn");
-          const importDbBtn = document.getElementById("importDbBtn");
-          const exportBtn = document.getElementById("exportBtn");
-          const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
-          const isCreateActionEl =
-            activeEl2 === exportDbBtn ||
-            activeEl2 === importDbBtn ||
-            activeEl2 === exportBtn ||
-            activeEl2 === createSubmitBtn ||
-            (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
-
-          if (isCreateActionEl) {
-            const noteText = document.getElementById("noteText");
-            if (noteText instanceof HTMLElement) safeFocus(noteText);
-            return;
-          }
-        }
-
         // If focus is on the dashboard close button, Alt+Up closes and focuses Dashboard button.
         const closeDashboardBtn = document.getElementById("closeDashboardBtn");
         const dashboardView = document.getElementById("dashboardView");
@@ -6415,31 +7175,19 @@ async function main() {
           return;
         }
 
-        // If focus is on the board tabs, "up" should return to the create actions row.
-        const inBoardTabs =
-          activeEl2 instanceof Element &&
-          activeEl2.closest("#boardTabs") !== null;
-
-        if (inBoardTabs) {
-          const cardFilterInput = document.getElementById("cardFilterInput");
-          if (cardFilterInput instanceof HTMLElement && safeFocus(cardFilterInput)) return;
-
-          const exportDbBtn = document.getElementById("exportDbBtn");
-          const importDbBtn = document.getElementById("importDbBtn");
-          const dashboardBtn = document.getElementById("dashboardBtn");
-          const exportBtn = document.getElementById("exportBtn");
-
-          if (
-            (exportDbBtn instanceof HTMLElement && safeFocus(exportDbBtn)) ||
-            (importDbBtn instanceof HTMLElement && safeFocus(importDbBtn)) ||
-            (dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) ||
-            (exportBtn instanceof HTMLElement && safeFocus(exportBtn))
-          ) {
-            return;
-          }
-
-          const noteText = document.getElementById("noteText");
-          if (noteText instanceof HTMLElement) safeFocus(noteText);
+        // If focus is on the calendar close button, Alt+Up closes and focuses Calendar button.
+        const closeCalendarBtn = document.getElementById("closeCalendarBtn");
+        const calendarView = document.getElementById("calendarView");
+        const calendarVisible =
+          calendarView instanceof HTMLElement && !calendarView.hasAttribute("hidden");
+        if (
+          calendarVisible &&
+          activeEl2 === closeCalendarBtn &&
+          closeCalendarBtn instanceof HTMLElement
+        ) {
+          showNotesView();
+          const calendarBtn = document.getElementById("calendarBtn");
+          if (calendarBtn instanceof HTMLElement) safeFocus(calendarBtn);
           return;
         }
 
@@ -6491,6 +7239,41 @@ async function main() {
               if (inManageTabsRow && moveFocusAcrossManageTabsRows(+1)) return;
             }
             // Fall through to generic global nav if needed.
+          }
+        }
+
+        // Calendar: up/down = rows, left/right = columns; task links: up goes back to day cell.
+        {
+          const calendarViewEl = document.getElementById("calendarView");
+          const calendarVisible =
+            calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden");
+          const inCalendar = calendarVisible && activeEl instanceof Element && activeEl.closest("#calendarView") !== null;
+          if (inCalendar) {
+            const onCalendarDayCell = activeEl instanceof Element && activeEl.classList.contains("calendarDayCell");
+            const onCalendarTaskLink = activeEl instanceof Element && activeEl.classList.contains("calendarTaskLink");
+            if (onCalendarDayCell) {
+              if (key === nav.up && moveCalendarFocus(-1, 0)) return;
+              if (key === nav.down && moveCalendarFocus(1, 0)) return;
+              if (key === nav.left && moveCalendarFocus(0, -1)) return;
+              if (key === nav.right && moveCalendarFocus(0, 1)) return;
+            } else if (onCalendarTaskLink) {
+              const links = document.querySelectorAll(".calendarTaskLink");
+              const idx = activeEl ? [...links].indexOf(activeEl) : -1;
+              if (key === nav.up) {
+                if (idx <= 0 && calendarSelectedDayCell instanceof HTMLElement) {
+                  safeFocus(calendarSelectedDayCell);
+                  return;
+                }
+                if (idx > 0 && links[idx - 1] instanceof HTMLElement) {
+                  safeFocus(links[idx - 1]);
+                  return;
+                }
+              }
+              if (key === nav.down && idx >= 0 && idx < links.length - 1 && links[idx + 1] instanceof HTMLElement) {
+                safeFocus(links[idx + 1]);
+                return;
+              }
+            }
           }
         }
 
@@ -6551,12 +7334,27 @@ async function main() {
 
   // Escape closes the overlay when popup is in an iframe.
   // Only close when outside the notes editor: inside notes, Esc goes insert→normal, then normal→close notes, then Esc closes overlay.
+  // Calendar, AI, Tabs, Instructions, About: Esc goes to main view instead of closing.
   document.addEventListener(
     "keydown",
     (e) => {
       if (e.key !== "Escape" || modKeyActive(e) || e.ctrlKey || e.metaKey) return;
       if (window.parent === window) return;
       if (openNoteEditorIds.size > 0) return;
+      const calendarViewEl = document.getElementById("calendarView");
+      if (calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden")) return;
+      const aiSettingsViewEl = document.getElementById("aiSettingsView");
+      const manageTabsViewEl = document.getElementById("manageTabsView");
+      const instructionsViewEl = document.getElementById("instructionsView");
+      const aboutViewEl = document.getElementById("aboutView");
+      if (
+        (aiSettingsViewEl instanceof HTMLElement && !aiSettingsViewEl.hasAttribute("hidden")) ||
+        (manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden")) ||
+        (instructionsViewEl instanceof HTMLElement && !instructionsViewEl.hasAttribute("hidden")) ||
+        (aboutViewEl instanceof HTMLElement && !aboutViewEl.hasAttribute("hidden"))
+      ) {
+        return;
+      }
       try {
         window.parent.postMessage({ type: "vim-todo-close" }, "*");
       } catch {
@@ -8243,11 +9041,20 @@ async function main() {
   el("createForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const input = el("noteText");
+    const dueInput = document.getElementById("noteDueDate");
     const text = input.value.trim();
     if (!text) return;
 
-    insertNote(db, activeBoard, text);
+    let dueAt = null;
+    if (dueInput instanceof HTMLInputElement && dueInput.value) {
+      const dateStr = dueInput.value;
+      const d = new Date(dateStr + "T00:00:00Z");
+      if (Number.isFinite(d.getTime())) dueAt = d.getTime();
+    }
+
+    insertNote(db, activeBoard, text, dueAt);
     input.value = "";
+    if (dueInput instanceof HTMLInputElement) dueInput.value = "";
     clearNewNoteAutocomplete();
     await persist();
     await refresh();
@@ -8284,6 +9091,93 @@ async function main() {
         stmt.free();
       }
 
+      await persist();
+      await refresh();
+      return;
+    }
+
+    if (action === "editDueDate" || action === "addDueDate") {
+      const noteId = Number(target.dataset.noteId);
+      if (!Number.isFinite(noteId)) return;
+      const card = target.closest(".noteCard[data-note-id]");
+      const dueRow = card?.querySelector(".noteDueDateRow");
+      if (!(dueRow instanceof HTMLElement)) return;
+
+      let currentDueAt = null;
+      try {
+        const res = db.exec("SELECT due_at FROM notes WHERE id = ?", [noteId]);
+        if (res.length && res[0].values?.[0]?.[0] != null) {
+          currentDueAt = Number(res[0].values[0][0]);
+        }
+      } catch {
+        // ignore
+      }
+
+      const input = document.createElement("input");
+      input.type = "date";
+      input.className = "noteDueDateInput bx--text-input";
+      input.value = dueAtToDateString(currentDueAt);
+      input.setAttribute("aria-label", "Due date");
+      dueRow.innerHTML = "";
+      dueRow.appendChild(input);
+      input.focus();
+
+      let done = false;
+      const onDone = async () => {
+        if (done) return;
+        done = true;
+        if (changeTimer) {
+          clearTimeout(changeTimer);
+          changeTimer = null;
+        }
+        input.removeEventListener("blur", onBlur);
+        input.removeEventListener("change", onChange);
+        input.removeEventListener("keydown", onKeydown);
+        const val = input.value;
+        if (input.parentElement === dueRow) dueRow.removeChild(input);
+        let dueAt = null;
+        if (val) {
+          const d = new Date(val + "T00:00:00Z");
+          if (Number.isFinite(d.getTime())) dueAt = d.getTime();
+        }
+        updateNoteDueAt(db, noteId, dueAt);
+        await persist();
+        await refresh();
+      };
+
+      let changeTimer = null;
+      const onChange = () => {
+        // Change fires on every keystroke; debounce so we only close when user stops typing.
+        if (changeTimer) clearTimeout(changeTimer);
+        const val = input.value;
+        const m = /^(\d{4})-\d{2}-\d{2}$/.exec(val);
+        if (m && Number(m[1]) >= 1000) {
+          changeTimer = setTimeout(() => {
+            changeTimer = null;
+            onDone();
+          }, 10000);
+        }
+      };
+      const onBlur = () => {
+        // Delay so the native date picker can open without closing the field.
+        setTimeout(() => onDone(), 200);
+      };
+      const onKeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onDone();
+        }
+      };
+      input.addEventListener("change", onChange);
+      input.addEventListener("blur", onBlur);
+      input.addEventListener("keydown", onKeydown);
+      return;
+    }
+
+    if (action === "clearDueDate") {
+      const noteId = Number(target.dataset.noteId);
+      if (!Number.isFinite(noteId)) return;
+      updateNoteDueAt(db, noteId, null);
       await persist();
       await refresh();
       return;

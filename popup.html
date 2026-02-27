@@ -31,18 +31,28 @@
       <div class="body">
         <div id="notesView" class="view" aria-label="Notes view">
           <form id="createForm" class="create" aria-label="Create note">
-            <div class="bx--form-item">
-              <div class="noteTextInlineWrap">
+            <div class="createNoteRow">
+              <div class="bx--form-item createNoteTextCell">
+                <div class="noteTextInlineWrap">
+                  <input
+                    id="noteText"
+                    class="bx--text-input"
+                    type="text"
+                    placeholder="New note…"
+                    maxlength="300"
+                    autocomplete="off"
+                    required
+                  />
+                  <div id="noteTextTrail" class="noteInlineTrail" aria-hidden="true" hidden></div>
+                </div>
+              </div>
+              <div class="bx--form-item createDueDateCell">
                 <input
-                  id="noteText"
+                  id="noteDueDate"
                   class="bx--text-input"
-                  type="text"
-                  placeholder="New note…"
-                  maxlength="300"
-                  autocomplete="off"
-                  required
+                  type="date"
+                  aria-label="Due date (optional)"
                 />
-                <div id="noteTextTrail" class="noteInlineTrail" aria-hidden="true" hidden></div>
               </div>
             </div>
 
@@ -62,6 +72,9 @@
               <div class="createButtonsRight">
                 <button id="dashboardBtn" class="monoLinkButton" type="button">
                   Dashboard
+                </button>
+                <button id="calendarBtn" class="monoLinkButton" type="button">
+                  Calendar
                 </button>
                 <button id="exportBtn" class="monoLinkButton" type="button">
                   Export CSV
@@ -137,6 +150,22 @@
             </button>
           </div>
           <div id="dashboardContent" class="instructionsContent"></div>
+        </div>
+
+        <div id="calendarView" class="view" aria-label="Calendar" hidden>
+          <div class="instructionsHeader">
+            <div class="instructionsTitle">Calendar</div>
+            <button id="closeCalendarBtn" class="monoLinkButton" type="button">
+              Close
+            </button>
+          </div>
+          <div class="calendarLayout">
+            <div id="calendarContent" class="calendarContent"></div>
+            <aside id="calendarRightPane" class="calendarRightPane" aria-label="Tasks for selected day">
+              <div id="calendarDayLabel" class="calendarDayLabel" aria-live="polite"></div>
+              <div id="calendarDayTasks" class="calendarDayTasks"></div>
+            </aside>
+          </div>
         </div>
 
         <div id="aiSettingsView" class="view" aria-label="AI" hidden>
