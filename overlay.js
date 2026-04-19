@@ -100,6 +100,27 @@
   overlay.setAttribute("tabindex", "-1");
   overlay.addEventListener("focus", () => overlay.focus());
 
+  function focusEmbeddedPopup() {
+    try {
+      iframe.focus();
+      const w = iframe.contentWindow;
+      if (w) w.focus();
+    } catch {
+      // Cross-origin parent policy can block contentWindow access; popup.js calls window.focus().
+    }
+  }
+
+  iframe.addEventListener("load", () => {
+    focusEmbeddedPopup();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(focusEmbeddedPopup);
+    });
+    setTimeout(focusEmbeddedPopup, 0);
+    setTimeout(focusEmbeddedPopup, 50);
+    setTimeout(focusEmbeddedPopup, 150);
+    setTimeout(focusEmbeddedPopup, 320);
+  });
+
   container.appendChild(iframe);
   overlay.appendChild(container);
   document.documentElement.appendChild(overlay);

@@ -6601,9 +6601,22 @@ async function main() {
     );
   }
 
+  function focusEmbeddedAppWindow() {
+    try {
+      window.focus();
+    } catch {
+      // ignore
+    }
+  }
+
   function focusInitialBoardTabIfNeeded() {
     try {
       if (hasMeaningfulPopupFocus()) return;
+
+      // When opened inside an iframe (page overlay), Linux window managers / Chrome often
+      // leave the parent focused; window.focus() claims the iframe browsing context so
+      // keyboard events and programmatic .focus() behave like on Windows.
+      focusEmbeddedAppWindow();
 
       const notesViewEl = document.getElementById("notesView");
       if (!(notesViewEl instanceof HTMLElement) || notesViewEl.hasAttribute("hidden")) return;
@@ -6625,6 +6638,7 @@ async function main() {
 
   function scheduleInitialBoardTabFocus() {
     const run = () => focusInitialBoardTabIfNeeded();
+    focusEmbeddedAppWindow();
     setTimeout(run, 0);
     requestAnimationFrame(() => {
       requestAnimationFrame(run);
@@ -6632,6 +6646,8 @@ async function main() {
     setTimeout(run, 50);
     setTimeout(run, 120);
     setTimeout(run, 280);
+    setTimeout(run, 450);
+    setTimeout(run, 700);
   }
 
   scheduleInitialBoardTabFocus();
