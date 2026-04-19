@@ -6589,31 +6589,76 @@ async function main() {
     });
   }
 
-  // Initial focus: active board tab when the popup opens (strip is on the main view).
-  setTimeout(() => {
+  // Initial focus: active board tab (keyboard bindings need a focused element).
+  // Linux Chrome often defers popup focus; rAF + delayed retries + keydown/focus fallbacks match Windows behavior.
+  function hasMeaningfulPopupFocus() {
+    const active = document.activeElement;
+    return !!(
+      active &&
+      active !== document.body &&
+      active !== document.documentElement &&
+      active instanceof HTMLElement
+    );
+  }
+
+  function focusInitialBoardTabIfNeeded() {
     try {
-      const active = document.activeElement;
-      const hasMeaningfulFocus =
-        active &&
-        active !== document.body &&
-        active !== document.documentElement &&
-        active instanceof HTMLElement;
-      if (hasMeaningfulFocus) return;
+      if (hasMeaningfulPopupFocus()) return;
+
+      const notesViewEl = document.getElementById("notesView");
+      if (!(notesViewEl instanceof HTMLElement) || notesViewEl.hasAttribute("hidden")) return;
 
       const activeTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
       const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
       const t = activeTab instanceof HTMLElement ? activeTab : firstTab;
-      if (t instanceof HTMLElement) {
-        try {
-          t.focus({ preventScroll: true });
-        } catch {
-          t.focus();
-        }
+      if (!(t instanceof HTMLElement)) return;
+
+      try {
+        t.focus({ preventScroll: true });
+      } catch {
+        t.focus();
       }
     } catch {
       // ignore
     }
-  }, 0);
+  }
+
+  function scheduleInitialBoardTabFocus() {
+    const run = () => focusInitialBoardTabIfNeeded();
+    setTimeout(run, 0);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(run);
+    });
+    setTimeout(run, 50);
+    setTimeout(run, 120);
+    setTimeout(run, 280);
+  }
+
+  scheduleInitialBoardTabFocus();
+
+  window.addEventListener(
+    "focus",
+    () => {
+      focusInitialBoardTabIfNeeded();
+    },
+    true
+  );
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") focusInitialBoardTabIfNeeded();
+  });
+
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.defaultPrevented) return;
+      const notesViewEl = document.getElementById("notesView");
+      if (!(notesViewEl instanceof HTMLElement) || notesViewEl.hasAttribute("hidden")) return;
+      if (hasMeaningfulPopupFocus()) return;
+      focusInitialBoardTabIfNeeded();
+    },
+    true
+  );
 
   // Instructions view toggle
   if (instructionsLink instanceof HTMLElement) {
