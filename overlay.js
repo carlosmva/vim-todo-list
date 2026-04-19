@@ -12,8 +12,7 @@
     "solarized-light": "rgba(253, 246, 227, 0.45)",
     "solarized-dark": "rgba(0, 43, 54, 0.55)",
     emacs: "rgba(245, 245, 245, 0.45)",
-    "command-line": "rgba(10, 10, 10, 0.6)",
-    chalkboard: "rgba(73, 121, 89, 0.55)"
+    "command-line": "rgba(10, 10, 10, 0.6)"
   };
 
   const overlay = document.createElement("div");
@@ -64,8 +63,7 @@
     "solarized-light": "#fdf6e3",
     "solarized-dark": "#002b36",
     emacs: "#f5f5f5",
-    "command-line": "#0a0a0a",
-    chalkboard: "#497959"
+    "command-line": "#0a0a0a"
   };
 
   const iframe = document.createElement("iframe");

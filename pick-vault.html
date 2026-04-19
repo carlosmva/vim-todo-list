@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Link Obsidian vault folder</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="modern.css" />
+    <link rel="stylesheet" href="nothing.css" />
+    <link rel="stylesheet" href="vault-access.css" />
+  </head>
+  <body class="bx--body vaultAccessPage">
+    <main class="vaultAccessShell" aria-labelledby="pickVaultTitle">
+      <header class="vaultAccessHeader">
+        <p class="vaultAccessKicker">Obsidian Sync</p>
+        <h1 id="pickVaultTitle" class="vaultAccessTitle">Choose Your Vault Folder</h1>
+        <p class="vaultAccessIntro">
+          Select the same root folder that Obsidian uses for this vault. The extension popup cannot open the system
+          folder picker in some environments, so this full page is used instead.
+        </p>
+      </header>
+      <section class="vaultAccessPanel" aria-label="Vault folder picker">
+        <div id="pickVaultMessage" class="vaultAccessMessage" aria-live="polite"></div>
+        <div class="vaultAccessActionRow">
+          <button type="button" id="pickVaultBtn" class="monoLinkButton vaultAccessButton">
+            Choose Folder…
+          </button>
+        </div>
+      </section>
+    </main>
+    <script src="obsidian-vault-idb.js"></script>
+    <script src="pick-vault.js"></script>
+  </body>
+</html>

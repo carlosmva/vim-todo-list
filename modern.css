@@ -114,44 +114,41 @@
   --modern-link-hover: #0000aa;
 }
 
-/* Chalkboard - green chalkboard with Walter Turncoat */
-[data-theme="chalkboard"] {
-  --modern-font-sans: "Walter Turncoat", cursive;
-  --modern-bg: #497959;
-  --modern-surface-1: rgba(73, 121, 89, 0.92);
-  --modern-surface-2: #3d6b4a;
-  --cds-layer: #1a1a1a;
-  --cds-field: #1a1a1a;
-  --modern-surface-muted: rgba(61, 107, 74, 0.95);
-  --modern-text: #e8e8e8;
-  --modern-text-subtle: #c8d8c8;
-  --modern-border: #5a8a68;
-  --modern-border-strong: #b78240;
-  --modern-shadow-sm: -1px 2px 2px 0 rgba(0, 0, 0, 0.3), inset 0 0 10px 0 rgba(0, 0, 0, 0.2);
-  --modern-shadow-md: -2px 4px 4px 0 rgba(0, 0, 0, 0.35), inset 0 0 12px 0 rgba(0, 0, 0, 0.25);
-  --modern-focus: #ff0;
-  --modern-link: #ff0;
-  --modern-link-hover: #ffff66;
-  --modern-muted-on-dark: #c8d8c8;
-  --modern-radius-sm: 10px;
-  --modern-radius-md: 10px;
-  --modern-radius-lg: 10px;
+/*
+ * Native <select> menus are painted by the OS/browser and ignore most CSS on
+ * <option>. Setting color-scheme on the root matches the platform menu to the
+ * theme so option text stays readable (fixes light popup + light text on dark themes).
+ */
+html[data-theme="light"],
+html[data-theme="solarized-light"],
+html[data-theme="emacs"],
+html[data-theme="nothing-light"] {
+  color-scheme: light;
 }
 
-[data-theme="chalkboard"] html,
-[data-theme="chalkboard"] body {
-  background: #1a1a1a !important;
+html[data-theme="dark"],
+html[data-theme="solarized-dark"],
+html[data-theme="command-line"],
+html[data-theme="nothing"] {
+  color-scheme: dark;
 }
 
-[data-theme="chalkboard"] .app {
-  background: transparent;
+/*
+ * Extension popups sometimes paint the native <select> list with a light surface
+ * even when the page uses color-scheme: dark. Force dark UI + option colors on
+ * the theme control so the menu matches dark / solarized-dark / terminal themes.
+ */
+[data-theme="dark"] .headerThemeSelect,
+[data-theme="solarized-dark"] .headerThemeSelect,
+[data-theme="command-line"] .headerThemeSelect {
+  color-scheme: dark;
 }
 
-[data-theme="chalkboard"] .col,
-[data-theme="chalkboard"] .noteCard,
-[data-theme="chalkboard"] .header {
-  border: 3px solid #b78240;
-  box-shadow: -1px 2px 2px 0 rgba(0, 0, 0, 0.3), inset 0 0 8px 0 rgba(0, 0, 0, 0.15);
+[data-theme="dark"] .headerThemeSelect option,
+[data-theme="solarized-dark"] .headerThemeSelect option,
+[data-theme="command-line"] .headerThemeSelect option {
+  background-color: var(--modern-surface-2);
+  color: var(--modern-text);
 }
 
 html {
@@ -255,32 +252,7 @@ button,
 [data-theme="command-line"] .noteAttachments,
 [data-theme="command-line"] .noteAttachmentsTitle,
 [data-theme="command-line"] .noteBackBody,
-[data-theme="command-line"] .noteText,
-[data-theme="chalkboard"] body,
-[data-theme="chalkboard"] .app,
-[data-theme="chalkboard"] .header,
-[data-theme="chalkboard"] .create,
-[data-theme="chalkboard"] .col,
-[data-theme="chalkboard"] .noteCard,
-[data-theme="chalkboard"] .instructionsContent,
-[data-theme="chalkboard"] .instructionsHeader,
-[data-theme="chalkboard"] .instructionsTitle,
-[data-theme="chalkboard"] .dashboardTable,
-[data-theme="chalkboard"] .dashboardTable th,
-[data-theme="chalkboard"] .dashboardTable td,
-[data-theme="chalkboard"] .calendarTable,
-[data-theme="chalkboard"] .calendarTable th,
-[data-theme="chalkboard"] .calendarTable td,
-[data-theme="chalkboard"] .calendarMonthTitle,
-[data-theme="chalkboard"] .calendarCell--empty,
-[data-theme="chalkboard"] .calendarContent,
-[data-theme="chalkboard"] .calendarRightPane,
-[data-theme="chalkboard"] .manageTabsMessage,
-[data-theme="chalkboard"] .manageTabsName,
-[data-theme="chalkboard"] .noteAttachments,
-[data-theme="chalkboard"] .noteAttachmentsTitle,
-[data-theme="chalkboard"] .noteBackBody,
-[data-theme="chalkboard"] .noteText {
+[data-theme="command-line"] .noteText {
   color: var(--modern-text);
 }
 
@@ -313,9 +285,9 @@ button,
 }
 
 .headerLinks,
-.createButtons,
-.createButtonsLeft,
-.createButtonsRight {
+.createActionsRow,
+.createModuleActions,
+.createDueQuickActions {
   gap: var(--modern-space-2);
 }
 
@@ -429,22 +401,9 @@ button,
 [data-theme="solarized-dark"] textarea,
 [data-theme="command-line"] .bx--text-input,
 [data-theme="command-line"] input,
-[data-theme="command-line"] textarea,
-[data-theme="chalkboard"] .bx--text-input,
-[data-theme="chalkboard"] input,
-[data-theme="chalkboard"] textarea {
+[data-theme="command-line"] textarea {
   color: var(--modern-text);
   background: var(--modern-surface-2) !important;
-}
-
-[data-theme="chalkboard"] .create .bx--text-input,
-[data-theme="chalkboard"] .create input,
-[data-theme="chalkboard"] .cardFilterRow .bx--text-input,
-[data-theme="chalkboard"] .aiSettingsForm .bx--text-input,
-[data-theme="chalkboard"] .aiSettingsForm textarea.bx--text-input,
-[data-theme="chalkboard"] .manageTabsAdd .bx--text-input,
-[data-theme="chalkboard"] .linkForm .bx--text-input {
-  background: #1a1a1a !important;
 }
 
 [data-theme="dark"] .bx--text-input::placeholder,
@@ -455,15 +414,13 @@ button,
 [data-theme="solarized-dark"] textarea::placeholder,
 [data-theme="command-line"] .bx--text-input::placeholder,
 [data-theme="command-line"] input::placeholder,
-[data-theme="command-line"] textarea::placeholder,
-[data-theme="chalkboard"] .bx--text-input::placeholder,
-[data-theme="chalkboard"] input::placeholder,
-[data-theme="chalkboard"] textarea::placeholder {
+[data-theme="command-line"] textarea::placeholder {
   color: var(--modern-muted-on-dark);
 }
 
 .monoLinkButton,
-.headerLink {
+.headerLink,
+.headerThemeSelect {
   border-radius: var(--modern-radius-sm);
   transition:
     color var(--motion-fast) var(--motion-ease-standard),
@@ -473,70 +430,66 @@ button,
 }
 
 .monoLinkButton:hover:not(:disabled),
-.headerLink:hover {
+.headerLink:hover,
+.headerThemeSelect:hover {
   background: rgba(15, 98, 254, 0.09);
   text-decoration: none;
 }
 
 [data-theme="dark"] a,
 [data-theme="solarized-dark"] a,
-[data-theme="command-line"] a,
-[data-theme="chalkboard"] a {
+[data-theme="command-line"] a {
   color: var(--modern-link);
 }
 
 [data-theme="dark"] a:hover,
 [data-theme="solarized-dark"] a:hover,
-[data-theme="command-line"] a:hover,
-[data-theme="chalkboard"] a:hover {
+[data-theme="command-line"] a:hover {
   color: var(--modern-link-hover);
 }
 
 [data-theme="dark"] .headerLink,
+[data-theme="dark"] .headerThemeSelect,
 [data-theme="dark"] .monoLinkButton,
 [data-theme="dark"] .noteActions .monoLinkButton,
 [data-theme="dark"] .noteBackButtonsRow .monoLinkButton,
 [data-theme="dark"] .createButtons .monoLinkButton,
 [data-theme="solarized-dark"] .headerLink,
+[data-theme="solarized-dark"] .headerThemeSelect,
 [data-theme="solarized-dark"] .monoLinkButton,
 [data-theme="solarized-dark"] .noteActions .monoLinkButton,
 [data-theme="solarized-dark"] .noteBackButtonsRow .monoLinkButton,
 [data-theme="solarized-dark"] .createButtons .monoLinkButton,
 [data-theme="command-line"] .headerLink,
+[data-theme="command-line"] .headerThemeSelect,
 [data-theme="command-line"] .monoLinkButton,
 [data-theme="command-line"] .noteActions .monoLinkButton,
 [data-theme="command-line"] .noteBackButtonsRow .monoLinkButton,
-[data-theme="command-line"] .createButtons .monoLinkButton,
-[data-theme="chalkboard"] .headerLink,
-[data-theme="chalkboard"] .monoLinkButton,
-[data-theme="chalkboard"] .noteActions .monoLinkButton,
-[data-theme="chalkboard"] .noteBackButtonsRow .monoLinkButton,
-[data-theme="chalkboard"] .createButtons .monoLinkButton {
+[data-theme="command-line"] .createButtons .monoLinkButton {
   color: var(--modern-text) !important;
 }
 
 [data-theme="dark"] .headerLink:hover,
+[data-theme="dark"] .headerThemeSelect:hover,
 [data-theme="dark"] .monoLinkButton:hover:not(:disabled) {
   color: #ffffff !important;
 }
 
 [data-theme="solarized-dark"] .headerLink:hover,
+[data-theme="solarized-dark"] .headerThemeSelect:hover,
 [data-theme="solarized-dark"] .monoLinkButton:hover:not(:disabled) {
   color: #fdf6e3 !important;
 }
 
 [data-theme="command-line"] .headerLink:hover,
+[data-theme="command-line"] .headerThemeSelect:hover,
 [data-theme="command-line"] .monoLinkButton:hover:not(:disabled) {
   color: #33ff66 !important;
 }
 
-[data-theme="chalkboard"] .headerLink:hover,
-[data-theme="chalkboard"] .monoLinkButton:hover:not(:disabled) {
-  color: #ffff66 !important;
-}
-
 .monoLinkButton:focus-visible,
-.headerLink:focus-visible {
+.headerLink:focus-visible,
+.headerThemeSelect:focus-visible {
   outline: 2px solid var(--modern-focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 3px rgba(15, 98, 254, 0.26);
@@ -579,8 +532,9 @@ button,
   min-height: 22px !important;
   height: auto !important;
   margin: 0 !important;
-  margin-inline-start: 1rem !important;
-  padding: 8px 8px 0 8px !important;
+  /* Align with .body / .board columns (Nothing themes already used 0 here). */
+  margin-inline-start: 0 !important;
+  padding: 8px 8px 0 0 !important;
   border-bottom: 0 !important;
   position: static !important;
   overflow-x: auto !important;
@@ -728,13 +682,6 @@ button,
   --tab-text-active: #00ff41;
 }
 
-[data-theme="chalkboard"] .tabs {
-  --tab-bg: #3d6b4a;
-  --tab-text: #c8d8c8;
-  --tab-bg-active: #5a8a68;
-  --tab-text-active: #e8e8e8;
-}
-
 .tabs .bx--tabs__nav-link:focus,
 .tabs .bx--tabs__nav-link:focus-visible {
   outline: 2px solid var(--modern-focus);
@@ -789,10 +736,12 @@ button,
 }
 
 .board {
+  display: flex;
+  flex-direction: row;
   gap: var(--modern-space-3);
   overflow: hidden;
+  align-items: stretch;
   align-content: stretch;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .col {
@@ -823,10 +772,6 @@ button,
   color: #00cc33;
 }
 
-[data-theme="chalkboard"] .colTitle {
-  color: #c8d8c8;
-}
-
 [data-theme="solarized-light"] .colTitle {
   color: #586e75;
 }
@@ -840,14 +785,6 @@ button,
   text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
   -webkit-text-stroke: 1px #003300;
   paint-order: stroke fill;
-}
-
-[data-theme="chalkboard"] .headerTitle {
-  color: #e8e8e8;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  -webkit-text-stroke: 1px #2d4a35;
-  paint-order: stroke fill;
-  font-family: "Walter Turncoat", cursive;
 }
 
 #aboutContent {
@@ -882,9 +819,83 @@ button,
   margin: 0.5rem 0 0;
 }
 
+.aboutSummary {
+  margin: 0.75rem 0 0.25rem;
+  max-width: 60ch;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--modern-text-subtle);
+  text-wrap: pretty;
+}
+
+.aboutSectionTitle {
+  margin: 0.85rem 0 0.2rem;
+  width: 100%;
+  max-width: 60ch;
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.aboutProducts {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  width: 100%;
+  max-width: 60ch;
+  text-align: left;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.aboutProduct {
+  min-width: 0;
+}
+
+.aboutProductName {
+  margin: 0;
+  font-weight: 600;
+}
+
+.aboutProductBody {
+  margin: 0.1rem 0 0;
+  color: var(--modern-text-subtle);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.aboutFooter {
+  margin: 0.85rem 0 0;
+  max-width: 60ch;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--modern-text-subtle);
+}
+
+.aboutSupport {
+  margin: 1rem 0 0;
+  max-width: 60ch;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.aboutSupportLink {
+  color: var(--modern-link, #0f62fe);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.aboutSupportLink:hover {
+  color: var(--modern-link-hover, #0043ce);
+  text-decoration: underline;
+}
+
 .list {
   gap: var(--modern-space-2);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex: 1;
   min-height: 0;
   padding-right: 4px;
@@ -952,17 +963,6 @@ button,
   color: var(--modern-text);
 }
 
-[data-theme="chalkboard"] .attachmentPill {
-  background: #3d6b4a;
-  color: var(--modern-text);
-  border-color: #b78240;
-}
-
-[data-theme="chalkboard"] .noteAutocomplete {
-  background: #1a1a1a;
-  border-color: #b78240;
-}
-
 .noteEditorArea {
   max-height: 220px;
   overflow: auto;
@@ -986,12 +986,6 @@ button,
   color: #00ff41;
 }
 
-[data-theme="chalkboard"] .noteEditorArea {
-  background: #3d6b4a;
-  color: #e8e8e8;
-  border-color: #b78240;
-}
-
 [data-theme="dark"] .noteTextRenameInput {
   background: #1b2433;
   color: #e8eef8;
@@ -1008,12 +1002,6 @@ button,
   background: #0d0d0d;
   color: #00ff41;
   border-color: var(--modern-border-strong);
-}
-
-[data-theme="chalkboard"] .noteTextRenameInput {
-  background: #3d6b4a;
-  color: #e8e8e8;
-  border-color: #b78240;
 }
 
 [data-theme="dark"] .noteCard[data-priority="low"] .noteText {
@@ -1052,22 +1040,9 @@ button,
   color: #ff6b6b !important;
 }
 
-[data-theme="chalkboard"] .noteCard[data-priority="low"] .noteText {
-  color: #c8d8c8 !important;
-}
-
-[data-theme="chalkboard"] .noteCard[data-priority="normal"] .noteText {
-  color: #e8e8e8 !important;
-}
-
-[data-theme="chalkboard"] .noteCard[data-priority="high"] .noteText {
-  color: #ffcc66 !important;
-}
-
 [data-theme="dark"] .instructionsContent kbd,
 [data-theme="solarized-dark"] .instructionsContent kbd,
-[data-theme="command-line"] .instructionsContent kbd,
-[data-theme="chalkboard"] .instructionsContent kbd {
+[data-theme="command-line"] .instructionsContent kbd {
   color: var(--modern-text);
   border-color: var(--modern-border-strong);
 }

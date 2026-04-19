@@ -1,0 +1,131 @@
+html,
+body {
+  min-width: 0;
+  min-height: 100%;
+  overflow-x: hidden !important;
+}
+
+body.vaultAccessPage {
+  margin: 0;
+  padding: 24px;
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+  background: var(--modern-bg, var(--cds-layer, #f4f4f4));
+  box-sizing: border-box;
+}
+
+.vaultAccessShell {
+  width: min(42rem, 100%);
+  min-width: 0;
+}
+
+.vaultAccessHeader {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.vaultAccessKicker {
+  margin: 0;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.vaultAccessTitle {
+  margin: 0;
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.vaultAccessIntro {
+  margin: 0;
+  max-width: 38rem;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.vaultAccessPanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: var(--modern-radius-sm, 8px);
+  background: var(--modern-surface-2, var(--cds-layer, #ffffff));
+  box-shadow: var(--modern-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
+.vaultAccessActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vaultAccessButton {
+  min-height: 36px;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  border-radius: 4px;
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+  text-align: center;
+  touch-action: manipulation;
+}
+
+.vaultAccessButton:hover:not(:disabled),
+.vaultAccessButton:focus-visible:not(:disabled) {
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
+  text-decoration: none;
+}
+
+.vaultAccessButton:disabled {
+  cursor: not-allowed;
+}
+
+.vaultAccessMessage {
+  min-height: 1.2em;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  font-size: 0.86rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.vaultAccessMessage[data-state="success"] {
+  color: var(--cds-support-success, #198038);
+}
+
+.vaultAccessMessage[data-state="error"] {
+  color: var(--cds-support-error, #da1e28);
+}
+
+.vaultAccessMessage[data-state="pending"] {
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vaultAccessButton {
+    transition: none !important;
+  }
+}
+
+[data-theme="nothing"] .vaultAccessPage,
+[data-theme="nothing-light"] .vaultAccessPage {
+  box-shadow: none;
+}
+
+[data-theme="nothing"] .vaultAccessPanel,
+[data-theme="nothing-light"] .vaultAccessPanel {
+  border-color: var(--modern-border);
+  box-shadow: none;
+}
+
+[data-theme="nothing"] .vaultAccessKicker,
+[data-theme="nothing-light"] .vaultAccessKicker {
+  font-family: "Space Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}

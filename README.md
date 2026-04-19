@@ -57,8 +57,8 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 
 - Open popup: `Alt+R` (Windows/Linux) or `Ctrl+R` (Mac)
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
-- A **keyboard layout toggle** in the header switches between QWERTY and DVORAK mappings (and updates the in-app instructions accordingly).
-- **AI**, **Tabs**, and **About** are available in the header links row.
+- **Settings** → **Keyboard** chooses **QWERTY** or **Dvorak** mappings (the in-app Instructions update to match).
+- **Tabs** and **About** are in the header links row; **Settings** (gear) holds AI, Obsidian, and keyboard options.
 - When a word-completion suggestion is shown while typing a new note, press `Tab` to accept it.
 
 ## AI autocompletion (Ollama)
@@ -66,7 +66,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 The extension can use [Ollama](https://ollama.ai) running locally to suggest completions as you type. Completions are contextual and can span words or phrases.
 
 1. **Install Ollama** on your machine and pull a model (e.g. `ollama pull llama3.2`).
-2. Open **AI** from the header and configure:
+2. Open **Settings** (gear) → **AI** and configure:
    - **Endpoint base URL**: `http://localhost:11434` (Ollama default)
    - **Model name** (optional): e.g. `llama3.2:latest` — leave blank to use your default Ollama model
 3. Save. The status LED indicates when the endpoint is reachable.

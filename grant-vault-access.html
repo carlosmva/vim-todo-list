@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grant vault folder access</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="modern.css" />
+    <link rel="stylesheet" href="nothing.css" />
+    <link rel="stylesheet" href="vault-access.css" />
+  </head>
+  <body class="bx--body vaultAccessPage">
+    <main class="vaultAccessShell" aria-labelledby="grantVaultTitle">
+      <header class="vaultAccessHeader">
+        <p class="vaultAccessKicker">Obsidian Sync</p>
+        <h1 id="grantVaultTitle" class="vaultAccessTitle">Grant Vault Folder Access</h1>
+        <p class="vaultAccessIntro">
+          Chromium does not allow folder permission prompts inside the small extension popup. This full page runs in a
+          context where you can approve read/write access to the folder you already linked.
+        </p>
+      </header>
+      <section class="vaultAccessPanel" aria-label="Vault folder permission">
+        <div id="grantVaultMessage" class="vaultAccessMessage" aria-live="polite"></div>
+        <div class="vaultAccessActionRow">
+          <button type="button" id="grantVaultBtn" class="monoLinkButton vaultAccessButton">
+            Allow Access To Linked Folder
+          </button>
+        </div>
+      </section>
+    </main>
+    <script src="obsidian-vault-idb.js"></script>
+    <script src="grant-vault-access.js"></script>
+  </body>
+</html>

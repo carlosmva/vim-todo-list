@@ -6,11 +6,17 @@
     <title>Vim Todo List</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Walter+Turncoat&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Nothing design system: Doto (display), Space Grotesk (UI), Space Mono (labels / data) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@400..700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
     <link href="https://db.onlinewebfonts.com/c/02ed244366f143349129a8f2e39872a6?family=Kelvinized+Normal" rel="stylesheet" />
     <link rel="stylesheet" href="vendor/carbon.min.css" />
     <link rel="stylesheet" href="popup.css" />
     <link rel="stylesheet" href="modern.css" />
+    <link rel="stylesheet" href="nothing.css" />
   </head>
   <body class="bx--body">
     <div class="app" role="application" aria-label="Notes Kanban">
@@ -18,12 +24,61 @@
         <div class="headerRow">
           <div class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
-            <button id="themeToggle" class="headerLink" type="button" aria-label="Theme"></button>
-            <a id="aiSettingsLink" class="headerLink" href="#" aria-label="AI">AI</a>
-            <a id="manageTabsLink" class="headerLink" href="#" aria-label="Tabs">Tabs</a>
-            <button id="keyLayoutToggle" class="headerLink" type="button" aria-label="Keyboard layout"></button>
+            <select id="themeSelect" class="headerThemeSelect" aria-label="Theme"></select>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
             <a id="aboutLink" class="headerLink" href="#" aria-label="About">About</a>
+            <button id="tourBtn" class="headerIconButton" type="button" aria-label="Start guided tour" title="Guided tour">
+              <svg
+                class="headerIconButtonSvg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 21s7-5.2 7-11A7 7 0 0 0 5 10c0 5.8 7 11 7 11Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <button id="settingsBtn" class="headerIconButton" type="button" aria-label="Settings" title="Settings">
+              <svg
+                class="headerIconButtonSvg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -31,11 +86,13 @@
       <div class="body">
         <div id="notesView" class="view" aria-label="Notes view">
           <form id="createForm" class="create" aria-label="Create note">
-            <div class="createNoteRow">
-              <div class="bx--form-item createNoteTextCell">
+            <div class="createFieldsRow">
+              <div class="bx--form-item createField createField--note">
+                <label class="createFieldLabel" for="noteText">Task</label>
                 <div class="noteTextInlineWrap">
                   <input
                     id="noteText"
+                    name="noteText"
                     class="bx--text-input"
                     type="text"
                     placeholder="New note…"
@@ -46,40 +103,48 @@
                   <div id="noteTextTrail" class="noteInlineTrail" aria-hidden="true" hidden></div>
                 </div>
               </div>
-              <div class="bx--form-item createDueDateCell">
+              <div class="bx--form-item createField createField--due">
+                <label class="createFieldLabel" for="noteDueDate">Due</label>
                 <input
                   id="noteDueDate"
+                  name="noteDueDate"
                   class="bx--text-input"
                   type="date"
-                  aria-label="Due date (optional)"
+                  autocomplete="off"
                 />
+              </div>
+            </div>
+
+            <div class="createDueQuickRow" hidden aria-hidden="true">
+              <div class="createDueQuickActions" aria-label="Quick due dates">
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="today">
+                  Today
+                </button>
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="1w">
+                  +1w
+                </button>
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="2w">
+                  +2w
+                </button>
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="1mo">
+                  +1mo
+                </button>
               </div>
             </div>
 
             <div id="noteAutocomplete" class="noteAutocomplete" aria-label="Autocomplete suggestions" hidden></div>
 
-            <div class="createButtons" aria-label="Actions">
-              <div class="createButtonsLeft">
-                <button id="exportDbBtn" class="monoLinkButton" type="button">
-                  Export DB
-                </button>
-                <button id="importDbBtn" class="monoLinkButton" type="button">
-                  Import DB
-                </button>
-                <input id="importDbFile" type="file" accept=".db,.sqlite,.sqlite3,.bin" hidden />
-              </div>
-
-              <div class="createButtonsRight">
+            <div class="createActionsRow" aria-label="Actions">
+              <div class="createModuleActions" aria-label="Modules">
                 <button id="dashboardBtn" class="monoLinkButton" type="button">
                   Dashboard
                 </button>
                 <button id="calendarBtn" class="monoLinkButton" type="button">
                   Calendar
                 </button>
-                <button id="exportBtn" class="monoLinkButton" type="button">
-                  Export CSV
-                </button>
-                <button class="monoLinkButton" type="submit">Add</button>
+              </div>
+              <div class="createSubmitCell">
+                <button class="monoLinkButton" type="submit">Add Task</button>
               </div>
             </div>
           </form>
@@ -100,14 +165,33 @@
             </ul>
           </nav>
 
-          <main class="board" aria-label="Notes board">
-            <section class="col bx--tile" aria-label="Pending column">
-              <div class="colTitle">Pending (<span id="pendingCount">0</span>)</div>
+          <main
+            class="board board--split-pending"
+            id="notesBoard"
+            data-board-split="pending"
+            aria-label="Notes board"
+          >
+            <section
+              class="col bx--tile col--pending"
+              id="colPending"
+              aria-label="Pending column"
+              data-column="pending"
+            >
+              <div class="colTitle" id="colPendingTitle">
+                Pending (<span id="pendingCount">0</span>)
+              </div>
               <div id="pendingList" class="list" aria-label="Pending notes"></div>
             </section>
 
-            <section class="col bx--tile" aria-label="Complete column">
-              <div class="colTitle">Complete (<span id="completeCount">0</span>)</div>
+            <section
+              class="col bx--tile col--complete"
+              id="colComplete"
+              aria-label="Complete column"
+              data-column="complete"
+            >
+              <div class="colTitle" id="colCompleteTitle">
+                Complete (<span id="completeCount">0</span>)
+              </div>
               <div id="completeList" class="list" aria-label="Complete notes"></div>
             </section>
           </main>
@@ -115,7 +199,7 @@
 
         <div id="instructionsView" class="view" aria-label="Instructions" hidden>
           <div class="instructionsHeader">
-            <div class="instructionsTitle">Instructions</div>
+            <h2 class="instructionsTitle">Instructions</h2>
             <button id="closeInstructionsBtn" class="monoLinkButton" type="button">
               Close
             </button>
@@ -134,10 +218,67 @@
             <p class="aboutAppName">vim-todo-list</p>
             <p class="aboutBy">by</p>
             <p class="aboutCompany">
-              <a href="https://northeasternsoftware.com/" target="_blank" rel="noopener noreferrer">Northeastern Software Services LLC</a>
+              <a href="https://northeasternsoftware.com/" target="_blank" rel="noopener noreferrer" translate="no"
+                >Northeastern Software Services LLC</a
+              >
             </p>
             <p class="aboutRepo">
               <a href="https://github.com/carlosmva/vim-todo-list" target="_blank" rel="noopener noreferrer">GitHub</a>
+            </p>
+            <p class="aboutSummary">
+              This extension is part of a growing set of tools designed to help you capture, structure, and act on information
+              faster.
+            </p>
+            <h3 class="aboutSectionTitle">Explore More</h3>
+            <ul class="aboutProducts">
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  🚀
+                  <a href="https://ezsolve.io/" target="_blank" rel="noopener noreferrer" translate="no">EzSolve</a>
+                </p>
+                <p class="aboutProductBody">From notes → to root causes → to action. Bring structure and accountability to problem solving.</p>
+              </li>
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  💪
+                  <a
+                    href="https://apps.apple.com/us/app/gymcade-workout-tracker/id6744276387"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    translate="no"
+                    >GymCade</a
+                  >
+                </p>
+                <p class="aboutProductBody">Turn your workouts into a game. Stay consistent, level up, and track progress visually.</p>
+              </li>
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  🥗
+                  <a href="https://apps.apple.com/us/app/ondiet-ai/id6759893218" target="_blank" rel="noopener noreferrer" translate="no"
+                    >OnDiet AI</a
+                  >
+                </p>
+                <p class="aboutProductBody">Upload a diet plan → get instant shopping lists and meal prep steps.</p>
+              </li>
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  🌍
+                  <a href="https://apps.apple.com/us/app/hourloom/id6761745195" target="_blank" rel="noopener noreferrer" translate="no"
+                    >Hourloom</a
+                  >
+                </p>
+                <p class="aboutProductBody">Track multiple time zones with clean, customizable clock layouts.</p>
+              </li>
+            </ul>
+            <p class="aboutFooter">💡 Built independently. Focused on practical tools that actually get used.</p>
+            <p class="aboutSupport">
+              <a
+                class="aboutSupportLink"
+                href="https://buymeacoffee.com/carlosx"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Enjoying the extension? Consider supporting development ☕</a
+              >
             </p>
           </div>
         </div>
@@ -168,101 +309,408 @@
           </div>
         </div>
 
-        <div id="aiSettingsView" class="view" aria-label="AI" hidden>
+        <div id="settingsView" class="view" aria-label="Settings" hidden>
           <div class="instructionsHeader">
-            <div class="instructionsTitle aiSettingsTitle">
-              AI
-              <span
-                id="aiStatusLed"
-                class="aiStatusLed aiStatusLed--red"
-                role="img"
-                aria-label="LLM status: unknown"
-                title="LLM status: unknown"
-              ></span>
+            <div class="instructionsTitle">Settings</div>
+            <button id="closeSettingsBtn" class="monoLinkButton" type="button">Close</button>
+          </div>
+          <div class="settingsChrome">
+            <div class="settingsTablist" role="tablist" aria-label="Settings sections">
+              <button
+                type="button"
+                id="settingsTabBoards"
+                class="settingsTab"
+                role="tab"
+                aria-selected="true"
+                aria-controls="settingsPanelBoards"
+              >
+                Boards
+              </button>
+              <button
+                type="button"
+                id="settingsTabData"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelData"
+              >
+                Data
+              </button>
+              <button
+                type="button"
+                id="settingsTabAi"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelAi"
+              >
+                AI
+              </button>
+              <button
+                type="button"
+                id="settingsTabObsidian"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelObsidian"
+              >
+                Obsidian
+              </button>
+              <button
+                type="button"
+                id="settingsTabKeyboard"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelKeyboard"
+              >
+                Keyboard
+              </button>
             </div>
-            <button id="closeAiSettingsBtn" class="monoLinkButton" type="button">
-              Close
-            </button>
-          </div>
-          <div class="instructionsContent">
-            <div id="aiSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
-            <form id="aiSettingsForm" class="aiSettingsForm" aria-label="AI settings">
-              <div class="aiSettingsRow">
-                <label for="aiEndpointBaseUrl">Endpoint base URL</label>
-                <input
-                  id="aiEndpointBaseUrl"
-                  class="bx--text-input"
-                  type="url"
-                  inputmode="url"
-                  placeholder="http://localhost:11434 or http://host:port"
-                  autocomplete="off"
-                />
+            <div class="settingsPanels">
+              <div
+                id="settingsPanelBoards"
+                class="settingsPanel instructionsContent settingsPanelBoards"
+                role="tabpanel"
+                aria-labelledby="settingsTabBoards"
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Boards</div>
+                </div>
+                <p class="obsidianIntro settingsBoardsHint">
+                  Add, remove, and reorder boards. Use the board strip above the columns in the main view to switch the active
+                  board.
+                </p>
+                <div id="manageTabsMessage" class="manageTabsMessage" aria-live="polite"></div>
+
+                <form id="addTabForm" class="manageTabsAdd" aria-label="Add board">
+                  <input
+                    id="addTabName"
+                    class="bx--text-input"
+                    type="text"
+                    placeholder="New board name…"
+                    maxlength="30"
+                    autocomplete="off"
+                    required
+                  />
+                  <button class="monoLinkButton" type="submit">Add</button>
+                </form>
+
+                <div id="tabsList" class="manageTabsList" aria-label="Boards list"></div>
               </div>
-              <div class="aiSettingsRow">
-                <label for="aiEndpointModel">Model name (optional)</label>
-                <input
-                  id="aiEndpointModel"
-                  class="bx--text-input"
-                  type="text"
-                  placeholder="e.g. llama3.2:latest"
-                  autocomplete="off"
-                />
+              <div
+                id="settingsPanelData"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabData"
+                hidden
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Import &amp; export</div>
+                </div>
+                <div class="settingsDataActions" aria-label="Database and export">
+                  <button id="exportDbBtn" class="monoLinkButton" type="button">Export DB</button>
+                  <button id="importDbBtn" class="monoLinkButton" type="button">Import DB</button>
+                  <input id="importDbFile" type="file" accept=".db,.sqlite,.sqlite3,.bin" hidden />
+                  <button id="exportBtn" class="monoLinkButton" type="button">Export CSV</button>
+                </div>
               </div>
-              <div class="aiSettingsRow">
-                <label for="aiCustomWords">Custom words (one per line)</label>
-                <textarea
-                  id="aiCustomWords"
-                  class="bx--text-input"
-                  rows="3"
-                  placeholder="One word per line"
-                  autocomplete="off"
-                ></textarea>
+              <div
+                id="settingsPanelAi"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabAi"
+                hidden
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle aiSettingsTitle">
+                    AI
+                    <span
+                      id="aiStatusLed"
+                      class="aiStatusLed aiStatusLed--red"
+                      role="img"
+                      aria-label="LLM status: unknown"
+                      title="LLM status: unknown"
+                    ></span>
+                  </div>
+                </div>
+                <div id="aiSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+                <form id="aiSettingsForm" class="aiSettingsForm" aria-label="AI settings">
+                  <div class="aiSettingsRow">
+                    <label for="aiEndpointBaseUrl">Endpoint base URL</label>
+                    <input
+                      id="aiEndpointBaseUrl"
+                      class="bx--text-input"
+                      type="url"
+                      inputmode="url"
+                      placeholder="http://localhost:11434 or http://host:port"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow">
+                    <label for="aiEndpointModel">Model name (optional)</label>
+                    <input
+                      id="aiEndpointModel"
+                      class="bx--text-input"
+                      type="text"
+                      placeholder="e.g. llama3.2:latest"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow">
+                    <label for="aiCustomWords">Custom words (one per line)</label>
+                    <textarea
+                      id="aiCustomWords"
+                      class="bx--text-input"
+                      rows="3"
+                      placeholder="One word per line"
+                      autocomplete="off"
+                    ></textarea>
+                  </div>
+                  <div class="aiSettingsActions">
+                    <button id="saveAiSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+                  </div>
+                </form>
+                <p class="aiSettingsHint">
+                  <b>CORS / 403</b>: On the machine running Ollama, set OLLAMA_ORIGINS and fully restart. <b>Linux (systemd)</b>:
+                  <code>sudo systemctl edit ollama</code>, add <code>[Service]</code> and
+                  <code>Environment="OLLAMA_ORIGINS=chrome-extension://*"</code>, then
+                  <code>sudo systemctl daemon-reload && sudo systemctl restart ollama</code>. Or use this extension:
+                  <code id="aiSettingsExtensionOrigin">chrome-extension://…</code>. Test with <code>OLLAMA_ORIGINS=*</code> if
+                  needed.
+                </p>
+                <p class="aiSettingsHint">
+                  <b>Test on server</b>: SSH to the Ollama machine and run
+                  <code id="aiSettingsCurlTest">curl -H "Origin: chrome-extension://…" http://localhost:11434/api/tags</code>.
+                  If 403, OLLAMA_ORIGINS is not applied. Verify:
+                  <code>systemctl show ollama --property=Environment</code>.
+                </p>
               </div>
-              <div class="aiSettingsActions">
-                <button id="saveAiSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+              <div
+                id="settingsPanelObsidian"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabObsidian"
+                hidden
+              >
+                <p class="obsidianIntro">
+                  Link cards to files under an Obsidian vault. Set the vault name exactly as shown in Obsidian (lower-left vault
+                  menu). Each card maps to
+                  <code>…/notes-folder/board-slug/title-slug.md</code>, or
+                  <code>…/title-slug-note-id.md</code> when two cards on the same board share the same title.                   Use <b>Choose vault folder</b> — Chrome opens a tab where you pick the same folder Obsidian uses. Linking
+                  turns on <b>Sync mode</b> automatically. Each <b>Obsidian</b> button on a card compares that note’s Markdown
+                  file with the card and updates whichever side is newer (or asks if it’s a tie). Without Sync mode and a linked
+                  folder, only the first click can create the file; later clicks open it in Obsidian (the URI cannot overwrite
+                  an existing note without creating duplicates).
+                </p>
+                <div id="obsidianSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+                <form id="obsidianSettingsForm" class="aiSettingsForm" aria-label="Obsidian settings">
+                  <div class="aiSettingsRow">
+                    <label for="obsidianVaultName">Vault name</label>
+                    <input
+                      id="obsidianVaultName"
+                      class="bx--text-input"
+                      type="text"
+                      placeholder="e.g. MyVault"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow">
+                    <label for="obsidianNotesFolder">Notes folder (optional)</label>
+                    <input
+                      id="obsidianNotesFolder"
+                      class="bx--text-input"
+                      type="text"
+                      placeholder="vim-todo-list (relative to vault root)"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow obsidianSyncRow">
+                    <label class="obsidianSyncModeLabel">
+                      <input id="obsidianSyncMode" type="checkbox" />
+                      Sync mode (read/write vault files; Chromium folder picker)
+                    </label>
+                  </div>
+                  <div class="aiSettingsRow obsidianVaultFsRow">
+                    <span id="obsidianVaultFolderStatus" class="obsidianVaultFolderStatus" aria-live="polite"></span>
+                  </div>
+                  <div class="obsidianVaultActions" aria-label="Vault folder actions">
+                    <div class="obsidianVaultActions__primary">
+                      <button
+                        id="obsidianChooseVaultFolderBtn"
+                        class="monoLinkButton obsidianVaultActionButton obsidianVaultActionButton--primary"
+                        type="button"
+                      >
+                        Choose Vault Folder…
+                      </button>
+                    </div>
+                    <div class="obsidianVaultActions__secondary">
+                      <button
+                        id="obsidianGrantVaultAccessBtn"
+                        class="monoLinkButton obsidianVaultActionButton"
+                        type="button"
+                        title="Opens a tab where Chromium can show the folder permission prompt (not allowed inside the popup)."
+                        hidden
+                      >
+                        Grant Access…
+                      </button>
+                      <button
+                        id="obsidianClearVaultFolderBtn"
+                        class="monoLinkButton obsidianVaultActionButton obsidianVaultActionButton--danger"
+                        type="button"
+                        hidden
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                  <div class="aiSettingsActions obsidianSettingsActions">
+                    <button id="saveObsidianSettingsBtn" class="monoLinkButton obsidianSettingsSaveButton" type="submit">
+                      Save Obsidian Settings
+                    </button>
+                    <button
+                      id="clearObsidianPathCacheBtn"
+                      class="monoLinkButton obsidianAdvancedActionButton"
+                      type="button"
+                      title="Clear which paths have already been created. Use if the first open failed or you deleted the file in Obsidian and need to create it again."
+                      hidden
+                    >
+                      Reset First-Open Cache
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
-            <p class="aiSettingsHint">
-              <b>CORS / 403</b>: On the machine running Ollama, set OLLAMA_ORIGINS and fully restart. <b>Linux (systemd)</b>: <code>sudo systemctl edit ollama</code>, add <code>[Service]</code> and <code>Environment="OLLAMA_ORIGINS=chrome-extension://*"</code>, then <code>sudo systemctl daemon-reload && sudo systemctl restart ollama</code>. Or use this extension: <code id="aiSettingsExtensionOrigin">chrome-extension://…</code>. Test with <code>OLLAMA_ORIGINS=*</code> if needed.
-            </p>
-            <p class="aiSettingsHint">
-              <b>Test on server</b>: SSH to the Ollama machine and run <code id="aiSettingsCurlTest">curl -H "Origin: chrome-extension://…" http://localhost:11434/api/tags</code>. If 403, OLLAMA_ORIGINS is not applied. Verify: <code>systemctl show ollama --property=Environment</code>.
-            </p>
+              <div
+                id="settingsPanelKeyboard"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabKeyboard"
+                hidden
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Keyboard</div>
+                </div>
+                <p class="obsidianIntro">
+                  In-app navigation (for example <kbd>Alt</kbd>+<kbd>H</kbd> vs <kbd>Alt</kbd>+<kbd>D</kbd> for Instructions)
+                  uses physical key labels. Pick the layout that matches your keyboard so the docs and shortcuts stay
+                  consistent.
+                </p>
+                <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Keyboard layout">
+                  <legend class="keyLayoutLegend">Layout</legend>
+                  <div class="keyLayoutRadios">
+                    <label class="keyLayoutRadioLabel">
+                      <input type="radio" name="keyLayoutChoice" id="keyLayoutQwerty" value="qwerty" />
+                      QWERTY
+                    </label>
+                    <label class="keyLayoutRadioLabel">
+                      <input type="radio" name="keyLayoutChoice" id="keyLayoutDvorak" value="dvorak" />
+                      Dvorak
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div id="manageTabsView" class="view" aria-label="Tabs" hidden>
-          <div class="instructionsHeader">
-            <div class="instructionsTitle">Tabs</div>
-            <button id="closeManageTabsBtn" class="monoLinkButton" type="button">
-              Close
-            </button>
-          </div>
-          <div class="instructionsContent">
-            <div id="manageTabsMessage" class="manageTabsMessage" aria-live="polite"></div>
+      </div>
+    </div>
 
-            <form id="addTabForm" class="manageTabsAdd" aria-label="Add tab">
-              <input
-                id="addTabName"
-                class="bx--text-input"
-                type="text"
-                placeholder="New tab name…"
-                maxlength="30"
-                autocomplete="off"
-                required
-              />
-              <button class="monoLinkButton" type="submit">Add</button>
-            </form>
-
-            <div id="tabsList" class="manageTabsList" aria-label="Tabs list"></div>
+    <div id="guidedTour" class="guidedTour" hidden aria-hidden="true">
+      <div class="guidedTour__backdrop"></div>
+      <section
+        class="guidedTour__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="guidedTourTitle"
+        aria-describedby="guidedTourBody"
+      >
+        <div class="guidedTour__eyebrow" id="guidedTourProgress">Tour</div>
+        <h2 class="guidedTour__title" id="guidedTourTitle">Welcome</h2>
+        <p class="guidedTour__body" id="guidedTourBody"></p>
+        <div class="guidedTour__actions">
+          <button id="guidedTourSkip" class="monoLinkButton" type="button">Skip</button>
+          <div class="guidedTour__stepActions">
+            <button id="guidedTourBack" class="monoLinkButton" type="button">Back</button>
+            <button id="guidedTourNext" class="monoLinkButton" type="button">Next</button>
           </div>
         </div>
+      </section>
+    </div>
+
+    <div id="obsidianConflictModal" class="obsidianConflictModal" hidden aria-hidden="true">
+      <div id="obsidianConflictModalBackdrop" class="obsidianConflictModal__backdrop"></div>
+      <div
+        class="obsidianConflictModal__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="obsidianConflictTitle"
+        aria-describedby="obsidianConflictHint"
+      >
+        <h3 id="obsidianConflictTitle" class="obsidianConflictModal__title">Resolve conflict</h3>
+        <p id="obsidianConflictHint" class="obsidianConflictModal__hint">
+          The vault .md and this card do not match. Compare the previews below, then choose which side to keep.
+        </p>
+        <div class="obsidianConflictModal__grid">
+          <div class="obsidianConflictModal__col">
+            <div class="obsidianConflictModal__colLabel">This card (extension)</div>
+            <pre class="obsidianConflictModal__pre" id="obsidianConflictApp" tabindex="-1"></pre>
+            <div class="obsidianConflictModal__colActions">
+              <button
+                type="button"
+                class="monoLinkButton obsidianConflictModal__choiceBtn"
+                id="obsidianConflictUseApp"
+              >
+                Keep this card
+              </button>
+            </div>
+          </div>
+          <div class="obsidianConflictModal__col">
+            <div class="obsidianConflictModal__colLabel">Vault file on disk</div>
+            <pre class="obsidianConflictModal__pre" id="obsidianConflictVault" tabindex="-1"></pre>
+            <div class="obsidianConflictModal__colActions">
+              <button
+                type="button"
+                class="monoLinkButton obsidianConflictModal__choiceBtn"
+                id="obsidianConflictUseVault"
+              >
+                Keep vault file
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="obsidianConflictModal__footer">
+          <button type="button" class="monoLinkButton" id="obsidianConflictCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="supportPrompt"
+      class="supportPrompt"
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="supportPromptTitle"
+      aria-describedby="supportPromptBody"
+    >
+      <div class="supportPrompt__panel">
+        <h3 id="supportPromptTitle" class="supportPrompt__title">Enjoying the extension?</h3>
+        <p id="supportPromptBody" class="supportPrompt__body"></p>
+        <div class="supportPrompt__actions">
+          <button id="supportPromptSupport" type="button" class="supportPrompt__primary">Support ☕</button>
+          <button id="supportPromptLater" type="button" class="monoLinkButton">Maybe later</button>
+        </div>
+        <button id="supportPromptNever" type="button" class="supportPrompt__dismiss">Don’t show again</button>
       </div>
     </div>
 
     <!-- sql.js (SQLite WASM) and D3 will be copied into vendor/ -->
     <script src="vendor/sql-wasm.js"></script>
     <script src="vendor/d3.min.js"></script>
+    <script src="obsidian-vault-idb.js"></script>
+    <script src="support-prompt.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
