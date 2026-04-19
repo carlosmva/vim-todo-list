@@ -24,6 +24,47 @@ const THEME_ORDER = [
 /** Set when DB loads; used by renderNotes for “Open in Obsidian”. */
 let gObsidianVaultName = "";
 let gObsidianNotesFolder = "";
+/** Mirrored from app settings + vault handle — used for per-card Obsidian sync badges. */
+let gObsidianSyncMode = false;
+let gObsidianVaultFolderLinked = false;
+
+/**
+ * Per-note vault vs app Markdown comparison (normalized). Populated by scanObsidianVaultVsDbNotes.
+ * Values: synced | diverged | missing | no_path | path_mismatch | permission_needs_gesture | permission_denied | read_error
+ */
+const obsidianSyncStatusByNoteId = new Map();
+/** Optional short message from the last failed read (tooltip). */
+const obsidianSyncErrorHintByNoteId = new Map();
+/** When the whole scan fails permission check, explain on every card. */
+let obsidianSyncGlobalBadgeHint = "";
+/** idle | scanning | done — used while reading vault files for badges. */
+let obsidianSyncScanState = "idle";
+
+/** Map File System Access errors to badge kinds (Chrome often uses DOMException names). */
+function classifyObsidianVaultAccessError(e) {
+  const errName = e && typeof e === "object" && e !== null && "name" in e ? String(e.name) : "";
+  const errMsg = e instanceof Error ? e.message : String(e);
+  const code =
+    e && typeof e === "object" && e !== null && "code" in e && typeof e.code === "number"
+      ? e.code
+      : NaN;
+  if (errName === "NotFoundError" || code === 8 || /not\s*found/i.test(errMsg)) {
+    return { kind: "missing", hint: "" };
+  }
+  if (errName === "TypeMismatchError" || code === 17) {
+    return { kind: "path_mismatch", hint: errMsg.slice(0, 220) };
+  }
+  if (errName === "InvalidStateError") {
+    return {
+      kind: "read_error",
+      hint: `Stale or invalid folder handle — re-link the vault in Settings. ${errMsg.slice(0, 160)}`,
+    };
+  }
+  if (errName === "NotAllowedError" || errName === "SecurityError" || code === 18) {
+    return { kind: "permission", hint: errMsg.slice(0, 220) };
+  }
+  return { kind: "read_error", hint: errMsg.slice(0, 220) };
+}
 
 function slugifyObsidianBoardSegment(s) {
   let t = String(s || "").trim();
@@ -95,9 +136,12 @@ function buildObsidianMarkdown(note) {
   }
   const rich = note.notes_html && String(note.notes_html).trim();
   if (rich) {
-    const plain = obsidianHtmlToPlain(rich);
-    if (plain) {
-      lines.push(plain);
+    let bodyMd = richNotesHtmlToObsidianBodyMarkdown(rich);
+    if (!String(bodyMd || "").trim()) {
+      bodyMd = obsidianHtmlToPlain(rich);
+    }
+    if (String(bodyMd || "").trim()) {
+      lines.push(String(bodyMd).trim());
       lines.push("");
     }
   }
@@ -159,8 +203,9 @@ function clearObsidianCreatedPathCache() {
 }
 
 /**
- * First open for this vault path uses `new` (creates folders/file). Later opens use `open` so Obsidian does not
- * duplicate notes when the file already exists.
+ * First open for this vault path uses `new` (creates folders/file). Later opens use `open` only — never `new`
+ * again for the same path, or Obsidian creates "note 1", "note 2", … instead of updating the file.
+ * To push edited Markdown after the first create, use Sync mode + linked vault folder (writes the .md on disk).
  */
 function resolveObsidianUrlForNote(db, note) {
   const vault = String(gObsidianVaultName || "").trim();
@@ -188,6 +233,19 @@ function normalizeObsidianMarkdown(s) {
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+$/gm, "")
     .trim();
+}
+
+/** For conflict UI: vault mtime vs app `updated_at` are often within a few hundred ms after a write. */
+const OBSIDIAN_VAULT_TIME_SLACK_MS = 750;
+
+function formatConflictModalTime(ts) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  try {
+    return new Date(n).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return String(n);
+  }
 }
 
 function escapeHtmlForObsidian(s) {
@@ -224,6 +282,100 @@ function markdownToSimpleHtml(markdown) {
   return out.join("");
 }
 
+/** One line of Markdown: Obsidian `[[wikilinks]]`, inline **bold**, escaped HTML elsewhere. */
+function obsidianMarkdownLineToInlineHtml(line) {
+  const s = String(line);
+  const chunks = [];
+  const re = /(\[\[[^\]]+\]\])|(\*\*[^*]+\*\*)/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) chunks.push(escapeHtmlForObsidian(s.slice(last, m.index)));
+    if (m[1]) {
+      chunks.push(`<span class="obsidianWikiLink">${escapeHtmlForObsidian(m[1])}</span>`);
+    } else if (m[2]) {
+      const inner = m[2].slice(2, -2);
+      chunks.push(`<strong>${escapeHtmlForObsidian(inner)}</strong>`);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) chunks.push(escapeHtmlForObsidian(s.slice(last)));
+  return chunks.join("") || "";
+}
+
+/** Body Markdown (after title/due, before footer): paragraphs, `[[links]]`, **bold**, line breaks. */
+function obsidianMarkdownBodyToNotesHtml(bodyMd) {
+  const trimmed = String(bodyMd || "").trim();
+  if (!trimmed) return "";
+  const blocks = trimmed.split(/\n\n+/);
+  const out = [];
+  for (const block of blocks) {
+    const b = block.trim();
+    if (!b) continue;
+    if (b.startsWith("### ")) {
+      out.push(`<h3>${escapeHtmlForObsidian(b.slice(4))}</h3>`);
+      continue;
+    }
+    if (b.startsWith("## ")) {
+      out.push(`<h2>${escapeHtmlForObsidian(b.slice(3))}</h2>`);
+      continue;
+    }
+    if (b.startsWith("# ") && !b.startsWith("## ") && !b.startsWith("### ")) {
+      out.push(`<h1>${escapeHtmlForObsidian(b.slice(2))}</h1>`);
+      continue;
+    }
+    const lines = b.split(/\n/);
+    const inner = lines.map((ln) => obsidianMarkdownLineToInlineHtml(ln)).join("<br>");
+    out.push(`<p>${inner || "&nbsp;"}</p>`);
+  }
+  return out.join("");
+}
+
+/** Export rich notes HTML to Markdown body (for vault .md), preserving wikilink spans and basic bold. */
+function richNotesHtmlToObsidianBodyMarkdown(html) {
+  if (typeof html !== "string" || !html.trim()) return "";
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+
+  function nodeToMd(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    const el = node;
+    const tag = el.tagName;
+    if (tag === "BR") return "\n";
+    if (tag === "STRONG" || tag === "B") {
+      const inner = [...el.childNodes].map(nodeToMd).join("");
+      return inner ? `**${inner}**` : "";
+    }
+    if (tag === "EM" || tag === "I") {
+      const inner = [...el.childNodes].map(nodeToMd).join("");
+      return inner ? `*${inner}*` : "";
+    }
+    if (el.classList && el.classList.contains("obsidianWikiLink")) {
+      return el.textContent || "";
+    }
+    if (tag === "P") {
+      const inner = [...el.childNodes].map(nodeToMd).join("");
+      return inner + "\n\n";
+    }
+    if (tag === "DIV") {
+      return [...el.childNodes].map(nodeToMd).join("") + "\n";
+    }
+    if (tag === "LI") return "- " + [...el.childNodes].map(nodeToMd).join("") + "\n";
+    if (tag === "UL" || tag === "OL") {
+      return [...el.childNodes].map(nodeToMd).join("");
+    }
+    if (tag === "H1") return "# " + [...el.childNodes].map(nodeToMd).join("").trim() + "\n\n";
+    if (tag === "H2") return "## " + [...el.childNodes].map(nodeToMd).join("").trim() + "\n\n";
+    if (tag === "H3") return "### " + [...el.childNodes].map(nodeToMd).join("").trim() + "\n\n";
+    return [...el.childNodes].map(nodeToMd).join("");
+  }
+
+  let out = [...tmp.childNodes].map(nodeToMd).join("");
+  out = out.replace(/\n{3,}/g, "\n\n").trim();
+  return out;
+}
+
 /**
  * Parse markdown produced by buildObsidianMarkdown (title, optional due, body, footer).
  * Returns { title, notes_html }.
@@ -247,12 +399,53 @@ function parseObsidianMarkdownImport(md) {
     const alt = rest.lastIndexOf("\n---");
     if (alt >= 0 && /\n---\s*$/m.test(rest.slice(alt))) rest = rest.slice(0, alt).trim();
   }
-  const notes_html = markdownToSimpleHtml(rest);
+  const notes_html = obsidianMarkdownBodyToNotesHtml(rest);
   return { title, notes_html };
 }
 
 function buildObsidianOpenUrlOnly(vault, relPath) {
   return `obsidian://open?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(relPath)}`;
+}
+
+/**
+ * Open an obsidian:// URL without assigning the current window. Using location.assign on the
+ * extension page breaks when the popup is embedded (e.g. some hosts enforce frame-src and block
+ * navigating the frame to custom schemes). Opening a new tab delegates to the OS protocol handler.
+ */
+function openObsidianProtocolUrl(url) {
+  const u = String(url || "").trim();
+  if (!u.startsWith("obsidian:")) return;
+  try {
+    if (typeof chrome !== "undefined" && chrome.tabs && typeof chrome.tabs.create === "function") {
+      chrome.tabs.create({ url: u }, () => {
+        if (chrome.runtime && chrome.runtime.lastError) {
+          openObsidianProtocolUrlViaAnchor(u);
+        }
+      });
+      return;
+    }
+  } catch {
+    // fall through
+  }
+  openObsidianProtocolUrlViaAnchor(u);
+}
+
+function openObsidianProtocolUrlViaAnchor(u) {
+  try {
+    const a = document.createElement("a");
+    a.href = u;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch {
+    try {
+      window.location.assign(u);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function obsidianFileSystemApiAvailable() {
@@ -1376,6 +1569,169 @@ function noteMatchesFilter(note, query) {
   return haystack.includes(q);
 }
 
+const CARD_ACTION_ICON_PATHS = {
+  attachments: ["M8 12.5 16.2 4.3a3.2 3.2 0 0 1 4.5 4.5L10.9 18.6a5 5 0 0 1-7.1-7.1l9.7-9.7"],
+  priority: ["M6 21V4", "M7 4h10l-1.8 4L17 12H7"],
+  notes: ["M6 4h9l3 3v13H6z", "M14 4v4h4", "M9 11h6", "M9 15h6"],
+  obsidian: ["M8.5 8.5 12 4l3.5 4.5L12 20 4 12z", "M8.5 8.5 15.5 8.5 20 12 12 20 4 12z"],
+  complete: ["M5 12.5 10 17.5 19 6.5"],
+  pending: ["M7 7h7a5 5 0 1 1-3.5 8.5", "M7 7v5h5"],
+  delete: ["M6 7h12", "M9 7V5h6v2", "M8 10v9h8v-9", "M10.5 12v5", "M13.5 12v5"],
+  moveUp: ["M12 5v14", "M6.5 10.5 12 5l5.5 5.5"],
+  moveDown: ["M12 19V5", "M6.5 13.5 12 19l5.5-5.5"],
+};
+
+function applyCardActionIcon(button, iconName, label, opts = {}) {
+  if (!(button instanceof HTMLButtonElement)) return button;
+  button.className = `cardIconButton${opts.extraClass ? ` ${opts.extraClass}` : ""}`;
+  button.textContent = "";
+  const tooltip = opts.tooltip || opts.title || label;
+  button.setAttribute("aria-label", label);
+  button.dataset.tooltip = tooltip;
+  button.title = tooltip;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "cardIconButton__icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  for (const d of CARD_ACTION_ICON_PATHS[iconName] || []) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+  }
+  button.appendChild(svg);
+  return button;
+}
+
+function getNoteNotesPreviewText(html) {
+  return htmlToReadableText(html).replace(/\s+/g, " ").trim();
+}
+
+function createNoteNotesPreviewElement(notePreviewText) {
+  const notesPreview = document.createElement("div");
+  notesPreview.className = "noteNotesPreview";
+  notesPreview.setAttribute("aria-label", "Notes preview");
+  const previewLabel = document.createElement("div");
+  previewLabel.className = "noteNotesPreview__label";
+  previewLabel.textContent = "[ NOTES ]";
+  const previewBody = document.createElement("div");
+  previewBody.className = "noteNotesPreview__body";
+  previewBody.textContent = notePreviewText;
+  previewBody.title = notePreviewText;
+  notesPreview.appendChild(previewLabel);
+  notesPreview.appendChild(previewBody);
+  return notesPreview;
+}
+
+/** UI chip for Obsidian vault compare (popup pulls vault Markdown when configured). */
+function getObsidianCardSyncBadge(noteId) {
+  const vault = String(gObsidianVaultName || "").trim();
+  if (!vault) return null;
+
+  if (!gObsidianSyncMode) {
+    return {
+      className: "noteObsidianSyncBadge noteObsidianSyncBadge--muted",
+      text: "Vault: turn on Sync",
+      title:
+        "Open Settings (gear) → Obsidian tab → check “Sync mode”. Without it the extension only uses obsidian:// links and cannot read or compare vault files on disk.",
+    };
+  }
+  if (!gObsidianVaultFolderLinked) {
+    return {
+      className: "noteObsidianSyncBadge noteObsidianSyncBadge--muted",
+      text: "Vault: link folder",
+      title:
+        "Settings → Obsidian → “Choose vault folder”: Chrome opens a tab where you pick the same folder Obsidian uses as the vault root. Grant read/write when asked. Status line should say “Vault folder linked.”",
+    };
+  }
+
+  if (obsidianSyncScanState === "scanning") {
+    return {
+      className: "noteObsidianSyncBadge noteObsidianSyncBadge--checking",
+      text: "Vault: checking…",
+      title: "Reading linked vault files and comparing with each note’s Markdown.",
+    };
+  }
+
+  const st = obsidianSyncStatusByNoteId.get(noteId);
+  const base = { className: "noteObsidianSyncBadge", text: "Vault: —", title: "" };
+
+  switch (st) {
+    case "synced":
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--synced",
+        text: "Vault: in sync",
+        title: "This card’s Markdown matches the file in your linked vault (normalized).",
+      };
+    case "diverged":
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--diverged",
+        text: "Vault: differs",
+        title:
+          "The vault file and this note do not match. Use Notes or Obsidian on this card to merge, or open Settings to troubleshoot.",
+      };
+    case "missing":
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--missing",
+        text: "Vault: no file yet",
+        title: "No Markdown file at the mapped path yet. Sync will create it on the next write or Obsidian action.",
+      };
+    case "no_path":
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--muted",
+        text: "Vault: no path",
+        title: "Could not build a vault relative path for this note (title/board).",
+      };
+    case "permission_needs_gesture": {
+      const ph = obsidianSyncGlobalBadgeHint || "";
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
+        text: "Vault: grant access",
+        title:
+          "Chromium cannot show the folder permission prompt inside the popup. Settings → Obsidian → “Grant folder access…” opens a tab — click Allow access there. Or use Obsidian on a card (also counts as a click)." +
+          (ph ? `\n\n${ph}` : ""),
+      };
+    }
+    case "permission_denied": {
+      const ph =
+        obsidianSyncGlobalBadgeHint || obsidianSyncErrorHintByNoteId.get(noteId) || "";
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
+        text: "Vault: permission denied",
+        title:
+          "Allow read/write on the vault folder when Chrome prompts. If this persists: Settings → Obsidian → disconnect folder, then Choose vault folder again and pick the vault root." +
+          (ph ? `\n\nDetails: ${ph}` : ""),
+      };
+    }
+    case "path_mismatch": {
+      const ph = obsidianSyncErrorHintByNoteId.get(noteId) || "";
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
+        text: "Vault: path conflict",
+        title:
+          "Something on disk is not a folder where a folder was expected (or vice versa). Often the linked folder is not the Obsidian vault root, or a board name produces an invalid path." +
+          (ph ? `\n\nDetails: ${ph}` : ""),
+      };
+    }
+    case "read_error": {
+      const ph = obsidianSyncErrorHintByNoteId.get(noteId) || "";
+      return {
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
+        text: "Vault: read error",
+        title:
+          "Could not read this note’s .md file under the linked vault. Right‑click the extension popup → Inspect → Console for Obsidian: lines." +
+          (ph ? `\n\nDetails: ${ph}` : ""),
+      };
+    }
+    default:
+      return {
+        ...base,
+        className: "noteObsidianSyncBadge noteObsidianSyncBadge--muted",
+        title: "Waiting for vault scan.",
+      };
+  }
+}
+
 function renderNotes(db, notes) {
   const pendingList = el("pendingList");
   const completeList = el("completeList");
@@ -1394,6 +1750,8 @@ function renderNotes(db, notes) {
     card.dataset.priority = normalizePriority(note.priority);
 
     if (flippedNoteIds.has(note.id)) card.classList.add("is-flipped");
+    const editorOpen = openNoteEditorIds.has(note.id);
+    if (editorOpen) card.classList.add("is-notes-open");
 
     const inner = document.createElement("div");
     inner.className = "noteCardInner";
@@ -1433,9 +1791,35 @@ function renderNotes(db, notes) {
     }
     front.appendChild(dueRow);
 
+    const syncBadgeInfo = getObsidianCardSyncBadge(note.id);
+    if (syncBadgeInfo) {
+      const syncRow = document.createElement("div");
+      syncRow.className = "noteObsidianSyncRow";
+      syncRow.setAttribute("role", "status");
+      syncRow.setAttribute("aria-live", "polite");
+      syncRow.setAttribute("aria-atomic", "true");
+      syncRow.setAttribute("aria-label", `Obsidian ${syncBadgeInfo.text}`);
+      const syncBadge = document.createElement("span");
+      syncBadge.className = syncBadgeInfo.className;
+      syncBadge.setAttribute("aria-hidden", "true");
+      const syncBadgeText = document.createElement("span");
+      syncBadgeText.className = "noteObsidianSyncBadge__text";
+      syncBadgeText.textContent = syncBadgeInfo.text;
+      syncBadge.appendChild(syncBadgeText);
+      if (syncBadgeInfo.title) syncBadge.title = syncBadgeInfo.title;
+      syncRow.appendChild(syncBadge);
+      front.appendChild(syncRow);
+    }
+
     const body = document.createElement("div");
     body.className = "noteText";
     body.textContent = note.text;
+
+    const notePreviewText = getNoteNotesPreviewText(note.notes_html);
+    let notesPreview = null;
+    if (notePreviewText && !editorOpen) {
+      notesPreview = createNoteNotesPreviewElement(notePreviewText);
+    }
 
     const links = queryLinks(db, note.id);
 
@@ -1477,49 +1861,48 @@ function renderNotes(db, notes) {
 
     const priorityBtn = document.createElement("button");
     priorityBtn.type = "button";
-    priorityBtn.textContent = `Priority: ${formatPriorityLabel(note.priority)}`;
-    priorityBtn.className = "monoLinkButton";
     priorityBtn.dataset.action = "togglePriority";
     priorityBtn.dataset.noteId = String(note.id);
-    priorityBtn.setAttribute(
-      "aria-label",
-      `Priority: ${formatPriorityLabel(note.priority)}. Activate to change.`
+    priorityBtn.dataset.priority = normalizePriority(note.priority);
+    applyCardActionIcon(
+      priorityBtn,
+      "priority",
+      `Priority: ${formatPriorityLabel(note.priority)}. Activate to change.`,
+      { tooltip: `Priority: ${formatPriorityLabel(note.priority)}` }
     );
 
     const notesBtn = document.createElement("button");
     notesBtn.type = "button";
-    notesBtn.textContent = "Notes";
-    notesBtn.className = "monoLinkButton";
     notesBtn.dataset.action = "toggleNotes";
     notesBtn.dataset.noteId = String(note.id);
+    applyCardActionIcon(notesBtn, "notes", "Toggle notes editor", { tooltip: "Notes" });
 
     let obsidianBtn = null;
     if (String(gObsidianVaultName || "").trim()) {
       obsidianBtn = document.createElement("button");
       obsidianBtn.type = "button";
-      obsidianBtn.textContent = "Obsidian";
-      obsidianBtn.className = "monoLinkButton";
       obsidianBtn.dataset.action = "openObsidian";
       obsidianBtn.dataset.noteId = String(note.id);
-      obsidianBtn.setAttribute(
-        "aria-label",
-        "Create or open this note in Obsidian (vault must match Settings)"
+      applyCardActionIcon(
+        obsidianBtn,
+        "obsidian",
+        "Create or open this note in Obsidian (vault must match Settings)",
+        { tooltip: "Obsidian" }
       );
     }
 
     const moveBtn = document.createElement("button");
-    moveBtn.className = "monoLinkButton";
+    moveBtn.type = "button";
 
-    const editorOpen = openNoteEditorIds.has(note.id);
-    if (editorOpen) card.classList.add("is-notes-open");
+    notesBtn.setAttribute("aria-expanded", String(editorOpen));
 
     if (note.status === "pending") {
-      moveBtn.textContent = "Mark complete";
       moveBtn.dataset.action = "complete";
+      applyCardActionIcon(moveBtn, "complete", "Mark complete", { tooltip: "Complete" });
       pendingCount++;
     } else {
-      moveBtn.textContent = "Move to pending";
       moveBtn.dataset.action = "pending";
+      applyCardActionIcon(moveBtn, "pending", "Move to pending", { tooltip: "Pending" });
       completeCount++;
     }
     card.setAttribute("aria-grabbed", "false");
@@ -1532,33 +1915,27 @@ function renderNotes(db, notes) {
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.className = "monoLinkButton";
     deleteBtn.dataset.action = "deleteNote";
     deleteBtn.dataset.id = String(note.id);
+    applyCardActionIcon(deleteBtn, "delete", "Delete note", { tooltip: "Delete" });
 
     const flipBtn = document.createElement("button");
     flipBtn.type = "button";
-    flipBtn.textContent = "Attachments";
-    flipBtn.className = "monoLinkButton";
     flipBtn.dataset.action = "flip";
     flipBtn.dataset.noteId = String(note.id);
+    applyCardActionIcon(flipBtn, "attachments", "Open attachments", { tooltip: "Attachments" });
 
     const moveUpBtn = document.createElement("button");
     moveUpBtn.type = "button";
-    moveUpBtn.textContent = "↑";
-    moveUpBtn.className = "monoLinkButton";
     moveUpBtn.dataset.action = "moveUp";
     moveUpBtn.dataset.noteId = String(note.id);
-    moveUpBtn.setAttribute("aria-label", "Move up");
+    applyCardActionIcon(moveUpBtn, "moveUp", "Move up", { tooltip: "Move up" });
 
     const moveDownBtn = document.createElement("button");
     moveDownBtn.type = "button";
-    moveDownBtn.textContent = "↓";
-    moveDownBtn.className = "monoLinkButton";
     moveDownBtn.dataset.action = "moveDown";
     moveDownBtn.dataset.noteId = String(note.id);
-    moveDownBtn.setAttribute("aria-label", "Move down");
+    applyCardActionIcon(moveDownBtn, "moveDown", "Move down", { tooltip: "Move down" });
 
     footer.appendChild(flipBtn);
     footer.appendChild(priorityBtn);
@@ -1631,6 +2008,7 @@ function renderNotes(db, notes) {
     editorWrap.appendChild(vimToast);
     editorWrap.appendChild(vimStatus);
     front.appendChild(body);
+    if (notesPreview) front.appendChild(notesPreview);
     if (links.length) front.appendChild(attachments);
     front.appendChild(editorWrap);
     front.appendChild(footer);
@@ -2943,7 +3321,7 @@ async function main() {
 
   gObsidianVaultName = dbGetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME) || "";
   gObsidianNotesFolder = dbGetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER) || "";
-  let gObsidianSyncMode = dbGetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE) === "1";
+  gObsidianSyncMode = dbGetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE) === "1";
   let obsidianVaultRootHandle = null;
   if (obsidianFileSystemApiAvailable()) {
     try {
@@ -2958,6 +3336,7 @@ async function main() {
       console.warn(err);
     }
   }
+  gObsidianVaultFolderLinked = !!obsidianVaultRootHandle;
 
   // Theme: load from DB first, migrate from chrome.storage if needed.
   let didMigrateTheme = false;
@@ -4182,6 +4561,7 @@ async function main() {
     setActiveTabUi(activeBoard);
     if (persistSelection) await saveActiveBoard(activeBoard);
     await refresh();
+    if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
   }
 
   function setActiveTabUi(board) {
@@ -4209,6 +4589,7 @@ async function main() {
 
   async function maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian) {
     await refresh();
+    scheduleObsidianVaultScanDebounced();
     if (!navigateToObsidian && Number.isFinite(noteId) && openNoteEditorIds.has(noteId)) {
       requestAnimationFrame(() => {
         try {
@@ -4222,30 +4603,59 @@ async function main() {
 
   let obsidianConflictResolve = null;
 
-  function hideObsidianSyncModal() {
-    const modal = document.getElementById("obsidianSyncModal");
+  function hideObsidianConflictModal() {
+    const modal = document.getElementById("obsidianConflictModal");
     if (modal instanceof HTMLElement) {
       modal.hidden = true;
       modal.setAttribute("aria-hidden", "true");
     }
   }
 
-  function showObsidianConflictModal_(appMd, vaultMd) {
+  function showObsidianConflictModal_(appMd, vaultMd, meta = {}) {
     return new Promise((resolve) => {
+      const modal = document.getElementById("obsidianConflictModal");
+      const preApp = document.getElementById("obsidianConflictApp");
+      const preVault = document.getElementById("obsidianConflictVault");
+      const hintEl = document.getElementById("obsidianConflictHint");
+      const useAppBtn = document.getElementById("obsidianConflictUseApp");
+      const useVaultBtn = document.getElementById("obsidianConflictUseVault");
+      if (!(modal instanceof HTMLElement)) {
+        console.warn("Obsidian: conflict modal missing from DOM; cancel merge.");
+        resolve(null);
+        return;
+      }
       obsidianConflictResolve = (choice) => {
         obsidianConflictResolve = null;
-        hideObsidianSyncModal();
+        hideObsidianConflictModal();
         resolve(choice);
       };
-      const modal = document.getElementById("obsidianSyncModal");
-      const preApp = document.getElementById("obsidianSyncModalApp");
-      const preVault = document.getElementById("obsidianSyncModalVault");
       if (preApp instanceof HTMLElement) preApp.textContent = String(appMd || "").slice(0, 12000);
       if (preVault instanceof HTMLElement) preVault.textContent = String(vaultMd || "").slice(0, 12000);
-      if (modal instanceof HTMLElement) {
-        modal.hidden = false;
-        modal.setAttribute("aria-hidden", "false");
+      if (hintEl instanceof HTMLElement) {
+        const vf = meta.vaultFileTime;
+        const au = meta.appUpdatedAt;
+        const vNew = !!meta.vaultNewerByClock;
+        const aNew = !!meta.appNewerByClock;
+        let line = "Compare the previews, then pick which Markdown wins.";
+        if (vNew && !aNew) {
+          line += " By modified time, the vault file looks newer.";
+        } else if (aNew && !vNew) {
+          line += " By saved time, the extension note looks newer.";
+        } else {
+          line += " Times are close or overlapping — pick the Markdown you trust.";
+        }
+        const nav = getNavKeys(keyLayout);
+        line += ` Vault file: ${formatConflictModalTime(vf)} · Extension: ${formatConflictModalTime(au)}`;
+        line += ` Keys: 1 / 2 · ← / → · ↑ / ↓ · ${String(nav.left || "").toUpperCase()} / ${String(
+          nav.down || ""
+        ).toUpperCase()} / ${String(nav.right || "").toUpperCase()} / ${String(nav.up || "").toUpperCase()} · Esc.`;
+        hintEl.textContent = line;
       }
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      requestAnimationFrame(() => {
+        if (useAppBtn instanceof HTMLElement && !modal.hidden) useAppBtn.focus();
+      });
     });
   }
 
@@ -4268,7 +4678,10 @@ async function main() {
 
   async function reloadObsidianVaultHandleFromStorage() {
     const api = obsidianVaultIdb();
-    if (!api || typeof api.loadVaultHandle !== "function") return;
+    if (!api || typeof api.loadVaultHandle !== "function") {
+      gObsidianVaultFolderLinked = false;
+      return;
+    }
     try {
       const h = await api.loadVaultHandle();
       obsidianVaultRootHandle = h || null;
@@ -4279,11 +4692,234 @@ async function main() {
       console.warn("Obsidian: vault handle load failed", e);
       obsidianVaultRootHandle = null;
     }
+    gObsidianVaultFolderLinked = !!obsidianVaultRootHandle;
+  }
+
+  /** Debounced notes HTML saves; must flush before Obsidian merge so DB matches the editor. */
+  const notesEditorSaveTimers = new Map();
+
+  let obsidianVaultScanDebounceTimer = null;
+  function scheduleObsidianVaultScanDebounced() {
+    if (obsidianVaultScanDebounceTimer) clearTimeout(obsidianVaultScanDebounceTimer);
+    obsidianVaultScanDebounceTimer = setTimeout(() => {
+      obsidianVaultScanDebounceTimer = null;
+      void scanObsidianVaultVsDbNotes();
+    }, 700);
+  }
+
+  /**
+   * Read each visible note’s vault file (when Sync + linked folder) and compare to app Markdown.
+   * Updates obsidianSyncStatusByNoteId + obsidianSyncScanState, then re-renders cards.
+   */
+  async function scanObsidianVaultVsDbNotes() {
+    // Full `refresh()` inside this scan replaces all cards and destroys contenteditable nodes; never
+    // run while a rich notes editor is open or typing becomes impossible / flickers.
+    if (openNoteEditorIds.size > 0) {
+      return;
+    }
+
+    obsidianSyncStatusByNoteId.clear();
+    obsidianSyncErrorHintByNoteId.clear();
+    obsidianSyncGlobalBadgeHint = "";
+
+    if (!String(gObsidianVaultName || "").trim()) {
+      obsidianSyncScanState = "idle";
+      await refresh();
+      return;
+    }
+
+    if (!gObsidianSyncMode || !obsidianVaultRootHandle) {
+      obsidianSyncScanState = "done";
+      await refresh();
+      return;
+    }
+
+    obsidianSyncScanState = "scanning";
+    await refresh();
+
+    await reloadObsidianVaultHandleFromStorage();
+
+    if (!obsidianVaultRootHandle || !gObsidianSyncMode) {
+      obsidianSyncScanState = "done";
+      await refresh();
+      return;
+    }
+
+    // Do not call requestPermission() here — automatic scans run without a user gesture, and
+    // Chromium typically denies or no-ops. Use Settings → “Grant folder access” or Obsidian on a card.
+    try {
+      const st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+      if (st !== "granted") {
+        for (const row of queryNotes(db, activeBoard)) {
+          obsidianSyncStatusByNoteId.set(row.id, "permission_needs_gesture");
+        }
+        obsidianSyncGlobalBadgeHint =
+          "queryPermission is not “granted”. Click “Grant folder access” in Settings → Obsidian (or Obsidian on a card), then reopen the popup or wait for badges to refresh.";
+        obsidianSyncScanState = "done";
+        await refresh();
+        return;
+      }
+    } catch (e) {
+      console.warn("Obsidian: vault permission check failed (scan)", e);
+      obsidianSyncGlobalBadgeHint =
+        (e instanceof Error ? e.message : String(e)).slice(0, 300) ||
+        "Could not verify folder permission.";
+      for (const row of queryNotes(db, activeBoard)) {
+        obsidianSyncStatusByNoteId.set(row.id, "permission_denied");
+      }
+      obsidianSyncScanState = "done";
+      await refresh();
+      return;
+    }
+
+    for (const note of queryNotes(db, activeBoard)) {
+      const relPath = obsidianRelativeFilePath(db, note);
+      if (!relPath) {
+        obsidianSyncStatusByNoteId.set(note.id, "no_path");
+        continue;
+      }
+      const appMd = buildObsidianMarkdown(note);
+      const na = normalizeObsidianMarkdown(appMd);
+      try {
+        const fh = await getFileHandleFromVaultPath(obsidianVaultRootHandle, relPath, false);
+        const file = await fh.getFile();
+        const nf = normalizeObsidianMarkdown(await file.text());
+        obsidianSyncStatusByNoteId.set(note.id, na === nf ? "synced" : "diverged");
+      } catch (e) {
+        const { kind, hint } = classifyObsidianVaultAccessError(e);
+        if (hint) obsidianSyncErrorHintByNoteId.set(note.id, hint);
+        let status = "read_error";
+        if (kind === "missing") status = "missing";
+        else if (kind === "path_mismatch") status = "path_mismatch";
+        else if (kind === "permission") status = "permission_denied";
+        obsidianSyncStatusByNoteId.set(note.id, status);
+        if (kind !== "missing") {
+          console.warn("Obsidian: vault scan read failed", relPath, e);
+        }
+      }
+    }
+
+    obsidianSyncScanState = "done";
+    await refresh();
+  }
+
+  async function pushNoteMarkdownToObsidianVault(noteId) {
+    if (!Number.isFinite(noteId)) return;
+    if (!String(gObsidianVaultName || "").trim()) {
+      console.warn("Obsidian: skipped vault push (set vault name in Settings).");
+      return;
+    }
+    if (!gObsidianSyncMode) {
+      console.warn(
+        "Obsidian: skipped vault push (Sync mode off). Without it only obsidian:// links run — linked folder writes are disabled."
+      );
+      return;
+    }
+
+    await reloadObsidianVaultHandleFromStorage();
+    if (!obsidianVaultRootHandle) {
+      console.warn(
+        "Obsidian: skipped vault push (no linked folder). Use “Choose vault folder” in Settings and pick your vault root."
+      );
+      return;
+    }
+
+    try {
+      const st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+      if (st !== "granted") {
+        const r = await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" });
+        if (r !== "granted") {
+          console.warn("Obsidian: skipped vault push (folder permission not granted).");
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Obsidian: skipped vault push (permission check failed).", e);
+      return;
+    }
+
+    let noteRow = null;
+    try {
+      const res = db.exec(
+        "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+        [noteId]
+      );
+      if (res.length && res[0].values?.length) noteRow = res[0].values[0];
+    } catch {
+      return;
+    }
+    if (!noteRow) return;
+    const dueRaw = noteRow[4];
+    const note = {
+      id: noteRow[0],
+      board: noteRow[1],
+      text: noteRow[2],
+      notes_html: noteRow[3],
+      due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
+      updated_at: noteRow[5],
+    };
+
+    const relPath = obsidianRelativeFilePath(db, note);
+    if (!relPath) return;
+
+    const vault = String(gObsidianVaultName || "").trim();
+    const appMd = buildObsidianMarkdown(note);
+    const na = normalizeObsidianMarkdown(appMd);
+    try {
+      const fh = await getFileHandleFromVaultPath(obsidianVaultRootHandle, relPath, false);
+      const file = await fh.getFile();
+      const nf = normalizeObsidianMarkdown(await file.text());
+      if (na !== nf) {
+        console.warn(
+          "Obsidian: skipped automatic vault push — on-disk .md differs from this note. Open Notes or Obsidian on this card to compare and choose."
+        );
+        return;
+      }
+    } catch {
+      // No file yet (or unreadable): allow create below.
+    }
+    try {
+      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
+      markObsidianPathCreated(vault, note.id);
+      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
+      await persist();
+      scheduleObsidianVaultScanDebounced();
+    } catch (e) {
+      console.warn("Obsidian: could not push note to vault", e);
+    }
+  }
+
+  /**
+   * Persist the rich editor to SQLite. Optionally skip pushing to the vault — required before
+   * `syncNoteWithObsidianVault` compares vault vs app, otherwise the push would overwrite the file first.
+   */
+  async function flushPendingNotesEditorSave(noteId, flushOpts = {}) {
+    const skipVaultPush = flushOpts.skipVaultPush === true;
+    if (!Number.isFinite(noteId)) return;
+    const existing = notesEditorSaveTimers.get(noteId);
+    if (existing) clearTimeout(existing);
+    notesEditorSaveTimers.delete(noteId);
+    const editor = document.querySelector(
+      `.noteEditorArea[data-note-id="${CSS.escape(String(noteId))}"]`
+    );
+    if (!(editor instanceof HTMLElement)) return;
+    try {
+      setNotesHtml(db, noteId, editor.innerHTML);
+    } catch (err) {
+      console.warn(err);
+      return;
+    }
+    await persist();
+    if (!skipVaultPush && gObsidianSyncMode && String(gObsidianVaultName || "").trim()) {
+      await pushNoteMarkdownToObsidianVault(noteId);
+    }
   }
 
   async function syncNoteWithObsidianVault(noteId, opts = {}) {
     const navigateToObsidian = opts.navigateToObsidian !== false;
     try {
+    await flushPendingNotesEditorSave(noteId, { skipVaultPush: true });
+
     const vault = String(gObsidianVaultName || "").trim();
     if (!vault) return;
 
@@ -4318,22 +4954,47 @@ async function main() {
     function navigateUriFallback() {
       if (!navigateToObsidian) return;
       const url = resolveObsidianUrlForNote(db, note);
-      if (url) {
-        try {
-          window.location.assign(url);
-        } catch {
-          // ignore
-        }
-      }
+      if (url) openObsidianProtocolUrl(url);
     }
 
-    function navigateOpenOnly() {
+    /**
+     * Re-read note from DB, optionally write Markdown to vault, then open Obsidian.
+     * @param {{ skipVaultWrite?: boolean }} opts When `skipVaultWrite` (e.g. user chose vault in a conflict), do not
+     *   overwrite the .md on disk — the file is already canonical; writing from DB would strip Obsidian-only syntax.
+     */
+    async function navigateOpenOnly(opts = {}) {
+      const skipVaultWrite = opts.skipVaultWrite === true;
       if (!navigateToObsidian) return;
+      let openRel = relPath;
       try {
-        window.location.assign(buildObsidianOpenUrlOnly(vault, relPath));
-      } catch {
-        // ignore
+        const res = db.exec(
+          "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+          [noteId]
+        );
+        if (res.length && res[0].values?.length) {
+          const row = res[0].values[0];
+          const dueR = row[4];
+          const freshNote = {
+            id: row[0],
+            board: row[1],
+            text: row[2],
+            notes_html: row[3],
+            due_at: dueR != null && dueR !== "" ? Number(dueR) : null,
+            updated_at: row[5],
+          };
+          const computed = obsidianRelativeFilePath(db, freshNote);
+          if (computed) openRel = computed;
+          if (!skipVaultWrite) {
+            const freshMd = buildObsidianMarkdown(freshNote);
+            await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, openRel, freshMd);
+            await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, openRel);
+            await persist();
+          }
+        }
+      } catch (e) {
+        console.warn("Obsidian: could not refresh vault file before open", e);
       }
+      openObsidianProtocolUrl(buildObsidianOpenUrlOnly(vault, openRel));
     }
 
     if (!gObsidianSyncMode || !obsidianVaultRootHandle) {
@@ -4356,7 +5017,6 @@ async function main() {
     }
 
     const appMd = buildObsidianMarkdown(note);
-    const appUpdated = Number(note.updated_at);
     let fileMd = "";
     let fileTime = 0;
 
@@ -4371,49 +5031,36 @@ async function main() {
       await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
       await persist();
       await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
-      navigateOpenOnly();
+      await navigateOpenOnly();
       return;
     }
 
     const na = normalizeObsidianMarkdown(appMd);
     const nf = normalizeObsidianMarkdown(fileMd);
     if (na === nf) {
-      navigateOpenOnly();
+      await navigateOpenOnly();
+      if (navigateToObsidian) {
+        scheduleObsidianVaultScanDebounced();
+      }
       return;
     }
 
-    const au = Number.isFinite(appUpdated) ? appUpdated : 0;
-    if (fileTime > au) {
-      const parsed = parseObsidianMarkdownImport(fileMd);
-      const titleUse = parsed.title ? String(parsed.title).trim() : String(note.text || "").trim();
-      const htmlUse =
-        typeof parsed.notes_html === "string" && parsed.notes_html.trim()
-          ? parsed.notes_html
-          : note.notes_html || "";
-      const stmt = db.prepare("UPDATE notes SET text = ?, notes_html = ?, updated_at = ? WHERE id = ?");
-      stmt.run([titleUse, htmlUse, fileTime, noteId]);
-      stmt.free();
-      await persist();
-      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
-      navigateOpenOnly();
-      return;
-    }
-    if (au > fileTime) {
-      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
-      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
-      await persist();
-      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
-      navigateOpenOnly();
-      return;
-    }
-
-    const choice = await showObsidianConflictModal_(na, nf);
+    // Whenever normalized Markdown differs, ask — modal shows file mtime vs extension updated_at as a hint.
+    const au = Number.isFinite(Number(note.updated_at)) ? Number(note.updated_at) : 0;
+    const vaultNewerByClock = fileTime > au + OBSIDIAN_VAULT_TIME_SLACK_MS;
+    const appNewerByClock = au > fileTime;
+    const choice = await showObsidianConflictModal_(na, nf, {
+      vaultFileTime: fileTime,
+      appUpdatedAt: au,
+      vaultNewerByClock,
+      appNewerByClock,
+    });
     if (choice === "app") {
       await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
       await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
       await persist();
       await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
-      navigateOpenOnly();
+      await navigateOpenOnly();
     } else if (choice === "vault") {
       const parsed = parseObsidianMarkdownImport(fileMd);
       const titleUse = parsed.title ? String(parsed.title).trim() : String(note.text || "").trim();
@@ -4426,9 +5073,9 @@ async function main() {
       stmt.free();
       await persist();
       await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
-      navigateOpenOnly();
+      await navigateOpenOnly({ skipVaultWrite: true });
     } else {
-      hideObsidianSyncModal();
+      hideObsidianConflictModal();
     }
     } catch (e) {
       console.warn("Obsidian vault sync failed", e);
@@ -4439,65 +5086,11 @@ async function main() {
     return syncNoteWithObsidianVault(noteId, { navigateToObsidian: true });
   }
 
-  async function pushNoteMarkdownToObsidianVault(noteId) {
-    if (!Number.isFinite(noteId)) return;
-    if (!String(gObsidianVaultName || "").trim()) return;
-    if (!gObsidianSyncMode) return;
-
-    await reloadObsidianVaultHandleFromStorage();
-    if (!obsidianVaultRootHandle) return;
-
-    try {
-      const st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
-      if (st !== "granted") {
-        const r = await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" });
-        if (r !== "granted") return;
-      }
-    } catch {
-      return;
-    }
-
-    let noteRow = null;
-    try {
-      const res = db.exec(
-        "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
-        [noteId]
-      );
-      if (res.length && res[0].values?.length) noteRow = res[0].values[0];
-    } catch {
-      return;
-    }
-    if (!noteRow) return;
-    const dueRaw = noteRow[4];
-    const note = {
-      id: noteRow[0],
-      board: noteRow[1],
-      text: noteRow[2],
-      notes_html: noteRow[3],
-      due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
-      updated_at: noteRow[5],
-    };
-
-    const relPath = obsidianRelativeFilePath(db, note);
-    if (!relPath) return;
-
-    const vault = String(gObsidianVaultName || "").trim();
-    const appMd = buildObsidianMarkdown(note);
-    try {
-      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
-      markObsidianPathCreated(vault, note.id);
-      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
-      await persist();
-    } catch (e) {
-      console.warn("Obsidian: could not push note to vault", e);
-    }
-  }
-
-  function wireObsidianSyncModalButtons() {
-    const useApp = document.getElementById("obsidianSyncModalUseApp");
-    const useVault = document.getElementById("obsidianSyncModalUseVault");
-    const cancel = document.getElementById("obsidianSyncModalCancel");
-    const backdrop = document.getElementById("obsidianSyncModalBackdrop");
+  function wireObsidianConflictModalButtons() {
+    const useApp = document.getElementById("obsidianConflictUseApp");
+    const useVault = document.getElementById("obsidianConflictUseVault");
+    const cancel = document.getElementById("obsidianConflictCancel");
+    const backdrop = document.getElementById("obsidianConflictModalBackdrop");
     if (useApp instanceof HTMLElement) {
       useApp.addEventListener("click", () => {
         if (typeof obsidianConflictResolve === "function") obsidianConflictResolve("app");
@@ -4519,7 +5112,7 @@ async function main() {
       });
     }
   }
-  wireObsidianSyncModalButtons();
+  wireObsidianConflictModalButtons();
   setObsidianVaultFolderStatusUi();
 
   function wireNotesEditorAutocomplete() {
@@ -5553,6 +6146,29 @@ async function main() {
     card.draggable = status === "pending" && !open;
 
     if (!open) {
+      const editor = card.querySelector(".noteEditorArea");
+      const face = card.querySelector(".noteFace:not(.noteBack)");
+      const existingPreview = card.querySelector(".noteNotesPreview");
+      const previewText =
+        editor instanceof HTMLElement ? getNoteNotesPreviewText(editor.innerHTML) : "";
+      if (previewText) {
+        const preview =
+          existingPreview instanceof HTMLElement
+            ? existingPreview
+            : createNoteNotesPreviewElement(previewText);
+        const previewBody = preview.querySelector(".noteNotesPreview__body");
+        if (previewBody instanceof HTMLElement) {
+          previewBody.textContent = previewText;
+          previewBody.title = previewText;
+        }
+        if (!existingPreview && face instanceof HTMLElement) {
+          const attachments = face.querySelector(".noteAttachments");
+          const editorNode = face.querySelector(".noteEditor");
+          face.insertBefore(preview, attachments || editorNode || null);
+        }
+      } else if (existingPreview instanceof HTMLElement) {
+        existingPreview.remove();
+      }
       if (lastFocusedNoteEditor instanceof HTMLElement) {
         const focusedId = getNoteIdFromEditor(lastFocusedNoteEditor);
         if (focusedId === noteId) lastFocusedNoteEditor = null;
@@ -5560,6 +6176,14 @@ async function main() {
       if (focusToggleOnClose) {
         const notesBtn = card.querySelector("button[data-action='toggleNotes']");
         if (notesBtn instanceof HTMLElement) notesBtn.focus();
+      }
+      if (
+        openNoteEditorIds.size === 0 &&
+        String(gObsidianVaultName || "").trim() &&
+        gObsidianSyncMode &&
+        gObsidianVaultFolderLinked
+      ) {
+        void scanObsidianVaultVsDbNotes();
       }
       return;
     }
@@ -5611,9 +6235,11 @@ async function main() {
 
   // Initial paint + persistence (in case schema was created)
   await persist();
+  await reloadObsidianVaultHandleFromStorage();
   setActiveTabUi(activeBoard);
   await refresh();
   updateCardFilterVisibility();
+  if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
 
   if (cardFilterInput instanceof HTMLInputElement) {
     cardFilterInput.addEventListener("input", () => {
@@ -5969,6 +6595,7 @@ async function main() {
         await persist();
         setObsidianSettingsMessage("Saved.");
         await refresh();
+        if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
       } catch (err) {
         console.error(err);
         setObsidianSettingsMessage("Could not save Obsidian settings.");
@@ -6003,9 +6630,46 @@ async function main() {
     });
   }
 
+  const obsidianGrantVaultAccessBtn = document.getElementById("obsidianGrantVaultAccessBtn");
+  if (obsidianGrantVaultAccessBtn instanceof HTMLElement) {
+    obsidianGrantVaultAccessBtn.addEventListener("click", async () => {
+      setObsidianSettingsMessage("");
+      try {
+        if (!chrome?.runtime?.getURL || !chrome.tabs?.create) {
+          setObsidianSettingsMessage("Could not open grant tab (extension APIs missing).");
+          return;
+        }
+        const url = chrome.runtime.getURL("grant-vault-access.html");
+        await chrome.tabs.create({ url, active: true });
+        setObsidianSettingsMessage(
+          "Opened a tab to grant folder access (Chromium blocks this inside the popup). Click “Allow access to linked folder” there, then return here."
+        );
+      } catch (err) {
+        console.error("Obsidian grant vault access tab:", err);
+        const detail = err instanceof Error ? err.message || err.name : String(err);
+        setObsidianSettingsMessage(`Could not open tab: ${String(detail).slice(0, 220)}`);
+      }
+    });
+  }
+
   try {
     const obsidianVaultBc = new BroadcastChannel("vim-todo-obsidian-vault");
     obsidianVaultBc.onmessage = (ev) => {
+      if (ev?.data?.type === "permission-granted") {
+        void (async () => {
+          try {
+            await reloadObsidianVaultHandleFromStorage();
+            gObsidianVaultFolderLinked = !!obsidianVaultRootHandle;
+            setObsidianVaultFolderStatusUi();
+            setObsidianSettingsMessage("Vault folder access granted. Refreshing badges…");
+            await refresh();
+            if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
+          } catch (e) {
+            console.error(e);
+          }
+        })();
+        return;
+      }
       if (ev?.data?.type !== "linked") return;
       void (async () => {
         try {
@@ -6022,14 +6686,14 @@ async function main() {
             obsidianVaultIdb() && typeof obsidianVaultIdb().loadVaultHandle === "function"
               ? await obsidianVaultIdb().loadVaultHandle()
               : null;
-          if (obsidianVaultRootHandle) {
-            await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
-          }
+          gObsidianVaultFolderLinked = !!obsidianVaultRootHandle;
           setObsidianVaultFolderStatusUi();
           setObsidianSettingsMessage(
-            "Vault folder linked and sync mode turned on. Click Obsidian on a card to merge with the .md file."
+            "Vault folder linked and sync mode turned on. Use “Grant folder access…” if badges still ask for permission, then Obsidian on a card to merge."
           );
           await persist();
+          await refresh();
+          if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
         } catch (e) {
           console.error(e);
         }
@@ -6047,8 +6711,11 @@ async function main() {
           await obsidianVaultIdb().clearVaultHandle();
         }
         obsidianVaultRootHandle = null;
+        gObsidianVaultFolderLinked = false;
         setObsidianVaultFolderStatusUi();
         setObsidianSettingsMessage("Vault folder disconnected.");
+        await refresh();
+        if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
       } catch (err) {
         console.error(err);
         setObsidianSettingsMessage("Could not disconnect folder.");
@@ -7227,6 +7894,104 @@ async function main() {
 
     return false;
   }
+
+  // Obsidian conflict modal: window capture runs before document listeners (Vim nav, etc.).
+  // stopImmediatePropagation() only affects *other listeners on window* — it does NOT block
+  // document capture. We must call stopPropagation() so the event never reaches document,
+  // otherwise moveGlobalFocus() runs and jumps to the theme <select>.
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      const modal = document.getElementById("obsidianConflictModal");
+      if (!(modal instanceof HTMLElement) || modal.hidden) return;
+      const raw = e.key;
+      const rawLower = String(raw || "").toLowerCase();
+      const code = e.code || "";
+      /** Physical arrows: prefer e.key; some environments differ, so fall back to e.code. */
+      const arrow =
+        raw === "ArrowLeft" || raw === "ArrowRight" || raw === "ArrowUp" || raw === "ArrowDown"
+          ? raw
+          : code === "ArrowLeft" ||
+              code === "ArrowRight" ||
+              code === "ArrowUp" ||
+              code === "ArrowDown"
+            ? code
+            : "";
+
+      const digitChoice =
+        raw === "1" || raw === "2"
+          ? raw
+          : code === "Digit1" || code === "Numpad1"
+            ? "1"
+            : code === "Digit2" || code === "Numpad2"
+              ? "2"
+              : "";
+      const nav = getNavKeys(keyLayout);
+      const logicalNav =
+        rawLower === String(nav.left || "").toLowerCase()
+          ? "left"
+          : rawLower === String(nav.right || "").toLowerCase()
+            ? "right"
+            : rawLower === String(nav.up || "").toLowerCase()
+              ? "up"
+              : rawLower === String(nav.down || "").toLowerCase()
+                ? "down"
+                : "";
+
+      if (arrow === "" && raw !== "Escape" && digitChoice === "" && logicalNav === "") {
+        return;
+      }
+      // Do not use modKeyActive (Alt): AltGr / layout keys set altKey and would skip 1/2/arrows.
+      if (e.ctrlKey || e.metaKey) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        e.stopImmediatePropagation();
+      } catch {
+        // ignore
+      }
+
+      const useAppBtn = document.getElementById("obsidianConflictUseApp");
+      const useVaultBtn = document.getElementById("obsidianConflictUseVault");
+      const cancelBtn = document.getElementById("obsidianConflictCancel");
+      const panelFocusOrder = [useAppBtn, useVaultBtn, cancelBtn].filter(
+        (el) => el instanceof HTMLElement
+      );
+
+      if (raw === "Escape") {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve(null);
+        return;
+      }
+      if (arrow === "ArrowLeft" || logicalNav === "left") {
+        if (useAppBtn instanceof HTMLElement) useAppBtn.focus();
+        return;
+      }
+      if (arrow === "ArrowRight" || logicalNav === "right") {
+        if (useVaultBtn instanceof HTMLElement) useVaultBtn.focus();
+        return;
+      }
+      if (arrow === "ArrowDown" || arrow === "ArrowUp" || logicalNav === "down" || logicalNav === "up") {
+        const dir = arrow === "ArrowDown" || logicalNav === "down" ? 1 : -1;
+        const ae = document.activeElement;
+        let idx = ae instanceof HTMLElement ? panelFocusOrder.indexOf(ae) : -1;
+        if (idx < 0) idx = arrow === "ArrowDown" ? -1 : panelFocusOrder.length;
+        const next = (idx + dir + panelFocusOrder.length) % panelFocusOrder.length;
+        const t = panelFocusOrder[next];
+        if (t instanceof HTMLElement) t.focus();
+        return;
+      }
+      if (digitChoice === "1") {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve("app");
+        return;
+      }
+      if (digitChoice === "2") {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve("vault");
+        return;
+      }
+    },
+    true
+  );
 
   // Prevent modifier alone (Alt on Win/Linux, Ctrl on Mac) from activating browser menu and closing the popup
   document.addEventListener(
@@ -9256,6 +10021,8 @@ async function main() {
           setActiveTabUi(activeBoard);
           await persist();
           await refresh();
+          await reloadObsidianVaultHandleFromStorage();
+          if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
 
           showNotesView();
           focusMainBoardSwitcherTab();
@@ -10812,14 +11579,12 @@ async function main() {
 
   // Autosave rich notes HTML (debounced) + push to linked vault when sync mode is on
   {
-    const saveTimers = new Map();
-
     const flushNotesEditorToDbAndVault = (editor, html) => {
       const noteId = Number(editor.dataset.noteId);
       if (!Number.isFinite(noteId)) return;
-      const existing = saveTimers.get(noteId);
+      const existing = notesEditorSaveTimers.get(noteId);
       if (existing) clearTimeout(existing);
-      saveTimers.delete(noteId);
+      notesEditorSaveTimers.delete(noteId);
       try {
         setNotesHtml(db, noteId, html);
       } catch (err) {
@@ -10849,14 +11614,14 @@ async function main() {
         vimUndoPush(noteId, target.innerHTML);
       }
 
-      const existing = saveTimers.get(noteId);
+      const existing = notesEditorSaveTimers.get(noteId);
       if (existing) clearTimeout(existing);
 
       const t = setTimeout(() => {
         flushNotesEditorToDbAndVault(target, target.innerHTML);
       }, 350);
 
-      saveTimers.set(noteId, t);
+      notesEditorSaveTimers.set(noteId, t);
     });
 
     document.body.addEventListener(

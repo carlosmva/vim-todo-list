@@ -393,7 +393,9 @@
                   <code>…/notes-folder/board-slug/title-slug.md</code>, or
                   <code>…/title-slug-note-id.md</code> when two cards on the same board share the same title.                   Use <b>Choose vault folder</b> — Chrome opens a tab where you pick the same folder Obsidian uses. Linking
                   turns on <b>Sync mode</b> automatically. Each <b>Obsidian</b> button on a card compares that note’s Markdown
-                  file with the card and updates whichever side is newer (or asks if it’s a tie).
+                  file with the card and updates whichever side is newer (or asks if it’s a tie). Without Sync mode and a linked
+                  folder, only the first click can create the file; later clicks open it in Obsidian (the URI cannot overwrite
+                  an existing note without creating duplicates).
                 </p>
                 <div id="obsidianSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
                 <form id="obsidianSettingsForm" class="aiSettingsForm" aria-label="Obsidian settings">
@@ -429,6 +431,14 @@
                   <div class="aiSettingsActions obsidianFsActions">
                     <button id="obsidianChooseVaultFolderBtn" class="monoLinkButton" type="button">
                       Choose vault folder…
+                    </button>
+                    <button
+                      id="obsidianGrantVaultAccessBtn"
+                      class="monoLinkButton"
+                      type="button"
+                      title="Opens a tab where Chromium can show the folder permission prompt (not allowed inside the popup)."
+                    >
+                      Grant folder access…
                     </button>
                     <button id="obsidianClearVaultFolderBtn" class="monoLinkButton" type="button">
                       Disconnect folder
@@ -483,25 +493,49 @@
       </div>
     </div>
 
-    <div id="obsidianSyncModal" class="obsidianSyncModal" hidden aria-hidden="true">
-      <div id="obsidianSyncModalBackdrop" class="obsidianSyncModal__backdrop"></div>
-      <div class="obsidianSyncModal__panel" role="dialog" aria-modal="true" aria-labelledby="obsidianSyncModalTitle">
-        <h3 id="obsidianSyncModalTitle" class="obsidianSyncModal__title">Obsidian and extension differ</h3>
-        <p class="obsidianSyncModal__hint">Same edit time — choose which Markdown to keep.</p>
-        <div class="obsidianSyncModal__grid">
-          <div>
-            <div class="obsidianSyncModal__colLabel">Extension</div>
-            <pre class="obsidianSyncModal__pre" id="obsidianSyncModalApp"></pre>
+    <div id="obsidianConflictModal" class="obsidianConflictModal" hidden aria-hidden="true">
+      <div id="obsidianConflictModalBackdrop" class="obsidianConflictModal__backdrop"></div>
+      <div
+        class="obsidianConflictModal__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="obsidianConflictTitle"
+        aria-describedby="obsidianConflictHint"
+      >
+        <h3 id="obsidianConflictTitle" class="obsidianConflictModal__title">Resolve conflict</h3>
+        <p id="obsidianConflictHint" class="obsidianConflictModal__hint">
+          The vault .md and this card do not match. Compare the previews below, then choose which side to keep.
+        </p>
+        <div class="obsidianConflictModal__grid">
+          <div class="obsidianConflictModal__col">
+            <div class="obsidianConflictModal__colLabel">This card (extension)</div>
+            <pre class="obsidianConflictModal__pre" id="obsidianConflictApp" tabindex="-1"></pre>
+            <div class="obsidianConflictModal__colActions">
+              <button
+                type="button"
+                class="monoLinkButton obsidianConflictModal__choiceBtn"
+                id="obsidianConflictUseApp"
+              >
+                Keep this card
+              </button>
+            </div>
           </div>
-          <div>
-            <div class="obsidianSyncModal__colLabel">Vault file</div>
-            <pre class="obsidianSyncModal__pre" id="obsidianSyncModalVault"></pre>
+          <div class="obsidianConflictModal__col">
+            <div class="obsidianConflictModal__colLabel">Vault file on disk</div>
+            <pre class="obsidianConflictModal__pre" id="obsidianConflictVault" tabindex="-1"></pre>
+            <div class="obsidianConflictModal__colActions">
+              <button
+                type="button"
+                class="monoLinkButton obsidianConflictModal__choiceBtn"
+                id="obsidianConflictUseVault"
+              >
+                Keep vault file
+              </button>
+            </div>
           </div>
         </div>
-        <div class="obsidianSyncModal__actions">
-          <button type="button" class="monoLinkButton" id="obsidianSyncModalUseApp">Use extension</button>
-          <button type="button" class="monoLinkButton" id="obsidianSyncModalUseVault">Use vault</button>
-          <button type="button" class="monoLinkButton" id="obsidianSyncModalCancel">Cancel</button>
+        <div class="obsidianConflictModal__footer">
+          <button type="button" class="monoLinkButton" id="obsidianConflictCancel">Cancel</button>
         </div>
       </div>
     </div>
