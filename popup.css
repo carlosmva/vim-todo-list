@@ -847,23 +847,113 @@ body {
 
 .board {
   margin-top: 12px;
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: auto auto;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   gap: 12px;
   flex: 1;
   min-height: 0;
   width: 100%;
   max-width: 100%;
-  overflow: auto;
-  align-content: start;
+  overflow: hidden;
+}
+
+.board > .col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 6px 10px 10px;
+  transition:
+    flex 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+    max-width 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Pending left, Complete right; default: Pending expanded (most width). */
+.board--split-pending .col--pending {
+  flex: 1 1 92%;
+  min-width: 0;
+  max-width: 100%;
+  cursor: default;
+}
+
+.board--split-pending .col--complete {
+  flex: 0 0 3.25rem;
+  min-width: 3.25rem;
+  max-width: 3.25rem;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+
+.board--split-complete .col--complete {
+  flex: 1 1 92%;
+  min-width: 0;
+  max-width: 100%;
+  cursor: default;
+}
+
+.board--split-complete .col--pending {
+  flex: 0 0 3.25rem;
+  min-width: 3.25rem;
+  max-width: 3.25rem;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+
+.board--split-pending .col--complete .list,
+.board--split-complete .col--pending .list {
+  flex: 0 0 0;
+  min-height: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  padding: 0;
+  margin: 0;
+  transition: opacity 0.22s ease, max-height 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.board--split-pending .col--pending .list,
+.board--split-complete .col--complete .list {
+  opacity: 1;
+  transition: opacity 0.2s ease 0.08s;
+}
+
+.board--split-pending .col--complete .colTitle,
+.board--split-complete .col--pending .colTitle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  margin-bottom: 0;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  text-align: center;
+  gap: 0;
+  user-select: none;
+}
+
+.board--split-pending .col--pending .colTitle,
+.board--split-complete .col--complete .colTitle {
+  writing-mode: horizontal-tb;
+  transform: none;
+  flex: 0 0 auto;
+}
+
+.board--split-pending .col--complete:focus-visible,
+.board--split-complete .col--pending:focus-visible {
+  outline: 2px solid var(--cds-focus, currentColor);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 @media (max-width: 860px) {
-  .board {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .create {
     grid-template-columns: 1fr;
   }
@@ -879,19 +969,16 @@ body {
 }
 
 .col {
-  min-height: 0;
   min-width: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 6px 10px 10px;
+  min-height: 0;
+  width: auto;
 }
 
 .colTitle {
   font-size: 1.05rem;
   font-weight: 600;
   margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .list {

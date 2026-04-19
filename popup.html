@@ -130,14 +130,33 @@
             </ul>
           </nav>
 
-          <main class="board" aria-label="Notes board">
-            <section class="col bx--tile" aria-label="Pending column">
-              <div class="colTitle">Pending (<span id="pendingCount">0</span>)</div>
+          <main
+            class="board board--split-pending"
+            id="notesBoard"
+            data-board-split="pending"
+            aria-label="Notes board"
+          >
+            <section
+              class="col bx--tile col--pending"
+              id="colPending"
+              aria-label="Pending column"
+              data-column="pending"
+            >
+              <div class="colTitle" id="colPendingTitle">
+                Pending (<span id="pendingCount">0</span>)
+              </div>
               <div id="pendingList" class="list" aria-label="Pending notes"></div>
             </section>
 
-            <section class="col bx--tile" aria-label="Complete column">
-              <div class="colTitle">Complete (<span id="completeCount">0</span>)</div>
+            <section
+              class="col bx--tile col--complete"
+              id="colComplete"
+              aria-label="Complete column"
+              data-column="complete"
+            >
+              <div class="colTitle" id="colCompleteTitle">
+                Complete (<span id="completeCount">0</span>)
+              </div>
               <div id="completeList" class="list" aria-label="Complete notes"></div>
             </section>
           </main>

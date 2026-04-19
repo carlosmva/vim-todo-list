@@ -820,10 +820,12 @@ button,
 }
 
 .board {
+  display: flex;
+  flex-direction: row;
   gap: var(--modern-space-3);
   overflow: hidden;
+  align-items: stretch;
   align-content: stretch;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .col {

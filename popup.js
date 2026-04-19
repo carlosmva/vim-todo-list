@@ -2273,6 +2273,7 @@ async function main() {
         <li>${combo(mod, fmt(nav.right))}: move right (not in notes)</li>
         <li>${combo(mod, fmt(focusNewNoteKey))}: focus new note input</li>
         <li>${keycap("/")}: focus card filter for current tab</li>
+        <li><b>Pending / Complete</b>: ${combo(mod, fmt(nav.down))} from board tabs focuses the expanded column header (another ${combo(mod, fmt(nav.down))} enters the first card’s primary action); ${combo(mod, fmt(nav.up))} from the top card in a column or from a column header focuses the board tabs; ${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))} between column headers; ${keycap("Enter")}/${keycap("Space")} on the collapsed column to expand</li>
         <li>${keycap("Enter")}: activate the focused button</li>
         <li>${keycap("F2")}: rename task (when focus is on a card) or rename tab (when focus is in Tabs view)</li>
       </ul>
@@ -3188,6 +3189,77 @@ async function main() {
 
   wireKeyLayoutSettingsRadios();
   wireSettingsEnterActivate();
+
+  /** Swaps which board column (Pending vs Complete) is expanded; used by mouse, Enter/Space, and Alt+nav. */
+  let setBoardColumnSplit = () => {};
+
+  function wireBoardColumnSplit() {
+    const board = document.getElementById("notesBoard");
+    const colPending = document.getElementById("colPending");
+    const colComplete = document.getElementById("colComplete");
+    if (
+      !(board instanceof HTMLElement) ||
+      !(colPending instanceof HTMLElement) ||
+      !(colComplete instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    setBoardColumnSplit = (which) => {
+      const next = which === "complete" ? "complete" : "pending";
+      board.classList.remove("board--split-pending", "board--split-complete");
+      board.classList.add(next === "complete" ? "board--split-complete" : "board--split-pending");
+      board.dataset.boardSplit = next;
+      if (next === "pending") {
+        colPending.setAttribute("aria-expanded", "true");
+        colComplete.setAttribute("aria-expanded", "false");
+      } else {
+        colComplete.setAttribute("aria-expanded", "true");
+        colPending.setAttribute("aria-expanded", "false");
+      }
+      colPending.setAttribute("tabindex", "0");
+      colComplete.setAttribute("tabindex", "0");
+      requestAnimationFrame(() => {
+        document.querySelectorAll(".noteCard").forEach((c) => {
+          if (c instanceof HTMLElement) morphCardHeight(c);
+        });
+      });
+    };
+
+    setBoardColumnSplit("pending");
+
+    board.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      const col = t.closest(".col");
+      if (!(col instanceof HTMLElement) || !board.contains(col)) return;
+
+      if (board.classList.contains("board--split-pending") && col === colComplete) {
+        e.preventDefault();
+        setBoardColumnSplit("complete");
+        return;
+      }
+      if (board.classList.contains("board--split-complete") && col === colPending) {
+        e.preventDefault();
+        setBoardColumnSplit("pending");
+      }
+    });
+
+    board.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const active = document.activeElement;
+      if (active !== colPending && active !== colComplete) return;
+      if (board.classList.contains("board--split-pending") && active === colComplete) {
+        e.preventDefault();
+        setBoardColumnSplit("complete");
+      } else if (board.classList.contains("board--split-complete") && active === colPending) {
+        e.preventDefault();
+        setBoardColumnSplit("pending");
+      }
+    });
+  }
+
+  wireBoardColumnSplit();
 
   renderBoardTabs(boards, activeBoard);
 
@@ -6939,6 +7011,11 @@ async function main() {
         (n) => n instanceof HTMLElement
       );
       targets.push(...tabLinks);
+
+      const colPending = document.getElementById("colPending");
+      const colComplete = document.getElementById("colComplete");
+      if (colPending instanceof HTMLElement) targets.push(colPending);
+      if (colComplete instanceof HTMLElement) targets.push(colComplete);
     }
 
     if (instructionsVisible) {
@@ -7713,6 +7790,60 @@ async function main() {
           }
         }
 
+        // Notes board: Alt+down from Pending/Complete column headers → first card or expand + focus.
+        {
+          const notesViewEl = document.getElementById("notesView");
+          const notesVisible =
+            notesViewEl instanceof HTMLElement && !notesViewEl.hasAttribute("hidden");
+          const board = document.getElementById("notesBoard");
+          const colPending = document.getElementById("colPending");
+          const colComplete = document.getElementById("colComplete");
+          const pendingList = document.getElementById("pendingList");
+          const completeList = document.getElementById("completeList");
+          if (
+            notesVisible &&
+            board instanceof HTMLElement &&
+            colPending instanceof HTMLElement &&
+            colComplete instanceof HTMLElement &&
+            pendingList instanceof HTMLElement &&
+            completeList instanceof HTMLElement &&
+            (activeEl2 === colPending || activeEl2 === colComplete)
+          ) {
+            if (board.classList.contains("board--split-pending") && activeEl2 === colPending) {
+              const first = pendingList.querySelector(".noteCard");
+              if (first instanceof HTMLElement) {
+                focusCardPrimaryAction(first);
+                return;
+              }
+              return;
+            }
+            if (board.classList.contains("board--split-complete") && activeEl2 === colComplete) {
+              const first = completeList.querySelector(".noteCard");
+              if (first instanceof HTMLElement) {
+                focusCardPrimaryAction(first);
+                return;
+              }
+              return;
+            }
+            if (board.classList.contains("board--split-pending") && activeEl2 === colComplete) {
+              setBoardColumnSplit("complete");
+              requestAnimationFrame(() => {
+                const first = completeList.querySelector(".noteCard");
+                if (first instanceof HTMLElement) focusCardPrimaryAction(first);
+              });
+              return;
+            }
+            if (board.classList.contains("board--split-complete") && activeEl2 === colPending) {
+              setBoardColumnSplit("pending");
+              requestAnimationFrame(() => {
+                const first = pendingList.querySelector(".noteCard");
+                if (first instanceof HTMLElement) focusCardPrimaryAction(first);
+              });
+              return;
+            }
+          }
+        }
+
         const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
         if (activeCard2 instanceof HTMLElement) {
           const inFrontAttachments2 =
@@ -7778,7 +7909,7 @@ async function main() {
             if (notesVisible) {
               const cards = getAllCardsInDomOrder();
               if (cards.length) {
-                focusCardFrontAttachmentsOrPrimary(cards[0]);
+                focusCardPrimaryAction(cards[0]);
                 return;
               }
             }
@@ -7901,20 +8032,44 @@ async function main() {
 
           const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
           if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
-          // If tabs are missing for some reason, fall back to entering the cards.
+          // If tabs are missing for some reason, fall back to column headers then cards.
+          const board = document.getElementById("notesBoard");
+          const colPending = document.getElementById("colPending");
+          const colComplete = document.getElementById("colComplete");
+          if (
+            board instanceof HTMLElement &&
+            colPending instanceof HTMLElement &&
+            colComplete instanceof HTMLElement
+          ) {
+            const expanded =
+              board.classList.contains("board--split-complete") ? colComplete : colPending;
+            if (safeFocus(expanded)) return;
+          }
           const cards = getAllCardsInDomOrder();
-          if (cards.length) focusCardFrontAttachmentsOrPrimary(cards[0]);
+          if (cards.length) focusCardPrimaryAction(cards[0]);
           return;
         }
 
-        // If focus is on the board tabs, "down" should enter the cards area.
+        // If focus is on the board tabs, "down" should focus Pending/Complete (expanded column) first, then cards on the next down.
         const inBoardTabs =
           activeEl2 instanceof Element &&
           activeEl2.closest("#boardTabs") !== null;
 
         if (inBoardTabs) {
+          const board = document.getElementById("notesBoard");
+          const colPending = document.getElementById("colPending");
+          const colComplete = document.getElementById("colComplete");
+          if (
+            board instanceof HTMLElement &&
+            colPending instanceof HTMLElement &&
+            colComplete instanceof HTMLElement
+          ) {
+            const expanded =
+              board.classList.contains("board--split-complete") ? colComplete : colPending;
+            if (safeFocus(expanded)) return;
+          }
           const cards = getAllCardsInDomOrder();
-          if (cards.length) focusCardFrontAttachmentsOrPrimary(cards[0]);
+          if (cards.length) focusCardPrimaryAction(cards[0]);
           else {
             const noteText = document.getElementById("noteText");
             if (noteText instanceof HTMLElement) safeFocus(noteText);
@@ -8123,6 +8278,26 @@ async function main() {
           }
         }
 
+        // Notes board: Alt+up from Pending/Complete column headers → board tabs.
+        {
+          const notesViewEl = document.getElementById("notesView");
+          const notesVisible =
+            notesViewEl instanceof HTMLElement && !notesViewEl.hasAttribute("hidden");
+          const colPending = document.getElementById("colPending");
+          const colComplete = document.getElementById("colComplete");
+          if (
+            notesVisible &&
+            (activeEl2 === colPending || activeEl2 === colComplete)
+          ) {
+            const activeTab = document.querySelector(
+              "#boardTabs [role='tab'][aria-selected='true']"
+            );
+            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
+            const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+            if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+          }
+        }
+
         const activeCard2 = activeEl2 instanceof Element ? getCardFromElement(activeEl2) : null;
         if (activeCard2 instanceof HTMLElement) {
           const inFrontAttachments2 =
@@ -8160,6 +8335,26 @@ async function main() {
             if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
           }
           if (inNoteDueDateRow2) {
+            const pendingListEl = document.getElementById("pendingList");
+            const completeListEl = document.getElementById("completeList");
+            const firstPending = pendingListEl?.querySelector(".noteCard[data-note-id]");
+            const firstComplete = completeListEl?.querySelector(".noteCard[data-note-id]");
+            if (activeCard2 === firstComplete) {
+              const activeTab = document.querySelector(
+                "#boardTabs [role='tab'][aria-selected='true']"
+              );
+              if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
+              const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+              if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+            }
+            if (activeCard2 === firstPending) {
+              const activeTab = document.querySelector(
+                "#boardTabs [role='tab'][aria-selected='true']"
+              );
+              if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
+              const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+              if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+            }
             if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
             const cards = getAllCardsInDomOrder();
             const idx = cards.indexOf(activeCard2);
@@ -8199,6 +8394,30 @@ async function main() {
         if ((belowTabs || inDashboard || inCalendar) && tryScrollBeforeSectionMove(-1)) return;
         const card = getCardFromElement(activeEl2);
         if (card) {
+          const pendingListEl = document.getElementById("pendingList");
+          const completeListEl = document.getElementById("completeList");
+          const firstPending = pendingListEl?.querySelector(".noteCard[data-note-id]");
+          const firstComplete = completeListEl?.querySelector(".noteCard[data-note-id]");
+          if (card === firstPending) {
+            closeCardOverlays(card);
+            const activeTab = document.querySelector(
+              "#boardTabs [role='tab'][aria-selected='true']"
+            );
+            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
+            const firstTab = document.querySelector("#boardTabs [role='tab']");
+            if (firstTab instanceof HTMLElement) safeFocus(firstTab);
+            return;
+          }
+          if (card === firstComplete) {
+            closeCardOverlays(card);
+            const activeTab = document.querySelector(
+              "#boardTabs [role='tab'][aria-selected='true']"
+            );
+            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
+            const firstTab = document.querySelector("#boardTabs [role='tab']");
+            if (firstTab instanceof HTMLElement) safeFocus(firstTab);
+            return;
+          }
           const cards = getAllCardsInDomOrder();
           const currentIdx = card instanceof HTMLElement ? cards.indexOf(card) : -1;
           if (currentIdx <= 0) {
@@ -8322,6 +8541,36 @@ async function main() {
                 safeFocus(closeBtn);
                 return;
               }
+              return;
+            }
+          }
+        }
+
+        // Notes board: Alt+Left/Right between Pending/Complete column headers.
+        {
+          const notesViewEl = document.getElementById("notesView");
+          const notesVisible =
+            notesViewEl instanceof HTMLElement && !notesViewEl.hasAttribute("hidden");
+          const notesBoardEl = document.getElementById("notesBoard");
+          const colPending = document.getElementById("colPending");
+          const colComplete = document.getElementById("colComplete");
+          const onColHeader =
+            activeEl instanceof HTMLElement &&
+            (activeEl === colPending || activeEl === colComplete);
+          if (
+            notesVisible &&
+            notesBoardEl instanceof HTMLElement &&
+            colPending instanceof HTMLElement &&
+            colComplete instanceof HTMLElement &&
+            onColHeader &&
+            (key === nav.left || key === nav.right)
+          ) {
+            if (key === nav.left && activeEl === colComplete) {
+              safeFocus(colPending);
+              return;
+            }
+            if (key === nav.right && activeEl === colPending) {
+              safeFocus(colComplete);
               return;
             }
           }
