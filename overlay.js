@@ -41,6 +41,9 @@
       setBackdropTheme(e.data.theme);
       setIframeTheme(e.data.theme);
     }
+    if (e.data?.type === "vim-todo-popup-size" && typeof e.data.size === "string") {
+      applyPopupSize(e.data.size);
+    }
     if (e.data?.type === "vim-todo-close") {
       closeOverlay();
     }
@@ -66,18 +69,26 @@
     "command-line": "#0a0a0a"
   };
 
+  const POPUP_SIZES = {
+    s: { width: "680px", height: "520px", radius: "10px", padding: "24px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
+    m: { width: "800px", height: "600px", radius: "10px", padding: "24px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
+    l: { width: "1040px", height: "720px", radius: "10px", padding: "24px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
+    full: { width: "100%", height: "100%", radius: "0", padding: "0", shadow: "none" }
+  };
+
   const iframe = document.createElement("iframe");
   iframe.src = chrome.runtime.getURL("popup.html");
   iframe.dataset.theme = "light";
   iframe.style.cssText = `
-    width: 864px;
-    height: 720px;
+    width: ${POPUP_SIZES.m.width};
+    height: ${POPUP_SIZES.m.height};
     max-width: 100%;
     max-height: 100%;
     border: none;
-    border-radius: 12px;
+    border-radius: ${POPUP_SIZES.m.radius};
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
     background: ${IFRAME_BG.light};
+    transition: width 160ms ease, height 160ms ease, border-radius 160ms ease;
   `;
 
   function setIframeTheme(theme) {
@@ -87,6 +98,15 @@
 
   function closeOverlay() {
     overlay.remove();
+  }
+
+  function applyPopupSize(size) {
+    const next = POPUP_SIZES[size] || POPUP_SIZES.m;
+    container.style.padding = next.padding;
+    iframe.style.width = next.width;
+    iframe.style.height = next.height;
+    iframe.style.borderRadius = next.radius;
+    iframe.style.boxShadow = next.shadow;
   }
 
   overlay.addEventListener("click", (e) => {

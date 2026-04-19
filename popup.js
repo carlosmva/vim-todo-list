@@ -19,6 +19,7 @@ const THEME_ORDER = [
   "nothing",
   "nothing-light",
 ];
+const POPUP_SIZE_ORDER = ["s", "m", "l", "full"];
 
 /** Set when DB loads; used by renderNotes for “Open in Obsidian”. */
 let gObsidianVaultName = "";
@@ -2468,15 +2469,19 @@ async function main() {
   const closeCalendarBtn = document.getElementById("closeCalendarBtn");
   const closeSettingsBtn = document.getElementById("closeSettingsBtn");
   const settingsTabBoards = document.getElementById("settingsTabBoards");
+  const settingsTabAppearance = document.getElementById("settingsTabAppearance");
   const settingsTabData = document.getElementById("settingsTabData");
   const settingsTabAi = document.getElementById("settingsTabAi");
   const settingsTabObsidian = document.getElementById("settingsTabObsidian");
   const settingsTabKeyboard = document.getElementById("settingsTabKeyboard");
   const settingsPanelBoards = document.getElementById("settingsPanelBoards");
+  const settingsPanelAppearance = document.getElementById("settingsPanelAppearance");
   const settingsPanelData = document.getElementById("settingsPanelData");
   const settingsPanelAi = document.getElementById("settingsPanelAi");
   const settingsPanelObsidian = document.getElementById("settingsPanelObsidian");
   const settingsPanelKeyboard = document.getElementById("settingsPanelKeyboard");
+  const settingsThemeSelect = document.getElementById("settingsThemeSelect");
+  const popupSizeInputs = Array.from(document.querySelectorAll('input[name="popupSizeChoice"]'));
   const obsidianVaultNameInput = document.getElementById("obsidianVaultName");
   const obsidianNotesFolderInput = document.getElementById("obsidianNotesFolder");
   const obsidianSettingsForm = document.getElementById("obsidianSettingsForm");
@@ -2666,17 +2671,22 @@ async function main() {
 
   function setSettingsSection(section) {
     const boards = section === "boards";
+    const appearance = section === "appearance";
     const data = section === "data";
     const ai = section === "ai";
     const obs = section === "obsidian";
     const kbd = section === "keyboard";
     if (settingsPanelBoards instanceof HTMLElement) settingsPanelBoards.hidden = !boards;
+    if (settingsPanelAppearance instanceof HTMLElement) settingsPanelAppearance.hidden = !appearance;
     if (settingsPanelData instanceof HTMLElement) settingsPanelData.hidden = !data;
     if (settingsPanelAi instanceof HTMLElement) settingsPanelAi.hidden = !ai;
     if (settingsPanelObsidian instanceof HTMLElement) settingsPanelObsidian.hidden = !obs;
     if (settingsPanelKeyboard instanceof HTMLElement) settingsPanelKeyboard.hidden = !kbd;
     if (settingsTabBoards instanceof HTMLElement) {
       settingsTabBoards.setAttribute("aria-selected", boards ? "true" : "false");
+    }
+    if (settingsTabAppearance instanceof HTMLElement) {
+      settingsTabAppearance.setAttribute("aria-selected", appearance ? "true" : "false");
     }
     if (settingsTabData instanceof HTMLElement) {
       settingsTabData.setAttribute("aria-selected", data ? "true" : "false");
@@ -2701,6 +2711,7 @@ async function main() {
     if (settingsView instanceof HTMLElement) settingsView.hidden = false;
     const map = {
       boards: "boards",
+      appearance: "appearance",
       data: "data",
       ai: "ai",
       obsidian: "obsidian",
@@ -2736,6 +2747,13 @@ async function main() {
       target: "#settingsPanelBoards",
       title: "Boards",
       body: "Add, rename, remove, and reorder boards. These are the tabs above your Pending and Complete columns.",
+    },
+    {
+      view: "settings",
+      section: "appearance",
+      target: "#settingsPanelAppearance",
+      title: "Appearance",
+      body: "Change the theme here or from the top bar, and pick the popup size that fits your workflow.",
     },
     {
       view: "settings",
@@ -2944,15 +2962,20 @@ async function main() {
     "nothing-light": "Nothing Light",
   };
 
-  function populateThemeSelect() {
-    if (!(themeSelect instanceof HTMLSelectElement)) return;
-    themeSelect.innerHTML = "";
+  function populateOneThemeSelect(select) {
+    if (!(select instanceof HTMLSelectElement)) return;
+    select.innerHTML = "";
     for (const id of THEME_ORDER) {
       const opt = document.createElement("option");
       opt.value = id;
       opt.textContent = THEME_LABELS[id] || id;
-      themeSelect.appendChild(opt);
+      select.appendChild(opt);
     }
+  }
+
+  function populateThemeSelect() {
+    populateOneThemeSelect(themeSelect);
+    populateOneThemeSelect(settingsThemeSelect);
   }
 
 	  function applyTheme(t) {
@@ -2961,6 +2984,10 @@ async function main() {
 	    if (themeSelect instanceof HTMLSelectElement) {
 	      themeSelect.value = value;
 	      themeSelect.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}. Press Enter to change themes, then use navigation keys. Press Escape to exit theme change mode.`);
+	    }
+	    if (settingsThemeSelect instanceof HTMLSelectElement) {
+	      settingsThemeSelect.value = value;
+	      settingsThemeSelect.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}`);
 	    }
 	    if (window.parent !== window) {
       try {
@@ -3747,6 +3774,7 @@ async function main() {
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
   const APP_SETTING_THEME = "app.theme";
+  const APP_SETTING_POPUP_SIZE = "app.popupSize";
   const APP_SETTING_TOUR_SEEN = "app.guidedTourSeen";
   const APP_SETTING_OBSIDIAN_VAULT_NAME = "obsidian.vaultName";
   const APP_SETTING_OBSIDIAN_NOTES_FOLDER = "obsidian.notesFolder";
@@ -3873,6 +3901,10 @@ async function main() {
 
   populateThemeSelect();
   applyTheme(theme);
+
+  let popupSize = dbGetAppSettingString(APP_SETTING_POPUP_SIZE) || "m";
+  if (!POPUP_SIZE_ORDER.includes(popupSize)) popupSize = "m";
+  applyPopupSize(popupSize);
 
   // Shared caches for autocomplete (new note + notes editor).
   let ollamaModel = aiEndpointModel || null;
@@ -4024,6 +4056,8 @@ async function main() {
 
   let themeSelectArmed = false;
   let themeSelectChangeAllowed = false;
+  let settingsThemeSelectArmed = false;
+  let settingsThemeSelectChangeAllowed = false;
 
   function setThemeSelectArmed(armed) {
     themeSelectArmed = !!armed;
@@ -4041,13 +4075,42 @@ async function main() {
     );
   }
 
+  function setSettingsThemeSelectArmed(armed) {
+    settingsThemeSelectArmed = !!armed;
+    if (!(settingsThemeSelect instanceof HTMLSelectElement)) return;
+    settingsThemeSelect.dataset.armed = settingsThemeSelectArmed ? "true" : "false";
+    const label = THEME_LABELS[settingsThemeSelect.value] || settingsThemeSelect.value || "Theme";
+    settingsThemeSelect.title = settingsThemeSelectArmed
+      ? `Theme: ${label}. Use navigation up/down to change. Press Escape to exit.`
+      : `Theme: ${label}. Click to open options, or press Enter to change with keyboard.`;
+    settingsThemeSelect.setAttribute(
+      "aria-label",
+      settingsThemeSelectArmed
+        ? `Theme change mode. Current theme: ${label}. Use navigation up and down to change. Press Escape to exit.`
+        : `Theme: ${label}. Click to open options, or press Enter to change with keyboard. Press Escape to exit theme change mode.`
+    );
+  }
+
   async function commitThemeSelectValue(value) {
     if (!THEME_ORDER.includes(value)) return;
     theme = value;
     applyTheme(theme);
     setThemeSelectArmed(themeSelectArmed);
+    setSettingsThemeSelectArmed(settingsThemeSelectArmed);
     try {
       dbSetAppSettingString(APP_SETTING_THEME, theme);
+      await persist();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function commitPopupSizeValue(value) {
+    if (!POPUP_SIZE_ORDER.includes(value)) return;
+    popupSize = value;
+    applyPopupSize(popupSize);
+    try {
+      dbSetAppSettingString(APP_SETTING_POPUP_SIZE, popupSize);
       await persist();
     } catch {
       // ignore
@@ -4110,6 +4173,69 @@ async function main() {
     });
   }
 
+  if (settingsThemeSelect instanceof HTMLSelectElement) {
+    setSettingsThemeSelectArmed(false);
+    settingsThemeSelect.addEventListener("change", async () => {
+      if (!settingsThemeSelectChangeAllowed) {
+        settingsThemeSelect.value = theme;
+        setSettingsThemeSelectArmed(settingsThemeSelectArmed);
+        return;
+      }
+      await commitThemeSelectValue(settingsThemeSelect.value);
+      settingsThemeSelectChangeAllowed = false;
+    });
+
+    settingsThemeSelect.addEventListener("pointerdown", () => {
+      settingsThemeSelectChangeAllowed = true;
+      setSettingsThemeSelectArmed(false);
+    });
+
+    settingsThemeSelect.addEventListener("blur", () => {
+      settingsThemeSelectChangeAllowed = false;
+      setSettingsThemeSelectArmed(false);
+    });
+
+    settingsThemeSelect.addEventListener("keydown", (e) => {
+      const raw = e.key;
+      const code = e.code || "";
+      const isEnter = raw === "Enter" || code === "Enter" || raw === " ";
+      const isEscape = raw === "Escape" || code === "Escape";
+      const isNativeSelectNav =
+        raw === "ArrowUp" ||
+        raw === "ArrowDown" ||
+        raw === "ArrowLeft" ||
+        raw === "ArrowRight" ||
+        raw === "Home" ||
+        raw === "End" ||
+        raw === "PageUp" ||
+        raw === "PageDown";
+
+      if (isEnter) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSettingsThemeSelectArmed(true);
+        return;
+      }
+      if (isEscape) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSettingsThemeSelectArmed(false);
+        return;
+      }
+      if (isNativeSelectNav || raw.length === 1) {
+        e.preventDefault();
+      }
+    });
+  }
+
+  popupSizeInputs.forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) return;
+    input.addEventListener("change", async () => {
+      if (!input.checked) return;
+      await commitPopupSizeValue(input.value);
+    });
+  });
+
   function wireKeyLayoutSettingsRadios() {
     const qw = document.getElementById("keyLayoutQwerty");
     const dv = document.getElementById("keyLayoutDvorak");
@@ -4132,6 +4258,7 @@ async function main() {
     const syncEl = document.getElementById("obsidianSyncMode");
     const qw = document.getElementById("keyLayoutQwerty");
     const dv = document.getElementById("keyLayoutDvorak");
+    const sizeInputs = Array.from(document.querySelectorAll('input[name="popupSizeChoice"]'));
 
     const onEnter = (e) => {
       if (e.key !== "Enter") return;
@@ -4146,12 +4273,20 @@ async function main() {
       if ((t === qw || t === dv) && t.type === "radio") {
         e.preventDefault();
         t.click();
+        return;
+      }
+      if (sizeInputs.includes(t) && t.type === "radio") {
+        e.preventDefault();
+        t.click();
       }
     };
 
     if (syncEl instanceof HTMLElement) syncEl.addEventListener("keydown", onEnter);
     if (qw instanceof HTMLElement) qw.addEventListener("keydown", onEnter);
     if (dv instanceof HTMLElement) dv.addEventListener("keydown", onEnter);
+    sizeInputs.forEach((input) => {
+      if (input instanceof HTMLElement) input.addEventListener("keydown", onEnter);
+    });
   }
 
   wireKeyLayoutSettingsRadios();
@@ -5197,6 +5332,22 @@ async function main() {
     }
   }
 
+  function applyPopupSize(size) {
+    const value = POPUP_SIZE_ORDER.includes(size) ? size : "m";
+    document.documentElement.setAttribute("data-popup-size", value);
+    document.body.setAttribute("data-popup-size", value);
+    popupSizeInputs.forEach((input) => {
+      if (input instanceof HTMLInputElement) input.checked = input.value === value;
+    });
+    if (window.parent !== window) {
+      try {
+        window.parent.postMessage({ type: "vim-todo-popup-size", size: value }, "*");
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   function splitMarkdownConflictLines(value) {
     const text = String(value || "").slice(0, 12000);
     if (!text) return [""];
@@ -5249,12 +5400,12 @@ async function main() {
         i += 1;
         j += 1;
       } else if (j < appLines.length && (i >= vaultLines.length || dp[i][j + 1] >= dp[i + 1][j])) {
-        appendConflictDiffLine(vaultEl, "", "obsidianConflictModal__diffLine--blank", " ");
+        appendConflictDiffLine(vaultEl, "", "obsidianConflictModal__diffLine--removed", "-");
         appendConflictDiffLine(appEl, appLines[j], "obsidianConflictModal__diffLine--added", "+");
         j += 1;
       } else {
-        appendConflictDiffLine(vaultEl, vaultLines[i], "obsidianConflictModal__diffLine--removed", "-");
-        appendConflictDiffLine(appEl, "", "obsidianConflictModal__diffLine--blank", " ");
+        appendConflictDiffLine(vaultEl, vaultLines[i], "obsidianConflictModal__diffLine--added", "+");
+        appendConflictDiffLine(appEl, "", "obsidianConflictModal__diffLine--removed", "-");
         i += 1;
       }
     }
@@ -7333,6 +7484,43 @@ async function main() {
     }
   }
 
+  function activateSettingsSidebarTab(tab) {
+    if (!(tab instanceof HTMLElement)) return false;
+    switch (tab.id) {
+      case "settingsTabBoards":
+        setAiSettingsMessage("");
+        setManageTabsMessage("");
+        setSettingsSection("boards");
+        renderManageTabs();
+        return true;
+      case "settingsTabAppearance":
+        setSettingsSection("appearance");
+        applyTheme(theme);
+        applyPopupSize(popupSize);
+        return true;
+      case "settingsTabData":
+        setSettingsSection("data");
+        return true;
+      case "settingsTabAi":
+        setAiSettingsMessage("");
+        setSettingsSection("ai");
+        syncAiSettingsFormFieldsFromGlobals();
+        commitAiSettingsSavedSnapshot();
+        return true;
+      case "settingsTabObsidian":
+        setSettingsSection("obsidian");
+        syncObsidianSettingsFormFieldsFromGlobals();
+        commitObsidianSettingsSavedSnapshot();
+        return true;
+      case "settingsTabKeyboard":
+        setSettingsSection("keyboard");
+        updateKeyLayoutSettingsUi();
+        return true;
+      default:
+        return false;
+    }
+  }
+
   if (settingsBtn instanceof HTMLElement) {
     settingsBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -7343,6 +7531,12 @@ async function main() {
   if (settingsTabBoards instanceof HTMLElement) {
     settingsTabBoards.addEventListener("click", () => {
       openSettingsBoardsManagePanel();
+    });
+  }
+  if (settingsTabAppearance instanceof HTMLElement) {
+    settingsTabAppearance.addEventListener("click", () => {
+      setSettingsSection("appearance");
+      if (settingsThemeSelect instanceof HTMLElement) settingsThemeSelect.focus();
     });
   }
   if (settingsTabData instanceof HTMLElement) {
@@ -8775,6 +8969,7 @@ async function main() {
   function getSettingsSidebarTabs() {
     return [
       document.getElementById("settingsTabBoards"),
+      document.getElementById("settingsTabAppearance"),
       document.getElementById("settingsTabData"),
       document.getElementById("settingsTabAi"),
       document.getElementById("settingsTabObsidian"),
@@ -8784,12 +8979,14 @@ async function main() {
 
   function getSettingsActivePanelFocusables() {
     const panelBoards = document.getElementById("settingsPanelBoards");
+    const panelAppearance = document.getElementById("settingsPanelAppearance");
     const panelData = document.getElementById("settingsPanelData");
     const panelAi = document.getElementById("settingsPanelAi");
     const panelObs = document.getElementById("settingsPanelObsidian");
     const panelKbd = document.getElementById("settingsPanelKeyboard");
     let panel = null;
     if (panelBoards instanceof HTMLElement && !panelBoards.hasAttribute("hidden")) panel = panelBoards;
+    else if (panelAppearance instanceof HTMLElement && !panelAppearance.hasAttribute("hidden")) panel = panelAppearance;
     else if (panelData instanceof HTMLElement && !panelData.hasAttribute("hidden")) panel = panelData;
     else if (panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden")) panel = panelAi;
     else if (panelObs instanceof HTMLElement && !panelObs.hasAttribute("hidden")) panel = panelObs;
@@ -8953,23 +9150,28 @@ async function main() {
 
     if (settingsVisible) {
       const tabBoards = document.getElementById("settingsTabBoards");
+      const tabAppearance = document.getElementById("settingsTabAppearance");
       const tabData = document.getElementById("settingsTabData");
       const tabAi = document.getElementById("settingsTabAi");
       const tabObsidian = document.getElementById("settingsTabObsidian");
       const tabKeyboard = document.getElementById("settingsTabKeyboard");
       const closeBtn = document.getElementById("closeSettingsBtn");
       const panelBoards = document.getElementById("settingsPanelBoards");
+      const panelAppearance = document.getElementById("settingsPanelAppearance");
       const panelData = document.getElementById("settingsPanelData");
       const panelAi = document.getElementById("settingsPanelAi");
       const panelObsidian = document.getElementById("settingsPanelObsidian");
       const panelKeyboard = document.getElementById("settingsPanelKeyboard");
       if (tabBoards instanceof HTMLElement) targets.push(tabBoards);
+      if (tabAppearance instanceof HTMLElement) targets.push(tabAppearance);
       if (tabData instanceof HTMLElement) targets.push(tabData);
       if (tabAi instanceof HTMLElement) targets.push(tabAi);
       if (tabObsidian instanceof HTMLElement) targets.push(tabObsidian);
       if (tabKeyboard instanceof HTMLElement) targets.push(tabKeyboard);
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
       const boardsPanelVisible = panelBoards instanceof HTMLElement && !panelBoards.hasAttribute("hidden");
+      const appearancePanelVisible =
+        panelAppearance instanceof HTMLElement && !panelAppearance.hasAttribute("hidden");
       const dataPanelVisible = panelData instanceof HTMLElement && !panelData.hasAttribute("hidden");
       const aiPanelVisible = panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden");
       const obsidianPanelVisible = panelObsidian instanceof HTMLElement && !panelObsidian.hasAttribute("hidden");
@@ -8988,6 +9190,18 @@ async function main() {
             row.querySelector('button[data-manage-tabs-action]:not(:disabled)');
           if (primary instanceof HTMLButtonElement) targets.push(primary);
         }
+      }
+      if (appearancePanelVisible) {
+        const appearanceTheme = document.getElementById("settingsThemeSelect");
+        const sizeSmall = document.getElementById("popupSizeSmall");
+        const sizeMedium = document.getElementById("popupSizeMedium");
+        const sizeLarge = document.getElementById("popupSizeLarge");
+        const sizeFull = document.getElementById("popupSizeFull");
+        if (appearanceTheme instanceof HTMLElement) targets.push(appearanceTheme);
+        if (sizeSmall instanceof HTMLElement) targets.push(sizeSmall);
+        if (sizeMedium instanceof HTMLElement) targets.push(sizeMedium);
+        if (sizeLarge instanceof HTMLElement) targets.push(sizeLarge);
+        if (sizeFull instanceof HTMLElement) targets.push(sizeFull);
       }
       if (dataPanelVisible) {
         const exportDbBtn = document.getElementById("exportDbBtn");
@@ -9066,19 +9280,27 @@ async function main() {
     return safeFocus(targets[nextIdx]);
   }
 
-  /** Theme select only changes after Enter arms it; Alt+Up/Down then cycles options (wraps). */
-  function cycleThemeSelect(delta) {
-    if (!(themeSelect instanceof HTMLSelectElement)) return;
-    if (!themeSelectArmed) return;
+  /** Theme selects only change after Enter arms them; Alt+Up/Down then cycles options (wraps). */
+  function cycleThemeSelectControl(select, delta) {
+    if (!(select instanceof HTMLSelectElement)) return;
     const n = THEME_ORDER.length;
     if (!n) return;
-    let idx = THEME_ORDER.indexOf(themeSelect.value);
+    let idx = THEME_ORDER.indexOf(select.value);
     if (idx < 0) idx = 0;
     idx = (idx + delta + n) % n;
-    themeSelectChangeAllowed = true;
-    themeSelect.value = THEME_ORDER[idx];
-    themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    themeSelectChangeAllowed = false;
+    if (select === themeSelect) {
+      if (!themeSelectArmed) return;
+      themeSelectChangeAllowed = true;
+    } else if (select === settingsThemeSelect) {
+      if (!settingsThemeSelectArmed) return;
+      settingsThemeSelectChangeAllowed = true;
+    } else {
+      return;
+    }
+    select.value = THEME_ORDER[idx];
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    if (select === themeSelect) themeSelectChangeAllowed = false;
+    else settingsThemeSelectChangeAllowed = false;
   }
 
   function tryScrollBeforeSectionMove(delta) {
@@ -9256,6 +9478,17 @@ async function main() {
           e.stopPropagation();
           e.stopImmediatePropagation();
           setThemeSelectArmed(false);
+          return;
+        }
+        if (
+          activeEl === settingsThemeSelect &&
+          settingsThemeSelect instanceof HTMLSelectElement &&
+          settingsThemeSelectArmed
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          setSettingsThemeSelectArmed(false);
           return;
         }
         const calendarViewEl = document.getElementById("calendarView");
@@ -9764,7 +9997,20 @@ async function main() {
           } catch {
             // ignore
           }
-          cycleThemeSelect(+1);
+          cycleThemeSelectControl(themeSelect, +1);
+          return;
+        }
+        if (
+          activeEl2 === settingsThemeSelect &&
+          settingsThemeSelect instanceof HTMLSelectElement &&
+          settingsThemeSelectArmed
+        ) {
+          try {
+            e.stopImmediatePropagation();
+          } catch {
+            // ignore
+          }
+          cycleThemeSelectControl(settingsThemeSelect, +1);
           return;
         }
 
@@ -9816,7 +10062,10 @@ async function main() {
             if (inTablist) {
               const idx = tabs.indexOf(activeEl2);
               const nextIdx = idx >= 0 && idx < tabs.length - 1 ? idx + 1 : 0;
-              if (idx >= 0 && tabs[nextIdx]) safeFocus(tabs[nextIdx]);
+              if (idx >= 0 && tabs[nextIdx]) {
+                activateSettingsSidebarTab(tabs[nextIdx]);
+                safeFocus(tabs[nextIdx]);
+              }
               return;
             }
             if (panelIndex >= 0 && panelIndex < panelFocusables.length - 1) {
@@ -10201,7 +10450,20 @@ async function main() {
           } catch {
             // ignore
           }
-          cycleThemeSelect(-1);
+          cycleThemeSelectControl(themeSelect, -1);
+          return;
+        }
+        if (
+          activeEl2 === settingsThemeSelect &&
+          settingsThemeSelect instanceof HTMLSelectElement &&
+          settingsThemeSelectArmed
+        ) {
+          try {
+            e.stopImmediatePropagation();
+          } catch {
+            // ignore
+          }
+          cycleThemeSelectControl(settingsThemeSelect, -1);
           return;
         }
 
@@ -10258,7 +10520,10 @@ async function main() {
                 return;
               }
               const nextIdx = idx <= 0 ? tabs.length - 1 : idx - 1;
-              if (idx >= 0 && tabs[nextIdx]) safeFocus(tabs[nextIdx]);
+              if (idx >= 0 && tabs[nextIdx]) {
+                activateSettingsSidebarTab(tabs[nextIdx]);
+                safeFocus(tabs[nextIdx]);
+              }
               return;
             }
             if (panelIndex > 0) {

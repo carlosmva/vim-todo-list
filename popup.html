@@ -356,6 +356,16 @@
               </button>
               <button
                 type="button"
+                id="settingsTabAppearance"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelAppearance"
+              >
+                Appearance
+              </button>
+              <button
+                type="button"
                 id="settingsTabData"
                 class="settingsTab"
                 role="tab"
@@ -425,6 +435,47 @@
                 </form>
 
                 <div id="tabsList" class="manageTabsList" aria-label="Boards list"></div>
+              </div>
+              <div
+                id="settingsPanelAppearance"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabAppearance"
+                hidden
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Appearance</div>
+                </div>
+                <form id="appearanceSettingsForm" class="aiSettingsForm" aria-label="Appearance settings">
+                  <div class="aiSettingsRow">
+                    <label for="settingsThemeSelect">Theme</label>
+                    <select id="settingsThemeSelect" class="bx--text-input appearanceThemeSelect"></select>
+                  </div>
+                  <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Popup size">
+                    <legend class="keyLayoutLegend">Popup size</legend>
+                    <div class="keyLayoutRadios appearanceSizeRadios">
+                      <label class="keyLayoutRadioLabel appearanceSizeRadioLabel">
+                        <input type="radio" name="popupSizeChoice" id="popupSizeSmall" value="s" />
+                        S
+                      </label>
+                      <label class="keyLayoutRadioLabel appearanceSizeRadioLabel">
+                        <input type="radio" name="popupSizeChoice" id="popupSizeMedium" value="m" />
+                        M
+                      </label>
+                      <label class="keyLayoutRadioLabel appearanceSizeRadioLabel">
+                        <input type="radio" name="popupSizeChoice" id="popupSizeLarge" value="l" />
+                        L
+                      </label>
+                      <label class="keyLayoutRadioLabel appearanceSizeRadioLabel">
+                        <input type="radio" name="popupSizeChoice" id="popupSizeFull" value="full" />
+                        Full Screen
+                      </label>
+                    </div>
+                  </fieldset>
+                </form>
+                <p class="aiSettingsHint">
+                  Theme can still be changed from the top bar. Popup size is applied immediately and saved for the next open.
+                </p>
               </div>
               <div
                 id="settingsPanelData"
