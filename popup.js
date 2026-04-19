@@ -12870,13 +12870,21 @@ async function main() {
     }
 
     let completedTaskThisClick = false;
+    let statusChangedTaskId = null;
     if (action === "complete") {
       setStatus(db, activeBoard, id, "complete");
       completedTaskThisClick = true;
+      statusChangedTaskId = id;
     }
-    if (action === "pending") setStatus(db, activeBoard, id, "pending");
+    if (action === "pending") {
+      setStatus(db, activeBoard, id, "pending");
+      statusChangedTaskId = id;
+    }
 
     await persist();
+    if (statusChangedTaskId !== null && gObsidianSyncMode && String(gObsidianVaultName || "").trim()) {
+      await pushNoteMarkdownToObsidianVault(statusChangedTaskId, { force: true });
+    }
     await refresh();
 
     if (completedTaskThisClick && window.VimTodoSupportPrompt && typeof window.VimTodoSupportPrompt.scheduleAfterTaskComplete === "function") {
