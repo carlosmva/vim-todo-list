@@ -1978,21 +1978,22 @@ async function main() {
   const dashboardView = document.getElementById("dashboardView");
   const calendarView = document.getElementById("calendarView");
   const settingsView = document.getElementById("settingsView");
-  const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
   const aboutLink = document.getElementById("aboutLink");
   const settingsBtn = document.getElementById("settingsBtn");
-  const manageTabsLink = document.getElementById("manageTabsLink");
   const themeSelect = document.getElementById("themeSelect");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
   const closeAboutBtn = document.getElementById("closeAboutBtn");
   const closeDashboardBtn = document.getElementById("closeDashboardBtn");
   const closeCalendarBtn = document.getElementById("closeCalendarBtn");
   const closeSettingsBtn = document.getElementById("closeSettingsBtn");
-  const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
+  const settingsTabBoards = document.getElementById("settingsTabBoards");
+  const settingsTabData = document.getElementById("settingsTabData");
   const settingsTabAi = document.getElementById("settingsTabAi");
   const settingsTabObsidian = document.getElementById("settingsTabObsidian");
   const settingsTabKeyboard = document.getElementById("settingsTabKeyboard");
+  const settingsPanelBoards = document.getElementById("settingsPanelBoards");
+  const settingsPanelData = document.getElementById("settingsPanelData");
   const settingsPanelAi = document.getElementById("settingsPanelAi");
   const settingsPanelObsidian = document.getElementById("settingsPanelObsidian");
   const settingsPanelKeyboard = document.getElementById("settingsPanelKeyboard");
@@ -2068,7 +2069,6 @@ async function main() {
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (settingsView instanceof HTMLElement) settingsView.hidden = true;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function showInstructionsView() {
@@ -2078,7 +2078,6 @@ async function main() {
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (settingsView instanceof HTMLElement) settingsView.hidden = true;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function showAboutView() {
@@ -2088,7 +2087,6 @@ async function main() {
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (settingsView instanceof HTMLElement) settingsView.hidden = true;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function showDashboardView() {
@@ -2098,7 +2096,6 @@ async function main() {
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = false;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (settingsView instanceof HTMLElement) settingsView.hidden = true;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function showCalendarView() {
@@ -2108,16 +2105,25 @@ async function main() {
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = false;
     if (settingsView instanceof HTMLElement) settingsView.hidden = true;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
   function setSettingsSection(section) {
+    const boards = section === "boards";
+    const data = section === "data";
     const ai = section === "ai";
     const obs = section === "obsidian";
     const kbd = section === "keyboard";
+    if (settingsPanelBoards instanceof HTMLElement) settingsPanelBoards.hidden = !boards;
+    if (settingsPanelData instanceof HTMLElement) settingsPanelData.hidden = !data;
     if (settingsPanelAi instanceof HTMLElement) settingsPanelAi.hidden = !ai;
     if (settingsPanelObsidian instanceof HTMLElement) settingsPanelObsidian.hidden = !obs;
     if (settingsPanelKeyboard instanceof HTMLElement) settingsPanelKeyboard.hidden = !kbd;
+    if (settingsTabBoards instanceof HTMLElement) {
+      settingsTabBoards.setAttribute("aria-selected", boards ? "true" : "false");
+    }
+    if (settingsTabData instanceof HTMLElement) {
+      settingsTabData.setAttribute("aria-selected", data ? "true" : "false");
+    }
     if (settingsTabAi instanceof HTMLElement) {
       settingsTabAi.setAttribute("aria-selected", ai ? "true" : "false");
     }
@@ -2136,20 +2142,15 @@ async function main() {
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (settingsView instanceof HTMLElement) settingsView.hidden = false;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
-    const sec =
-      section === "obsidian" ? "obsidian" : section === "keyboard" ? "keyboard" : "ai";
+    const map = {
+      boards: "boards",
+      data: "data",
+      ai: "ai",
+      obsidian: "obsidian",
+      keyboard: "keyboard",
+    };
+    const sec = map[section] || "boards";
     setSettingsSection(sec);
-  }
-
-  function showManageTabsView() {
-    if (notesView instanceof HTMLElement) notesView.hidden = true;
-    if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
-    if (aboutView instanceof HTMLElement) aboutView.hidden = true;
-    if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
-    if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
-    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
 
   const THEME_LABELS = {
@@ -2250,7 +2251,7 @@ async function main() {
         <li>When adding a note, optionally set a due date in the form</li>
         <li>On each card: click the due date to edit, or "Clear" to remove</li>
         <li>Use "Add due date" on cards without a due date</li>
-        <li>Create form keyboard: ${combo(mod, fmt(nav.right))} from new note → due date; ${combo(mod, fmt(nav.left))} from due date → new note; ${combo(mod, fmt(nav.up))} from Export DB → due date; ${combo(mod, fmt(nav.down))} from due date → Export DB</li>
+        <li>Create form keyboard: ${combo(mod, fmt(nav.right))} from new note → due date; ${combo(mod, fmt(nav.left))} from due date → new note; ${combo(mod, fmt(nav.up))} from Dashboard → due date; ${combo(mod, fmt(nav.down))} from due date → Dashboard</li>
         <li>Card due date row: reachable via ${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))} from the action buttons; ${combo(mod, fmt(nav.down))} from due row → attachments or actions; ${combo(mod, fmt(nav.up))} from actions → due row</li>
       </ul>
 
@@ -2273,9 +2274,10 @@ async function main() {
         <li>${combo(mod, fmt(nav.right))}: move right (not in notes)</li>
         <li>${combo(mod, fmt(focusNewNoteKey))}: focus new note input</li>
         <li>${keycap("/")}: focus card filter for current tab</li>
-        <li><b>Pending / Complete</b>: ${combo(mod, fmt(nav.down))} from board tabs focuses the expanded column header (another ${combo(mod, fmt(nav.down))} enters the first card’s primary action); ${combo(mod, fmt(nav.up))} from the top card in a column or from a column header focuses the board tabs; ${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))} between column headers; ${keycap("Enter")}/${keycap("Space")} on the collapsed column to expand</li>
+        <li><b>Board strip</b> (above the columns): switch the active board. <b>Settings → Boards</b>: add, remove, or reorder boards. <b>Import &amp; export</b> is under <b>Settings → Data</b></li>
+        <li><b>Pending / Complete</b>: ${combo(mod, fmt(nav.down))} from the create row goes to the filter (if shown) then the expanded column or cards; ${combo(mod, fmt(nav.up))} from the top card or column header focuses the board strip; ${combo(mod, fmt(nav.left))}/${combo(mod, fmt(nav.right))} between column headers; ${keycap("Enter")}/${keycap("Space")} on the collapsed column to expand</li>
         <li>${keycap("Enter")}: activate the focused button</li>
-        <li>${keycap("F2")}: rename task (when focus is on a card) or rename tab (when focus is in Tabs view)</li>
+        <li>${keycap("F2")}: rename task (when focus is on a card) or rename board (when focus is in Settings → Boards)</li>
       </ul>
 
       <h3>Notes editor</h3>
@@ -5636,8 +5638,7 @@ async function main() {
     });
   }
 
-  // Initial focus: start on the last-selected board tab when the popup opens.
-  // Only do this if nothing meaningful is focused yet.
+  // Initial focus: active board tab when the popup opens (strip is on the main view).
   setTimeout(() => {
     try {
       const active = document.activeElement;
@@ -5648,14 +5649,14 @@ async function main() {
         active instanceof HTMLElement;
       if (hasMeaningfulFocus) return;
 
-      const activeTab = document.querySelector(
-        "#boardTabs [role='tab'][aria-selected='true']"
-      );
-      if (activeTab instanceof HTMLElement) {
+      const activeTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
+      const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+      const t = activeTab instanceof HTMLElement ? activeTab : firstTab;
+      if (t instanceof HTMLElement) {
         try {
-          activeTab.focus({ preventScroll: true });
+          t.focus({ preventScroll: true });
         } catch {
-          activeTab.focus();
+          t.focus();
         }
       }
     } catch {
@@ -5680,9 +5681,7 @@ async function main() {
     });
   }
 
-  function openSettingsToAiPanel() {
-    setAiSettingsMessage("");
-    showSettingsView("ai");
+  function populateAiSettingsStaticHints() {
     const extId = chrome.runtime?.id || "";
     const extOriginEl = document.getElementById("aiSettingsExtensionOrigin");
     if (extOriginEl instanceof HTMLElement && extId) {
@@ -5692,6 +5691,31 @@ async function main() {
     if (curlEl instanceof HTMLElement && extId) {
       curlEl.textContent = `curl -H "Origin: chrome-extension://${extId}" http://localhost:11434/api/tags`;
     }
+  }
+
+  function focusMainBoardSwitcherTab() {
+    const activeTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
+    const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
+    const t = activeTab instanceof HTMLElement ? activeTab : firstTab;
+    if (t instanceof HTMLElement) safeFocus(t);
+  }
+
+  function openSettingsBoardsManagePanel() {
+    setAiSettingsMessage("");
+    setManageTabsMessage("");
+    showSettingsView("boards");
+    renderManageTabs();
+    requestAnimationFrame(() => {
+      if (settingsTabBoards instanceof HTMLElement) safeFocus(settingsTabBoards);
+      else if (addTabName instanceof HTMLElement) addTabName.focus();
+      else if (closeSettingsBtn instanceof HTMLElement) closeSettingsBtn.focus();
+    });
+  }
+
+  function openSettingsToAiPanel() {
+    setAiSettingsMessage("");
+    showSettingsView("ai");
+    populateAiSettingsStaticHints();
     if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
       aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
       aiEndpointBaseUrlInput.focus();
@@ -5718,14 +5742,26 @@ async function main() {
   if (settingsBtn instanceof HTMLElement) {
     settingsBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      openSettingsToAiPanel();
+      openSettingsBoardsManagePanel();
+    });
+  }
+
+  if (settingsTabBoards instanceof HTMLElement) {
+    settingsTabBoards.addEventListener("click", () => {
+      openSettingsBoardsManagePanel();
+    });
+  }
+  if (settingsTabData instanceof HTMLElement) {
+    settingsTabData.addEventListener("click", () => {
+      setSettingsSection("data");
+      const exportDbBtn = document.getElementById("exportDbBtn");
+      if (exportDbBtn instanceof HTMLElement) exportDbBtn.focus();
     });
   }
 
   if (settingsTabAi instanceof HTMLElement) {
     settingsTabAi.addEventListener("click", () => {
-      setSettingsSection("ai");
-      queueAiSettingsHealthCheck({ delayMs: 0 });
+      openSettingsToAiPanel();
     });
   }
   if (settingsTabObsidian instanceof HTMLElement) {
@@ -5749,15 +5785,6 @@ async function main() {
       updateKeyLayoutSettingsUi();
       const qw = document.getElementById("keyLayoutQwerty");
       if (qw instanceof HTMLElement) qw.focus();
-    });
-  }
-  if (manageTabsLink instanceof HTMLElement) {
-    manageTabsLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      setManageTabsMessage("");
-      showManageTabsView();
-      if (addTabName instanceof HTMLElement) addTabName.focus();
-      renderManageTabs();
     });
   }
   const dashboardBtn = document.getElementById("dashboardBtn");
@@ -5814,13 +5841,6 @@ async function main() {
     });
     aiEndpointModelInput.addEventListener("blur", () => {
       queueAiSettingsHealthCheck({ delayMs: 0 });
-    });
-  }
-  if (closeManageTabsBtn instanceof HTMLElement) {
-    closeManageTabsBtn.addEventListener("click", () => {
-      showNotesView();
-      const input = document.getElementById("noteText");
-      if (input instanceof HTMLElement) input.focus();
     });
   }
   if (closeDashboardBtn instanceof HTMLElement) {
@@ -6081,6 +6101,17 @@ async function main() {
     return [...list.querySelectorAll(".manageTabsRow")].filter((r) => r instanceof HTMLElement);
   }
 
+  function isBoardsManagePanelOpen() {
+    const sv = document.getElementById("settingsView");
+    const p = document.getElementById("settingsPanelBoards");
+    return (
+      sv instanceof HTMLElement &&
+      !sv.hasAttribute("hidden") &&
+      p instanceof HTMLElement &&
+      !p.hasAttribute("hidden")
+    );
+  }
+
   function getManageTabsButtonsInRow(rowEl) {
     if (!(rowEl instanceof HTMLElement)) return [];
     return [...rowEl.querySelectorAll("button.monoLinkButton[data-manage-tabs-action]")].filter(
@@ -6158,7 +6189,7 @@ async function main() {
       const addTabName = document.getElementById("addTabName");
       if (addBtn instanceof HTMLElement && safeFocus(addBtn)) return true;
       if (addTabName instanceof HTMLElement && safeFocus(addTabName)) return true;
-      const closeBtn = document.getElementById("closeManageTabsBtn");
+      const closeBtn = document.getElementById("closeSettingsBtn");
       if (closeBtn instanceof HTMLElement && safeFocus(closeBtn)) return true;
       return false;
     }
@@ -6175,7 +6206,7 @@ async function main() {
 
     const currentBoards = boards.slice();
     if (currentBoards.length <= 1) {
-      setManageTabsMessage("At least one tab should exist.");
+      setManageTabsMessage("At least one board should exist.");
     }
 
     for (let idx = 0; idx < currentBoards.length; idx++) {
@@ -6235,7 +6266,7 @@ async function main() {
       del.disabled = currentBoards.length <= 1;
       del.addEventListener("click", async () => {
         if (boards.length <= 1) {
-          setManageTabsMessage("At least one tab should exist.");
+          setManageTabsMessage("At least one board should exist.");
           return;
         }
 
@@ -6447,7 +6478,7 @@ async function main() {
     input.type = "text";
     input.className = "manageTabsRenameInput bx--text-input";
     input.value = currentName;
-    input.setAttribute("aria-label", "Rename tab");
+    input.setAttribute("aria-label", "Rename board");
     input.dataset.board = oldName;
 
     const finish = (save) => {
@@ -6930,6 +6961,8 @@ async function main() {
 
   function getSettingsSidebarTabs() {
     return [
+      document.getElementById("settingsTabBoards"),
+      document.getElementById("settingsTabData"),
       document.getElementById("settingsTabAi"),
       document.getElementById("settingsTabObsidian"),
       document.getElementById("settingsTabKeyboard"),
@@ -6937,11 +6970,15 @@ async function main() {
   }
 
   function getSettingsActivePanelFocusables() {
+    const panelBoards = document.getElementById("settingsPanelBoards");
+    const panelData = document.getElementById("settingsPanelData");
     const panelAi = document.getElementById("settingsPanelAi");
     const panelObs = document.getElementById("settingsPanelObsidian");
     const panelKbd = document.getElementById("settingsPanelKeyboard");
     let panel = null;
-    if (panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden")) panel = panelAi;
+    if (panelBoards instanceof HTMLElement && !panelBoards.hasAttribute("hidden")) panel = panelBoards;
+    else if (panelData instanceof HTMLElement && !panelData.hasAttribute("hidden")) panel = panelData;
+    else if (panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden")) panel = panelAi;
     else if (panelObs instanceof HTMLElement && !panelObs.hasAttribute("hidden")) panel = panelObs;
     else if (panelKbd instanceof HTMLElement && !panelKbd.hasAttribute("hidden")) panel = panelKbd;
     if (!panel) return [];
@@ -6962,11 +6999,9 @@ async function main() {
 
     const themeSelectEl = document.getElementById("themeSelect");
     const settingsBtnEl = document.getElementById("settingsBtn");
-    const manageTabsLink = document.getElementById("manageTabsLink");
     const instructionsLink = document.getElementById("instructionsLink");
     const aboutLink = document.getElementById("aboutLink");
     if (themeSelectEl instanceof HTMLElement) targets.push(themeSelectEl);
-    if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
     if (aboutLink instanceof HTMLElement) targets.push(aboutLink);
     if (settingsBtnEl instanceof HTMLElement) targets.push(settingsBtnEl);
@@ -6976,7 +7011,6 @@ async function main() {
     const aboutView = document.getElementById("aboutView");
     const dashboardView = document.getElementById("dashboardView");
     const settingsView = document.getElementById("settingsView");
-    const manageTabsView = document.getElementById("manageTabsView");
 
     const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
     const instructionsVisible = instructionsView instanceof HTMLElement && !instructionsView.hasAttribute("hidden");
@@ -6984,26 +7018,19 @@ async function main() {
     const dashboardVisible = dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
     const calendarVisible = calendarView instanceof HTMLElement && !calendarView.hasAttribute("hidden");
     const settingsVisible = settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
-    const manageTabsVisible = manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
     if (notesVisible) {
       const noteText = document.getElementById("noteText");
       const noteDueDate = document.getElementById("noteDueDate");
-      const exportDbBtn = document.getElementById("exportDbBtn");
-      const importDbBtn = document.getElementById("importDbBtn");
       const dashboardBtn = document.getElementById("dashboardBtn");
       const calendarBtn = document.getElementById("calendarBtn");
-      const exportBtn = document.getElementById("exportBtn");
       const addBtn = document.querySelector("#createForm button[type='submit']");
       const cardFilterInput = document.getElementById("cardFilterInput");
 
       if (noteText instanceof HTMLElement) targets.push(noteText);
       if (noteDueDate instanceof HTMLElement) targets.push(noteDueDate);
-      if (exportDbBtn instanceof HTMLElement) targets.push(exportDbBtn);
-      if (importDbBtn instanceof HTMLElement) targets.push(importDbBtn);
       if (dashboardBtn instanceof HTMLElement) targets.push(dashboardBtn);
       if (calendarBtn instanceof HTMLElement) targets.push(calendarBtn);
-      if (exportBtn instanceof HTMLElement) targets.push(exportBtn);
       if (addBtn instanceof HTMLElement) targets.push(addBtn);
       if (cardFilterInput instanceof HTMLElement) targets.push(cardFilterInput);
 
@@ -7029,21 +7056,51 @@ async function main() {
     }
 
     if (settingsVisible) {
+      const tabBoards = document.getElementById("settingsTabBoards");
+      const tabData = document.getElementById("settingsTabData");
       const tabAi = document.getElementById("settingsTabAi");
       const tabObsidian = document.getElementById("settingsTabObsidian");
       const tabKeyboard = document.getElementById("settingsTabKeyboard");
       const closeBtn = document.getElementById("closeSettingsBtn");
+      const panelBoards = document.getElementById("settingsPanelBoards");
+      const panelData = document.getElementById("settingsPanelData");
       const panelAi = document.getElementById("settingsPanelAi");
       const panelObsidian = document.getElementById("settingsPanelObsidian");
       const panelKeyboard = document.getElementById("settingsPanelKeyboard");
+      if (tabBoards instanceof HTMLElement) targets.push(tabBoards);
+      if (tabData instanceof HTMLElement) targets.push(tabData);
       if (tabAi instanceof HTMLElement) targets.push(tabAi);
       if (tabObsidian instanceof HTMLElement) targets.push(tabObsidian);
       if (tabKeyboard instanceof HTMLElement) targets.push(tabKeyboard);
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+      const boardsPanelVisible = panelBoards instanceof HTMLElement && !panelBoards.hasAttribute("hidden");
+      const dataPanelVisible = panelData instanceof HTMLElement && !panelData.hasAttribute("hidden");
       const aiPanelVisible = panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden");
       const obsidianPanelVisible = panelObsidian instanceof HTMLElement && !panelObsidian.hasAttribute("hidden");
       const keyboardPanelVisible =
         panelKeyboard instanceof HTMLElement && !panelKeyboard.hasAttribute("hidden");
+      if (boardsPanelVisible) {
+        const addTabNameEl = document.getElementById("addTabName");
+        const addTabSubmit = document.querySelector("#addTabForm button[type='submit']");
+        if (addTabNameEl instanceof HTMLElement) targets.push(addTabNameEl);
+        if (addTabSubmit instanceof HTMLElement) targets.push(addTabSubmit);
+        const rows = getManageTabsRows();
+        for (const row of rows) {
+          if (!(row instanceof HTMLElement)) continue;
+          const primary =
+            row.querySelector('button[data-manage-tabs-action="remove"]:not(:disabled)') ||
+            row.querySelector('button[data-manage-tabs-action]:not(:disabled)');
+          if (primary instanceof HTMLButtonElement) targets.push(primary);
+        }
+      }
+      if (dataPanelVisible) {
+        const exportDbBtn = document.getElementById("exportDbBtn");
+        const importDbBtn = document.getElementById("importDbBtn");
+        const exportBtn = document.getElementById("exportBtn");
+        if (exportDbBtn instanceof HTMLElement) targets.push(exportDbBtn);
+        if (importDbBtn instanceof HTMLElement) targets.push(importDbBtn);
+        if (exportBtn instanceof HTMLElement) targets.push(exportBtn);
+      }
       if (aiPanelVisible) {
         const endpoint = document.getElementById("aiEndpointBaseUrl");
         const model = document.getElementById("aiEndpointModel");
@@ -7092,26 +7149,6 @@ async function main() {
       if (calendarTaskLinks) targets.push(...calendarTaskLinks);
     }
 
-    if (manageTabsVisible) {
-      const closeBtn = document.getElementById("closeManageTabsBtn");
-      const addTabName = document.getElementById("addTabName");
-      const addBtn = document.querySelector("#addTabForm button[type='submit']");
-      if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
-      if (addTabName instanceof HTMLElement) targets.push(addTabName);
-      if (addBtn instanceof HTMLElement) targets.push(addBtn);
-
-      // Treat each tab row as a single vertical step for global navigation.
-      // Within a row, left/right navigation can move between the row's buttons.
-      const rows = getManageTabsRows();
-      for (const row of rows) {
-        if (!(row instanceof HTMLElement)) continue;
-        const primary =
-          row.querySelector('button[data-manage-tabs-action="remove"]:not(:disabled)') ||
-          row.querySelector('button[data-manage-tabs-action]:not(:disabled)');
-        if (primary instanceof HTMLButtonElement) targets.push(primary);
-      }
-    }
-
     return targets.filter((t) => isElementInVisibleView(t));
   }
 
@@ -7127,6 +7164,18 @@ async function main() {
     else nextIdx = Math.min(targets.length - 1, Math.max(0, nextIdx + delta));
 
     return safeFocus(targets[nextIdx]);
+  }
+
+  /** Alt+Up/Down while the header theme <select> is focused: cycle options (wraps). */
+  function cycleThemeSelect(delta) {
+    if (!(themeSelect instanceof HTMLSelectElement)) return;
+    const n = THEME_ORDER.length;
+    if (!n) return;
+    let idx = THEME_ORDER.indexOf(themeSelect.value);
+    if (idx < 0) idx = 0;
+    idx = (idx + delta + n) % n;
+    themeSelect.value = THEME_ORDER[idx];
+    themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
   function tryScrollBeforeSectionMove(delta) {
@@ -7223,14 +7272,12 @@ async function main() {
           return;
         }
         const settingsViewEl = document.getElementById("settingsView");
-        const manageTabsViewEl = document.getElementById("manageTabsView");
         const instructionsViewEl = document.getElementById("instructionsView");
         const aboutViewEl = document.getElementById("aboutView");
         const inSettings = settingsViewEl instanceof HTMLElement && !settingsViewEl.hasAttribute("hidden");
-        const inManageTabs = manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden");
         const inInstructions = instructionsViewEl instanceof HTMLElement && !instructionsViewEl.hasAttribute("hidden");
         const inAbout = aboutViewEl instanceof HTMLElement && !aboutViewEl.hasAttribute("hidden");
-        if (inSettings || inManageTabs || inInstructions || inAbout) {
+        if (inSettings || inInstructions || inAbout) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
@@ -7276,8 +7323,8 @@ async function main() {
                 // ignore
               }
               for (const b of btns) b.removeAttribute("aria-current");
-              const exportDbBtn = document.getElementById("exportDbBtn");
-              if (exportDbBtn instanceof HTMLElement) safeFocus(exportDbBtn);
+              const dashboardBtn = document.getElementById("dashboardBtn");
+              if (dashboardBtn instanceof HTMLElement) safeFocus(dashboardBtn);
               return;
             }
 
@@ -7326,7 +7373,7 @@ async function main() {
           ? activeCard
           : document.querySelector(".noteCard.is-flipped")) || null;
 
-      // F2: rename tab when focus is in manage tabs view
+      // F2: rename board when focus is in Settings → Boards
       if (
         e.key === "F2" &&
         !e.ctrlKey &&
@@ -7334,11 +7381,10 @@ async function main() {
         !modKeyActive(e) &&
         !(activeEl instanceof Element && activeEl.closest(".manageTabsRenameInput"))
       ) {
-        const manageTabsViewEl = document.getElementById("manageTabsView");
-        const manageTabsVisible =
-          manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden");
         const inManageTabs =
-          manageTabsVisible && activeEl instanceof Element && activeEl.closest("#manageTabsView") !== null;
+          isBoardsManagePanelOpen() &&
+          activeEl instanceof Element &&
+          activeEl.closest("#settingsPanelBoards") !== null;
         const manageTabsRow =
           activeEl instanceof Element && activeEl.closest(".manageTabsRow");
         if (inManageTabs && manageTabsRow instanceof HTMLElement) {
@@ -7704,6 +7750,16 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
 
+        if (activeEl2 === themeSelect && themeSelect instanceof HTMLSelectElement) {
+          try {
+            e.stopImmediatePropagation();
+          } catch {
+            // ignore
+          }
+          cycleThemeSelect(+1);
+          return;
+        }
+
         // Settings: vertical = sidebar tabs or panel fields; not the same as global linear order.
         {
           const settingsView = document.getElementById("settingsView");
@@ -7740,6 +7796,8 @@ async function main() {
               return;
             }
             if (activeEl2 === closeBtn) {
+              const boardsTab = document.getElementById("settingsTabBoards");
+              if (boardsTab instanceof HTMLElement && safeFocus(boardsTab)) return;
               const pf = panelFocusables;
               if (pf.length) safeFocus(pf[0]);
               else moveGlobalFocus(+1);
@@ -7750,16 +7808,13 @@ async function main() {
           }
         }
 
-        // Manage Tabs: down moves to next tab row (not across row buttons).
+        // Settings → Boards (manage list): down moves to next row (not across row buttons).
         {
-          const manageTabsView = document.getElementById("manageTabsView");
-          const manageTabsVisible =
-            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
           const inManageTabs =
-            manageTabsVisible && activeEl2 instanceof Element && activeEl2.closest("#manageTabsView") !== null;
+            isBoardsManagePanelOpen() &&
+            activeEl2 instanceof Element &&
+            activeEl2.closest("#settingsPanelBoards") !== null;
           if (inManageTabs) {
-            // If we're on the header links row, existing behavior enters the primary control.
-            // Otherwise, move between tab rows.
             const inHeaderLinks =
               activeEl2 instanceof Element &&
               activeEl2.closest(".headerLinks") !== null;
@@ -7935,7 +7990,6 @@ async function main() {
           const aboutView = document.getElementById("aboutView");
           const dashboardView = document.getElementById("dashboardView");
           const settingsView = document.getElementById("settingsView");
-          const manageTabsView = document.getElementById("manageTabsView");
 
           const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
           const instructionsVisible =
@@ -7945,8 +7999,6 @@ async function main() {
             dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
           const settingsVisible =
             settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
-          const manageTabsVisible =
-            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
           if (notesVisible) {
             const noteText = document.getElementById("noteText");
@@ -7954,7 +8006,7 @@ async function main() {
             return;
           }
 
-          if (manageTabsVisible) {
+          if (isBoardsManagePanelOpen()) {
             const addTabName = document.getElementById("addTabName");
             if (addTabName instanceof HTMLElement) safeFocus(addTabName);
             return;
@@ -7993,31 +8045,25 @@ async function main() {
           }
         }
 
-        // Down from new note or date field → Export DB.
+        // Down from new note or date field → Dashboard (first action on the row).
         {
           const noteText = document.getElementById("noteText");
           const noteDueDate = document.getElementById("noteDueDate");
-          const exportDbBtn = document.getElementById("exportDbBtn");
+          const dashboardBtn = document.getElementById("dashboardBtn");
           const inCreateNoteRow =
             activeEl2 === noteText ||
             activeEl2 === noteDueDate ||
             (activeEl2 instanceof Element && activeEl2.closest(".createNoteRow") !== null);
-          if (inCreateNoteRow && exportDbBtn instanceof HTMLElement && safeFocus(exportDbBtn)) return;
+          if (inCreateNoteRow && dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) return;
         }
 
-        // If focus is on the create actions row, "down" should go to the tabs.
-        const exportDbBtn = document.getElementById("exportDbBtn");
-        const importDbBtn = document.getElementById("importDbBtn");
+        // If focus is on the create actions row, "down" should go to the filter (if any) then the board columns.
         const dashboardBtn = document.getElementById("dashboardBtn");
         const calendarBtn = document.getElementById("calendarBtn");
-        const exportBtn = document.getElementById("exportBtn");
         const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
         const isCreateActionEl =
-          activeEl2 === exportDbBtn ||
-          activeEl2 === importDbBtn ||
           activeEl2 === dashboardBtn ||
           activeEl2 === calendarBtn ||
-          activeEl2 === exportBtn ||
           activeEl2 === createSubmitBtn ||
           (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
 
@@ -8025,14 +8071,6 @@ async function main() {
           const cardFilterInput = document.getElementById("cardFilterInput");
           if (cardFilterInput instanceof HTMLElement && safeFocus(cardFilterInput)) return;
 
-          const activeTab = document.querySelector(
-            "#boardTabs [role='tab'][aria-selected='true']"
-          );
-          if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-
-          const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-          if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
-          // If tabs are missing for some reason, fall back to column headers then cards.
           const board = document.getElementById("notesBoard");
           const colPending = document.getElementById("colPending");
           const colComplete = document.getElementById("colComplete");
@@ -8050,7 +8088,7 @@ async function main() {
           return;
         }
 
-        // If focus is on the board tabs, "down" should focus Pending/Complete (expanded column) first, then cards on the next down.
+        // Board tabs (main strip): down enters the expanded Pending/Complete column or first card.
         const inBoardTabs =
           activeEl2 instanceof Element &&
           activeEl2.closest("#boardTabs") !== null;
@@ -8077,22 +8115,29 @@ async function main() {
           return;
         }
 
-        // From search/filter input, move down to the currently active board tab
-        // (not the first tab), so tab context/search stays consistent.
+        // From search/filter input, move down to the active board tab, then into the board columns.
         const cardFilterInput = document.getElementById("cardFilterInput");
         if (activeEl2 === cardFilterInput) {
           const activeBoardTab = document.querySelector(
             `#boardTabs [role='tab'][data-board="${CSS.escape(String(activeBoard))}"]`
           );
           if (activeBoardTab instanceof HTMLElement && safeFocus(activeBoardTab)) return;
-
-          const selectedTab = document.querySelector(
-            "#boardTabs [role='tab'][aria-selected='true']"
-          );
+          const selectedTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
           if (selectedTab instanceof HTMLElement && safeFocus(selectedTab)) return;
-
           const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
           if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+          const notesBoard = document.getElementById("notesBoard");
+          const colPending = document.getElementById("colPending");
+          const colComplete = document.getElementById("colComplete");
+          if (
+            notesBoard instanceof HTMLElement &&
+            colPending instanceof HTMLElement &&
+            colComplete instanceof HTMLElement
+          ) {
+            const expanded =
+              notesBoard.classList.contains("board--split-complete") ? colComplete : colPending;
+            if (safeFocus(expanded)) return;
+          }
         }
 
         moveGlobalFocus(+1);
@@ -8104,6 +8149,16 @@ async function main() {
         if (activeEl2 instanceof Element && (activeEl2.closest(".noteDueDateInput") || activeEl2.closest(".noteTextRenameInput") || activeEl2.closest(".manageTabsRenameInput"))) return;
         e.preventDefault();
         e.stopPropagation();
+
+        if (activeEl2 === themeSelect && themeSelect instanceof HTMLSelectElement) {
+          try {
+            e.stopImmediatePropagation();
+          } catch {
+            // ignore
+          }
+          cycleThemeSelect(-1);
+          return;
+        }
 
         // Settings: vertical = previous tab, previous panel field, or sidebar from first field.
         {
@@ -8124,8 +8179,8 @@ async function main() {
             const closeBtn = document.getElementById("closeSettingsBtn");
             if (inTablist) {
               const idx = tabs.indexOf(activeEl2);
-              const aiTabEl = document.getElementById("settingsTabAi");
-              if (aiTabEl instanceof HTMLElement && activeEl2 === aiTabEl && closeBtn instanceof HTMLElement) {
+              const boardsTabEl = document.getElementById("settingsTabBoards");
+              if (boardsTabEl instanceof HTMLElement && activeEl2 === boardsTabEl && closeBtn instanceof HTMLElement) {
                 safeFocus(closeBtn);
                 return;
               }
@@ -8143,6 +8198,11 @@ async function main() {
               return;
             }
             if (activeEl2 === closeBtn) {
+              const gear = document.getElementById("settingsBtn");
+              if (gear instanceof HTMLElement) {
+                safeFocus(gear);
+                return;
+              }
               const pf = panelFocusables;
               if (pf.length) safeFocus(pf[pf.length - 1]);
               return;
@@ -8152,13 +8212,12 @@ async function main() {
           }
         }
 
-        // Manage Tabs: up moves to previous tab row, or from add form to Close.
+        // Settings → Boards (manage list): up moves to previous row, or from add form toward Close.
         {
-          const manageTabsView = document.getElementById("manageTabsView");
-          const manageTabsVisible =
-            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
           const inManageTabs =
-            manageTabsVisible && activeEl2 instanceof Element && activeEl2.closest("#manageTabsView") !== null;
+            isBoardsManagePanelOpen() &&
+            activeEl2 instanceof Element &&
+            activeEl2.closest("#settingsPanelBoards") !== null;
           if (inManageTabs) {
             const inHeaderLinks =
               activeEl2 instanceof Element &&
@@ -8169,13 +8228,13 @@ async function main() {
             const inAddTabForm =
               activeEl2 === addTabName ||
               (addTabForm instanceof HTMLElement && addTabForm.contains(activeEl2));
-            const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
-            if (activeEl2 === closeManageTabsBtn && closeManageTabsBtn instanceof HTMLElement) {
+            const closeSettingsBtn2 = document.getElementById("closeSettingsBtn");
+            if (activeEl2 === closeSettingsBtn2 && closeSettingsBtn2 instanceof HTMLElement) {
               moveGlobalFocus(-1);
               return;
             }
             if (inAddTabForm) {
-              if (closeManageTabsBtn instanceof HTMLElement && safeFocus(closeManageTabsBtn)) return;
+              if (closeSettingsBtn2 instanceof HTMLElement && safeFocus(closeSettingsBtn2)) return;
             }
             if (!inHeaderLinks && inManageTabsRow) {
               if (moveFocusAcrossManageTabsRows(-1)) return;
@@ -8207,22 +8266,16 @@ async function main() {
           }
         }
 
-        // Create form: up from Export DB row → new note row; up from new note row → header.
+        // Create form: up from action row → new note row; up from new note row → header.
         {
           const noteText = document.getElementById("noteText");
           const noteDueDate = document.getElementById("noteDueDate");
-          const exportDbBtn = document.getElementById("exportDbBtn");
-          const importDbBtn = document.getElementById("importDbBtn");
           const dashboardBtn = document.getElementById("dashboardBtn");
           const calendarBtn = document.getElementById("calendarBtn");
-          const exportBtn = document.getElementById("exportBtn");
           const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
           const inCreateButtons =
-            activeEl2 === exportDbBtn ||
-            activeEl2 === importDbBtn ||
             activeEl2 === dashboardBtn ||
             activeEl2 === calendarBtn ||
-            activeEl2 === exportBtn ||
             activeEl2 === createSubmitBtn ||
             (activeEl2 instanceof Element && activeEl2.closest(".createButtons") !== null);
           const inCreateNoteRow =
@@ -8241,7 +8294,7 @@ async function main() {
           }
         }
 
-        // Board tabs: up moves to create actions row (before card handling, which may scroll).
+        // Board tabs (main strip): up moves toward filter / create row.
         {
           const inBoardTabs =
             activeEl2 instanceof Element &&
@@ -8251,18 +8304,12 @@ async function main() {
             const cardFilterInput = document.getElementById("cardFilterInput");
             if (cardFilterInput instanceof HTMLElement && isElementInVisibleView(cardFilterInput) && safeFocus(cardFilterInput)) return;
 
-            const exportDbBtn = document.getElementById("exportDbBtn");
-            const importDbBtn = document.getElementById("importDbBtn");
             const dashboardBtn = document.getElementById("dashboardBtn");
-            const exportBtn = document.getElementById("exportBtn");
             const calendarBtn = document.getElementById("calendarBtn");
             const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
             if (
-              (exportDbBtn instanceof HTMLElement && safeFocus(exportDbBtn)) ||
-              (importDbBtn instanceof HTMLElement && safeFocus(importDbBtn)) ||
               (dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) ||
               (calendarBtn instanceof HTMLElement && safeFocus(calendarBtn)) ||
-              (exportBtn instanceof HTMLElement && safeFocus(exportBtn)) ||
               (createSubmitBtn instanceof HTMLElement && safeFocus(createSubmitBtn))
             ) {
               return;
@@ -8278,7 +8325,7 @@ async function main() {
           }
         }
 
-        // Notes board: Alt+up from Pending/Complete column headers → board tabs.
+        // Notes board: Alt+up from Pending/Complete column headers → main board tab strip.
         {
           const notesViewEl = document.getElementById("notesView");
           const notesVisible =
@@ -8289,12 +8336,8 @@ async function main() {
             notesVisible &&
             (activeEl2 === colPending || activeEl2 === colComplete)
           ) {
-            const activeTab = document.querySelector(
-              "#boardTabs [role='tab'][aria-selected='true']"
-            );
-            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-            const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-            if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+            focusMainBoardSwitcherTab();
+            return;
           }
         }
 
@@ -8340,31 +8383,19 @@ async function main() {
             const firstPending = pendingListEl?.querySelector(".noteCard[data-note-id]");
             const firstComplete = completeListEl?.querySelector(".noteCard[data-note-id]");
             if (activeCard2 === firstComplete) {
-              const activeTab = document.querySelector(
-                "#boardTabs [role='tab'][aria-selected='true']"
-              );
-              if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-              const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-              if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+              focusMainBoardSwitcherTab();
+              return;
             }
             if (activeCard2 === firstPending) {
-              const activeTab = document.querySelector(
-                "#boardTabs [role='tab'][aria-selected='true']"
-              );
-              if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-              const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-              if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+              focusMainBoardSwitcherTab();
+              return;
             }
             if (focusAdjacentCardPrimaryAction(activeCard2, -1)) return;
             const cards = getAllCardsInDomOrder();
             const idx = cards.indexOf(activeCard2);
             if (idx <= 0) {
-              const activeTab = document.querySelector(
-                "#boardTabs [role='tab'][aria-selected='true']"
-              );
-              if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-              const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-              if (firstTab instanceof HTMLElement && safeFocus(firstTab)) return;
+              focusMainBoardSwitcherTab();
+              return;
             }
           }
         }
@@ -8400,34 +8431,19 @@ async function main() {
           const firstComplete = completeListEl?.querySelector(".noteCard[data-note-id]");
           if (card === firstPending) {
             closeCardOverlays(card);
-            const activeTab = document.querySelector(
-              "#boardTabs [role='tab'][aria-selected='true']"
-            );
-            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-            const firstTab = document.querySelector("#boardTabs [role='tab']");
-            if (firstTab instanceof HTMLElement) safeFocus(firstTab);
+            focusMainBoardSwitcherTab();
             return;
           }
           if (card === firstComplete) {
             closeCardOverlays(card);
-            const activeTab = document.querySelector(
-              "#boardTabs [role='tab'][aria-selected='true']"
-            );
-            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-            const firstTab = document.querySelector("#boardTabs [role='tab']");
-            if (firstTab instanceof HTMLElement) safeFocus(firstTab);
+            focusMainBoardSwitcherTab();
             return;
           }
           const cards = getAllCardsInDomOrder();
           const currentIdx = card instanceof HTMLElement ? cards.indexOf(card) : -1;
           if (currentIdx <= 0) {
             closeCardOverlays(card);
-            const activeTab = document.querySelector(
-              "#boardTabs [role='tab'][aria-selected='true']"
-            );
-            if (activeTab instanceof HTMLElement && safeFocus(activeTab)) return;
-            const firstTab = document.querySelector("#boardTabs [role='tab']");
-            if (firstTab instanceof HTMLElement) safeFocus(firstTab);
+            focusMainBoardSwitcherTab();
             return;
           }
 
@@ -8576,13 +8592,12 @@ async function main() {
           }
         }
 
-        // Manage Tabs: left/right navigates within a row, up/down navigates rows.
+        // Settings → Boards (manage list): left/right within a row, up/down across rows.
         {
-          const manageTabsView = document.getElementById("manageTabsView");
-          const manageTabsVisible =
-            manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
           const inManageTabs =
-            manageTabsVisible && activeEl instanceof Element && activeEl.closest("#manageTabsView") !== null;
+            isBoardsManagePanelOpen() &&
+            activeEl instanceof Element &&
+            activeEl.closest("#settingsPanelBoards") !== null;
           if (inManageTabs) {
             const inManageTabsRow = activeEl instanceof Element && activeEl.closest(".manageTabsRow") !== null;
             if (key === nav.left) {
@@ -8690,7 +8705,7 @@ async function main() {
 
   // Escape closes the overlay when popup is in an iframe.
   // Only close when outside the notes editor: inside notes, Esc goes insert→normal, then normal→close notes, then Esc closes overlay.
-  // Calendar, AI, Tabs, Instructions, About: Esc goes to main view instead of closing.
+  // Calendar, AI, Settings, Instructions, About: Esc goes to main view instead of closing.
   document.addEventListener(
     "keydown",
     (e) => {
@@ -8700,12 +8715,10 @@ async function main() {
       const calendarViewEl = document.getElementById("calendarView");
       if (calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden")) return;
       const settingsViewEl = document.getElementById("settingsView");
-      const manageTabsViewEl = document.getElementById("manageTabsView");
       const instructionsViewEl = document.getElementById("instructionsView");
       const aboutViewEl = document.getElementById("aboutView");
       if (
         (settingsViewEl instanceof HTMLElement && !settingsViewEl.hasAttribute("hidden")) ||
-        (manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden")) ||
         (instructionsViewEl instanceof HTMLElement && !instructionsViewEl.hasAttribute("hidden")) ||
         (aboutViewEl instanceof HTMLElement && !aboutViewEl.hasAttribute("hidden"))
       ) {
@@ -9244,10 +9257,8 @@ async function main() {
           await persist();
           await refresh();
 
-          // Keep focus on the first tab after import.
-          const boardTabs = document.getElementById("boardTabs");
-          const firstTab = boardTabs?.querySelector("[role='tab'][data-board]");
-          if (firstTab instanceof HTMLElement) safeFocus(firstTab);
+          showNotesView();
+          focusMainBoardSwitcherTab();
         } catch (err) {
           console.error(err);
           alert("Import failed. Please choose a valid exported .sqlite/.db file.");

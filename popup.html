@@ -25,7 +25,6 @@
           <div class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
             <select id="themeSelect" class="headerThemeSelect" aria-label="Theme"></select>
-            <a id="manageTabsLink" class="headerLink" href="#" aria-label="Tabs">Tabs</a>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
             <a id="aboutLink" class="headerLink" href="#" aria-label="About">About</a>
             <button id="settingsBtn" class="headerIconButton" type="button" aria-label="Settings" title="Settings">
@@ -89,25 +88,12 @@
             <div id="noteAutocomplete" class="noteAutocomplete" aria-label="Autocomplete suggestions" hidden></div>
 
             <div class="createButtons" aria-label="Actions">
-              <div class="createButtonsLeft">
-                <button id="exportDbBtn" class="monoLinkButton" type="button">
-                  Export DB
-                </button>
-                <button id="importDbBtn" class="monoLinkButton" type="button">
-                  Import DB
-                </button>
-                <input id="importDbFile" type="file" accept=".db,.sqlite,.sqlite3,.bin" hidden />
-              </div>
-
               <div class="createButtonsRight">
                 <button id="dashboardBtn" class="monoLinkButton" type="button">
                   Dashboard
                 </button>
                 <button id="calendarBtn" class="monoLinkButton" type="button">
                   Calendar
-                </button>
-                <button id="exportBtn" class="monoLinkButton" type="button">
-                  Export CSV
                 </button>
                 <button class="monoLinkButton" type="submit">Add</button>
               </div>
@@ -226,10 +212,30 @@
             <div class="settingsTablist" role="tablist" aria-label="Settings sections">
               <button
                 type="button"
-                id="settingsTabAi"
+                id="settingsTabBoards"
                 class="settingsTab"
                 role="tab"
                 aria-selected="true"
+                aria-controls="settingsPanelBoards"
+              >
+                Boards
+              </button>
+              <button
+                type="button"
+                id="settingsTabData"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelData"
+              >
+                Data
+              </button>
+              <button
+                type="button"
+                id="settingsTabAi"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
                 aria-controls="settingsPanelAi"
               >
                 AI
@@ -257,10 +263,58 @@
             </div>
             <div class="settingsPanels">
               <div
+                id="settingsPanelBoards"
+                class="settingsPanel instructionsContent settingsPanelBoards"
+                role="tabpanel"
+                aria-labelledby="settingsTabBoards"
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Boards</div>
+                </div>
+                <p class="obsidianIntro settingsBoardsHint">
+                  Add, remove, and reorder boards. Use the board strip above the columns in the main view to switch the active
+                  board.
+                </p>
+                <div id="manageTabsMessage" class="manageTabsMessage" aria-live="polite"></div>
+
+                <form id="addTabForm" class="manageTabsAdd" aria-label="Add board">
+                  <input
+                    id="addTabName"
+                    class="bx--text-input"
+                    type="text"
+                    placeholder="New board name…"
+                    maxlength="30"
+                    autocomplete="off"
+                    required
+                  />
+                  <button class="monoLinkButton" type="submit">Add</button>
+                </form>
+
+                <div id="tabsList" class="manageTabsList" aria-label="Boards list"></div>
+              </div>
+              <div
+                id="settingsPanelData"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabData"
+                hidden
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Import &amp; export</div>
+                </div>
+                <div class="settingsDataActions" aria-label="Database and export">
+                  <button id="exportDbBtn" class="monoLinkButton" type="button">Export DB</button>
+                  <button id="importDbBtn" class="monoLinkButton" type="button">Import DB</button>
+                  <input id="importDbFile" type="file" accept=".db,.sqlite,.sqlite3,.bin" hidden />
+                  <button id="exportBtn" class="monoLinkButton" type="button">Export CSV</button>
+                </div>
+              </div>
+              <div
                 id="settingsPanelAi"
                 class="settingsPanel instructionsContent"
                 role="tabpanel"
                 aria-labelledby="settingsTabAi"
+                hidden
               >
                 <div class="instructionsHeader settingsSubHeader">
                   <div class="instructionsTitle aiSettingsTitle">
@@ -426,32 +480,6 @@
           </div>
         </div>
 
-        <div id="manageTabsView" class="view" aria-label="Tabs" hidden>
-          <div class="instructionsHeader">
-            <div class="instructionsTitle">Tabs</div>
-            <button id="closeManageTabsBtn" class="monoLinkButton" type="button">
-              Close
-            </button>
-          </div>
-          <div class="instructionsContent">
-            <div id="manageTabsMessage" class="manageTabsMessage" aria-live="polite"></div>
-
-            <form id="addTabForm" class="manageTabsAdd" aria-label="Add tab">
-              <input
-                id="addTabName"
-                class="bx--text-input"
-                type="text"
-                placeholder="New tab name…"
-                maxlength="30"
-                autocomplete="off"
-                required
-              />
-              <button class="monoLinkButton" type="submit">Add</button>
-            </form>
-
-            <div id="tabsList" class="manageTabsList" aria-label="Tabs list"></div>
-          </div>
-        </div>
       </div>
     </div>
 
