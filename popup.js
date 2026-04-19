@@ -180,6 +180,128 @@ function resolveObsidianUrlForNote(db, note) {
   return `obsidian://open?vault=${encV}&file=${encF}`;
 }
 
+/** --- Obsidian filesystem sync (Chrome File System Access in popup) --- */
+
+function normalizeObsidianMarkdown(s) {
+  return String(s || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+}
+
+function escapeHtmlForObsidian(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function markdownToSimpleHtml(markdown) {
+  const md = String(markdown || "").trim();
+  if (!md) return "";
+  const blocks = md.split(/\n\n+/);
+  const out = [];
+  for (const block of blocks) {
+    const b = block.trim();
+    if (!b) continue;
+    if (b.startsWith("### ")) {
+      out.push(`<h3>${escapeHtmlForObsidian(b.slice(4))}</h3>`);
+      continue;
+    }
+    if (b.startsWith("## ")) {
+      out.push(`<h2>${escapeHtmlForObsidian(b.slice(3))}</h2>`);
+      continue;
+    }
+    if (b.startsWith("# ")) {
+      out.push(`<h1>${escapeHtmlForObsidian(b.slice(2))}</h1>`);
+      continue;
+    }
+    const withBold = escapeHtmlForObsidian(b).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    out.push(`<p>${withBold.replace(/\n/g, "<br>")}</p>`);
+  }
+  return out.join("");
+}
+
+/**
+ * Parse markdown produced by buildObsidianMarkdown (title, optional due, body, footer).
+ * Returns { title, notes_html }.
+ */
+function parseObsidianMarkdownImport(md) {
+  const norm = normalizeObsidianMarkdown(md);
+  const lines = norm.split("\n");
+  let i = 0;
+  let title = "";
+  if (lines[0]?.startsWith("# ")) {
+    title = lines[0].slice(2).trim();
+    i = 1;
+  }
+  while (i < lines.length && lines[i].trim() === "") i++;
+  if (lines[i] && /^\*\*Due:\*\*/.test(lines[i])) i++;
+  while (i < lines.length && lines[i].trim() === "") i++;
+  let rest = lines.slice(i).join("\n");
+  const sepIdx = rest.search(/\n---\s*\n\*Board:/);
+  if (sepIdx >= 0) rest = rest.slice(0, sepIdx).trim();
+  else {
+    const alt = rest.lastIndexOf("\n---");
+    if (alt >= 0 && /\n---\s*$/m.test(rest.slice(alt))) rest = rest.slice(0, alt).trim();
+  }
+  const notes_html = markdownToSimpleHtml(rest);
+  return { title, notes_html };
+}
+
+function buildObsidianOpenUrlOnly(vault, relPath) {
+  return `obsidian://open?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(relPath)}`;
+}
+
+function obsidianFileSystemApiAvailable() {
+  return typeof showDirectoryPicker === "function";
+}
+
+function obsidianVaultIdb() {
+  return window.ObsidianVaultIdb;
+}
+
+async function getFileHandleFromVaultPath(root, relPath, create) {
+  const parts = String(relPath || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean);
+  if (!parts.length) throw new Error("empty path");
+  const fileName = parts[parts.length - 1];
+  const dirs = parts.slice(0, -1);
+  let dir = root;
+  for (const d of dirs) {
+    dir = await dir.getDirectoryHandle(d, { create: !!create });
+  }
+  return dir.getFileHandle(fileName, { create: !!create });
+}
+
+async function writeMarkdownFileAtVaultPath(root, relPath, content) {
+  const handle = await getFileHandleFromVaultPath(root, relPath, true);
+  const writable = await handle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}
+
+async function readVaultFileLastModifiedMs(root, relPath) {
+  const fh = await getFileHandleFromVaultPath(root, relPath, false);
+  return (await fh.getFile()).lastModified;
+}
+
+/** After pushing Markdown to the vault, align note.updated_at with the file mtime so the next Obsidian click does not treat the file as newer and re-import over the app. */
+async function bumpNoteUpdatedAtToVaultFile(db, noteId, root, relPath) {
+  try {
+    const t = await readVaultFileLastModifiedMs(root, relPath);
+    const stmt = db.prepare("UPDATE notes SET updated_at = ? WHERE id = ?");
+    stmt.run([t, noteId]);
+    stmt.free();
+  } catch (e) {
+    console.warn("Obsidian: could not align updated_at with vault file", e);
+  }
+}
+
 function priorityColorsForTheme() {
   const root = document.documentElement;
   const t = root.getAttribute("data-theme") || "";
@@ -1870,8 +1992,10 @@ async function main() {
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
   const settingsTabAi = document.getElementById("settingsTabAi");
   const settingsTabObsidian = document.getElementById("settingsTabObsidian");
+  const settingsTabKeyboard = document.getElementById("settingsTabKeyboard");
   const settingsPanelAi = document.getElementById("settingsPanelAi");
   const settingsPanelObsidian = document.getElementById("settingsPanelObsidian");
+  const settingsPanelKeyboard = document.getElementById("settingsPanelKeyboard");
   const obsidianVaultNameInput = document.getElementById("obsidianVaultName");
   const obsidianNotesFolderInput = document.getElementById("obsidianNotesFolder");
   const obsidianSettingsForm = document.getElementById("obsidianSettingsForm");
@@ -1988,14 +2112,20 @@ async function main() {
   }
 
   function setSettingsSection(section) {
+    const ai = section === "ai";
     const obs = section === "obsidian";
-    if (settingsPanelAi instanceof HTMLElement) settingsPanelAi.hidden = obs;
+    const kbd = section === "keyboard";
+    if (settingsPanelAi instanceof HTMLElement) settingsPanelAi.hidden = !ai;
     if (settingsPanelObsidian instanceof HTMLElement) settingsPanelObsidian.hidden = !obs;
+    if (settingsPanelKeyboard instanceof HTMLElement) settingsPanelKeyboard.hidden = !kbd;
     if (settingsTabAi instanceof HTMLElement) {
-      settingsTabAi.setAttribute("aria-selected", obs ? "false" : "true");
+      settingsTabAi.setAttribute("aria-selected", ai ? "true" : "false");
     }
     if (settingsTabObsidian instanceof HTMLElement) {
       settingsTabObsidian.setAttribute("aria-selected", obs ? "true" : "false");
+    }
+    if (settingsTabKeyboard instanceof HTMLElement) {
+      settingsTabKeyboard.setAttribute("aria-selected", kbd ? "true" : "false");
     }
   }
 
@@ -2007,7 +2137,9 @@ async function main() {
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
     if (settingsView instanceof HTMLElement) settingsView.hidden = false;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
-    setSettingsSection(section === "obsidian" ? "obsidian" : "ai");
+    const sec =
+      section === "obsidian" ? "obsidian" : section === "keyboard" ? "keyboard" : "ai";
+    setSettingsSection(sec);
   }
 
   function showManageTabsView() {
@@ -2020,7 +2152,6 @@ async function main() {
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
 
-  const keyLayoutToggle = document.getElementById("keyLayoutToggle");
   const THEME_LABELS = {
     light: "Light",
     dark: "Dark",
@@ -2133,8 +2264,9 @@ async function main() {
 
       <h3>Navigation</h3>
       <ul>
-        <li><b>Keyboard layout</b>: ${layoutLabel} (toggle in header)</li>
-        <li><b>AI</b>: focus the AI header link and press Enter</li>
+        <li><b>Keyboard layout</b>: ${layoutLabel} (<b>Settings</b> → <b>Keyboard</b>)</li>
+        <li><b>Settings</b> (gear): ${combo(mod, fmt(nav.up))}/${combo(mod, fmt(nav.down))} move between sidebar tabs or fields in the active panel; ${combo(mod, fmt(nav.up))} from the <b>AI</b> tab focuses <b>Close</b>; ${combo(mod, fmt(nav.left))} from the panel or Close focuses the selected sidebar tab; ${combo(mod, fmt(nav.right))} from a tab enters the panel (then moves across fields and to Close)</li>
+        <li><b>AI</b>: open <b>Settings</b> (gear) → <b>AI</b></li>
         <li>${combo(mod, fmt(nav.down))}: move down</li>
         <li>${combo(mod, fmt(nav.up))}: move up</li>
         <li>${combo(mod, fmt(nav.left))}: move left (not in notes)</li>
@@ -2724,6 +2856,7 @@ async function main() {
   const APP_SETTING_THEME = "app.theme";
   const APP_SETTING_OBSIDIAN_VAULT_NAME = "obsidian.vaultName";
   const APP_SETTING_OBSIDIAN_NOTES_FOLDER = "obsidian.notesFolder";
+  const APP_SETTING_OBSIDIAN_SYNC_MODE = "obsidian.syncMode";
 
   function dbGetAppSettingString(key) {
     const k = String(key || "");
@@ -2807,6 +2940,21 @@ async function main() {
 
   gObsidianVaultName = dbGetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME) || "";
   gObsidianNotesFolder = dbGetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER) || "";
+  let gObsidianSyncMode = dbGetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE) === "1";
+  let obsidianVaultRootHandle = null;
+  if (obsidianFileSystemApiAvailable()) {
+    try {
+      obsidianVaultRootHandle =
+        obsidianVaultIdb() && typeof obsidianVaultIdb().loadVaultHandle === "function"
+          ? await obsidianVaultIdb().loadVaultHandle()
+          : null;
+      if (obsidianVaultRootHandle) {
+        await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn(err);
+    }
+  }
 
   // Theme: load from DB first, migrate from chrome.storage if needed.
   let didMigrateTheme = false;
@@ -2970,17 +3118,14 @@ async function main() {
     return { valid, invalid };
   }
 
-  function updateKeyLayoutToggleUi() {
-    if (!(keyLayoutToggle instanceof HTMLElement)) return;
-    const label = keyLayout === "dvorak" ? "DVORAK" : "QWERTY";
-    keyLayoutToggle.textContent = label;
-    keyLayoutToggle.setAttribute(
-      "aria-label",
-      `Keyboard layout: ${label}. Click to switch.`
-    );
+  function updateKeyLayoutSettingsUi() {
+    const qw = document.getElementById("keyLayoutQwerty");
+    const dv = document.getElementById("keyLayoutDvorak");
+    if (qw instanceof HTMLInputElement) qw.checked = keyLayout === "qwerty";
+    if (dv instanceof HTMLInputElement) dv.checked = keyLayout === "dvorak";
   }
 
-  updateKeyLayoutToggleUi();
+  updateKeyLayoutSettingsUi();
 
   if (themeSelect instanceof HTMLSelectElement) {
     themeSelect.addEventListener("change", async () => {
@@ -2997,17 +3142,52 @@ async function main() {
     });
   }
 
-  if (keyLayoutToggle instanceof HTMLElement) {
-    keyLayoutToggle.addEventListener("click", async () => {
-      keyLayout = keyLayout === "dvorak" ? "qwerty" : "dvorak";
+  function wireKeyLayoutSettingsRadios() {
+    const qw = document.getElementById("keyLayoutQwerty");
+    const dv = document.getElementById("keyLayoutDvorak");
+    const onChange = async () => {
+      const next =
+        dv instanceof HTMLInputElement && dv.checked ? "dvorak" : "qwerty";
+      if (keyLayout === next) return;
+      keyLayout = next;
       await saveKeyLayout(keyLayout);
-      updateKeyLayoutToggleUi();
-      // If instructions are visible, re-render so keys match.
+      updateKeyLayoutSettingsUi();
       const iv = document.getElementById("instructionsView");
       const visible = iv instanceof HTMLElement && !iv.hasAttribute("hidden");
       if (visible) renderInstructions();
-    });
+    };
+    if (qw instanceof HTMLInputElement) qw.addEventListener("change", onChange);
+    if (dv instanceof HTMLInputElement) dv.addEventListener("change", onChange);
   }
+
+  function wireSettingsEnterActivate() {
+    const syncEl = document.getElementById("obsidianSyncMode");
+    const qw = document.getElementById("keyLayoutQwerty");
+    const dv = document.getElementById("keyLayoutDvorak");
+
+    const onEnter = (e) => {
+      if (e.key !== "Enter") return;
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement)) return;
+
+      if (t === syncEl && syncEl instanceof HTMLInputElement && syncEl.type === "checkbox") {
+        e.preventDefault();
+        syncEl.click();
+        return;
+      }
+      if ((t === qw || t === dv) && t.type === "radio") {
+        e.preventDefault();
+        t.click();
+      }
+    };
+
+    if (syncEl instanceof HTMLElement) syncEl.addEventListener("keydown", onEnter);
+    if (qw instanceof HTMLElement) qw.addEventListener("keydown", onEnter);
+    if (dv instanceof HTMLElement) dv.addEventListener("keydown", onEnter);
+  }
+
+  wireKeyLayoutSettingsRadios();
+  wireSettingsEnterActivate();
 
   renderBoardTabs(boards, activeBoard);
 
@@ -3953,6 +4133,321 @@ async function main() {
     updateVimIndicatorsInDom();
   }
 
+  async function maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian) {
+    await refresh();
+    if (!navigateToObsidian && Number.isFinite(noteId) && openNoteEditorIds.has(noteId)) {
+      requestAnimationFrame(() => {
+        try {
+          setNotesEditorOpen(noteId, true, { focusEditor: true, focusToggleOnClose: true });
+        } catch (e) {
+          console.warn("Notes editor refocus after vault sync failed", e);
+        }
+      });
+    }
+  }
+
+  let obsidianConflictResolve = null;
+
+  function hideObsidianSyncModal() {
+    const modal = document.getElementById("obsidianSyncModal");
+    if (modal instanceof HTMLElement) {
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  function showObsidianConflictModal_(appMd, vaultMd) {
+    return new Promise((resolve) => {
+      obsidianConflictResolve = (choice) => {
+        obsidianConflictResolve = null;
+        hideObsidianSyncModal();
+        resolve(choice);
+      };
+      const modal = document.getElementById("obsidianSyncModal");
+      const preApp = document.getElementById("obsidianSyncModalApp");
+      const preVault = document.getElementById("obsidianSyncModalVault");
+      if (preApp instanceof HTMLElement) preApp.textContent = String(appMd || "").slice(0, 12000);
+      if (preVault instanceof HTMLElement) preVault.textContent = String(vaultMd || "").slice(0, 12000);
+      if (modal instanceof HTMLElement) {
+        modal.hidden = false;
+        modal.setAttribute("aria-hidden", "false");
+      }
+    });
+  }
+
+  function setObsidianVaultFolderStatusUi() {
+    const canOpenPickerTab =
+      typeof chrome !== "undefined" && !!chrome.runtime?.getURL && !!chrome.tabs?.create;
+    const el = document.getElementById("obsidianVaultFolderStatus");
+    if (el instanceof HTMLElement) {
+      if (!canOpenPickerTab) {
+        el.textContent = "Cannot open the folder step (extension APIs unavailable).";
+      } else {
+        el.textContent = obsidianVaultRootHandle
+          ? "Vault folder linked."
+          : "No vault folder linked. “Choose vault folder” opens a tab (the popup cannot use the system picker).";
+      }
+    }
+    const chooseBtn = document.getElementById("obsidianChooseVaultFolderBtn");
+    if (chooseBtn instanceof HTMLButtonElement) chooseBtn.disabled = !canOpenPickerTab;
+  }
+
+  async function reloadObsidianVaultHandleFromStorage() {
+    const api = obsidianVaultIdb();
+    if (!api || typeof api.loadVaultHandle !== "function") return;
+    try {
+      const h = await api.loadVaultHandle();
+      obsidianVaultRootHandle = h || null;
+      if (obsidianVaultRootHandle) {
+        await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
+      }
+    } catch (e) {
+      console.warn("Obsidian: vault handle load failed", e);
+      obsidianVaultRootHandle = null;
+    }
+  }
+
+  async function syncNoteWithObsidianVault(noteId, opts = {}) {
+    const navigateToObsidian = opts.navigateToObsidian !== false;
+    try {
+    const vault = String(gObsidianVaultName || "").trim();
+    if (!vault) return;
+
+    if (gObsidianSyncMode) {
+      await reloadObsidianVaultHandleFromStorage();
+    }
+
+    let noteRow = null;
+    try {
+      const res = db.exec(
+        "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+        [noteId]
+      );
+      if (res.length && res[0].values?.length) noteRow = res[0].values[0];
+    } catch {
+      return;
+    }
+    if (!noteRow) return;
+    const dueRaw = noteRow[4];
+    const note = {
+      id: noteRow[0],
+      board: noteRow[1],
+      text: noteRow[2],
+      notes_html: noteRow[3],
+      due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
+      updated_at: noteRow[5],
+    };
+
+    const relPath = obsidianRelativeFilePath(db, note);
+    if (!relPath) return;
+
+    function navigateUriFallback() {
+      if (!navigateToObsidian) return;
+      const url = resolveObsidianUrlForNote(db, note);
+      if (url) {
+        try {
+          window.location.assign(url);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    function navigateOpenOnly() {
+      if (!navigateToObsidian) return;
+      try {
+        window.location.assign(buildObsidianOpenUrlOnly(vault, relPath));
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!gObsidianSyncMode || !obsidianVaultRootHandle) {
+      navigateUriFallback();
+      return;
+    }
+
+    try {
+      const st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+      if (st !== "granted") {
+        const r = await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" });
+        if (r !== "granted") {
+          navigateUriFallback();
+          return;
+        }
+      }
+    } catch {
+      navigateUriFallback();
+      return;
+    }
+
+    const appMd = buildObsidianMarkdown(note);
+    const appUpdated = Number(note.updated_at);
+    let fileMd = "";
+    let fileTime = 0;
+
+    try {
+      const fh = await getFileHandleFromVaultPath(obsidianVaultRootHandle, relPath, false);
+      const file = await fh.getFile();
+      fileMd = await file.text();
+      fileTime = file.lastModified;
+    } catch {
+      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
+      markObsidianPathCreated(vault, note.id);
+      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
+      await persist();
+      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
+      navigateOpenOnly();
+      return;
+    }
+
+    const na = normalizeObsidianMarkdown(appMd);
+    const nf = normalizeObsidianMarkdown(fileMd);
+    if (na === nf) {
+      navigateOpenOnly();
+      return;
+    }
+
+    const au = Number.isFinite(appUpdated) ? appUpdated : 0;
+    if (fileTime > au) {
+      const parsed = parseObsidianMarkdownImport(fileMd);
+      const titleUse = parsed.title ? String(parsed.title).trim() : String(note.text || "").trim();
+      const htmlUse =
+        typeof parsed.notes_html === "string" && parsed.notes_html.trim()
+          ? parsed.notes_html
+          : note.notes_html || "";
+      const stmt = db.prepare("UPDATE notes SET text = ?, notes_html = ?, updated_at = ? WHERE id = ?");
+      stmt.run([titleUse, htmlUse, fileTime, noteId]);
+      stmt.free();
+      await persist();
+      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
+      navigateOpenOnly();
+      return;
+    }
+    if (au > fileTime) {
+      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
+      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
+      await persist();
+      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
+      navigateOpenOnly();
+      return;
+    }
+
+    const choice = await showObsidianConflictModal_(na, nf);
+    if (choice === "app") {
+      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
+      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
+      await persist();
+      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
+      navigateOpenOnly();
+    } else if (choice === "vault") {
+      const parsed = parseObsidianMarkdownImport(fileMd);
+      const titleUse = parsed.title ? String(parsed.title).trim() : String(note.text || "").trim();
+      const htmlUse =
+        typeof parsed.notes_html === "string" && parsed.notes_html.trim()
+          ? parsed.notes_html
+          : note.notes_html || "";
+      const stmt = db.prepare("UPDATE notes SET text = ?, notes_html = ?, updated_at = ? WHERE id = ?");
+      stmt.run([titleUse, htmlUse, fileTime, noteId]);
+      stmt.free();
+      await persist();
+      await maybeRefreshNotesEditorAfterVaultSync(noteId, navigateToObsidian);
+      navigateOpenOnly();
+    } else {
+      hideObsidianSyncModal();
+    }
+    } catch (e) {
+      console.warn("Obsidian vault sync failed", e);
+    }
+  }
+
+  function openObsidianForNote(noteId) {
+    return syncNoteWithObsidianVault(noteId, { navigateToObsidian: true });
+  }
+
+  async function pushNoteMarkdownToObsidianVault(noteId) {
+    if (!Number.isFinite(noteId)) return;
+    if (!String(gObsidianVaultName || "").trim()) return;
+    if (!gObsidianSyncMode) return;
+
+    await reloadObsidianVaultHandleFromStorage();
+    if (!obsidianVaultRootHandle) return;
+
+    try {
+      const st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+      if (st !== "granted") {
+        const r = await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" });
+        if (r !== "granted") return;
+      }
+    } catch {
+      return;
+    }
+
+    let noteRow = null;
+    try {
+      const res = db.exec(
+        "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+        [noteId]
+      );
+      if (res.length && res[0].values?.length) noteRow = res[0].values[0];
+    } catch {
+      return;
+    }
+    if (!noteRow) return;
+    const dueRaw = noteRow[4];
+    const note = {
+      id: noteRow[0],
+      board: noteRow[1],
+      text: noteRow[2],
+      notes_html: noteRow[3],
+      due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
+      updated_at: noteRow[5],
+    };
+
+    const relPath = obsidianRelativeFilePath(db, note);
+    if (!relPath) return;
+
+    const vault = String(gObsidianVaultName || "").trim();
+    const appMd = buildObsidianMarkdown(note);
+    try {
+      await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, relPath, appMd);
+      markObsidianPathCreated(vault, note.id);
+      await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, relPath);
+      await persist();
+    } catch (e) {
+      console.warn("Obsidian: could not push note to vault", e);
+    }
+  }
+
+  function wireObsidianSyncModalButtons() {
+    const useApp = document.getElementById("obsidianSyncModalUseApp");
+    const useVault = document.getElementById("obsidianSyncModalUseVault");
+    const cancel = document.getElementById("obsidianSyncModalCancel");
+    const backdrop = document.getElementById("obsidianSyncModalBackdrop");
+    if (useApp instanceof HTMLElement) {
+      useApp.addEventListener("click", () => {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve("app");
+      });
+    }
+    if (useVault instanceof HTMLElement) {
+      useVault.addEventListener("click", () => {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve("vault");
+      });
+    }
+    if (cancel instanceof HTMLElement) {
+      cancel.addEventListener("click", () => {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve(null);
+      });
+    }
+    if (backdrop instanceof HTMLElement) {
+      backdrop.addEventListener("click", () => {
+        if (typeof obsidianConflictResolve === "function") obsidianConflictResolve(null);
+      });
+    }
+  }
+  wireObsidianSyncModalButtons();
+  setObsidianVaultFolderStatusUi();
+
   function wireNotesEditorAutocomplete() {
     const editors = document.querySelectorAll(".noteEditorArea[data-note-id]");
     for (const editor of editors) {
@@ -4659,6 +5154,10 @@ async function main() {
     };
 
     const render = () => {
+      if (!editor.isConnected) {
+        clearAll();
+        return;
+      }
       container.textContent = "";
       const hasLocalCompletion = !!(localCompletion && localCompletion.completion);
       const hasAi = !!(aiSuggestion && aiSuggestion.completion);
@@ -4764,6 +5263,13 @@ async function main() {
     };
 
     const scheduleRefresh = () => {
+      if (!editor.isConnected) {
+        if (localTimer) clearTimeout(localTimer);
+        if (aiTimer) clearTimeout(aiTimer);
+        localTimer = null;
+        aiTimer = null;
+        return;
+      }
       if (localTimer) clearTimeout(localTimer);
       if (aiTimer) clearTimeout(aiTimer);
 
@@ -4782,6 +5288,7 @@ async function main() {
       }
 
       localTimer = setTimeout(() => {
+        if (!editor.isConnected) return;
         const baseText = getCaretPrefixText();
         const dbCompletion = queryBestLocalCompletion(baseText);
         const customCompletion = findBestCustomWordCompletion(baseText);
@@ -4799,6 +5306,7 @@ async function main() {
           if (token && token.length >= 3) {
             void ensureEnglishDictionaryLoaded()
               .then(() => {
+                if (!editor.isConnected) return;
                 if (getCaretPrefixText() !== baseText) return;
                 if (localCompletion) return;
                 const dictC = findBestDictionaryWordCompletion(baseText);
@@ -4825,6 +5333,7 @@ async function main() {
       }
 
       aiTimer = setTimeout(async () => {
+        if (!editor.isConnected) return;
         let timedOut = false;
         let timeoutId = null;
         try {
@@ -4852,6 +5361,7 @@ async function main() {
           const baseText = getCaretPrefixText();
           const prompt = buildAiAutocompletePrompt(baseText);
           const raw = await fetchOllamaCompletion(aiEndpointBaseUrl, prompt, aiAbort.signal);
+          if (!editor.isConnected) return;
           const c = computeAiContextCompletion(baseText, raw);
           if (!c) {
             aiSuggestion = null;
@@ -4861,10 +5371,12 @@ async function main() {
           }
 
           if (getCaretPrefixText() !== baseText) return;
+          if (!editor.isConnected) return;
           aiSuggestion = c;
           aiPending = false;
           render();
         } catch (err) {
+          if (!editor.isConnected) return;
           if (String(err?.name || "").toLowerCase().includes("abort")) {
             aiSuggestion = null;
             aiPending = false;
@@ -4918,6 +5430,7 @@ async function main() {
 
     editor.addEventListener("blur", () => {
       setTimeout(() => {
+        if (!editor.isConnected) return;
         const active = document.activeElement;
         if (active instanceof Element && container.contains(active)) return;
         hide();
@@ -4934,6 +5447,7 @@ async function main() {
     });
 
     window.addEventListener("resize", () => {
+      if (!editor.isConnected) return;
       renderEditorInlineTrail(getActiveTabCompletion());
     });
   }
@@ -5151,7 +5665,18 @@ async function main() {
       if (obsidianNotesFolderInput instanceof HTMLInputElement) {
         obsidianNotesFolderInput.value = gObsidianNotesFolder || "";
       }
+      const syncEl = document.getElementById("obsidianSyncMode");
+      if (syncEl instanceof HTMLInputElement) syncEl.checked = gObsidianSyncMode;
+      setObsidianVaultFolderStatusUi();
       if (obsidianVaultNameInput instanceof HTMLElement) obsidianVaultNameInput.focus();
+    });
+  }
+  if (settingsTabKeyboard instanceof HTMLElement) {
+    settingsTabKeyboard.addEventListener("click", () => {
+      setSettingsSection("keyboard");
+      updateKeyLayoutSettingsUi();
+      const qw = document.getElementById("keyLayoutQwerty");
+      if (qw instanceof HTMLElement) qw.focus();
     });
   }
   if (manageTabsLink instanceof HTMLElement) {
@@ -5343,15 +5868,98 @@ async function main() {
         obsidianNotesFolderInput instanceof HTMLInputElement ? obsidianNotesFolderInput.value.trim() : "";
       gObsidianVaultName = v;
       gObsidianNotesFolder = f.replace(/^\/+|\/+$/g, "");
+      const syncEl = document.getElementById("obsidianSyncMode");
+      gObsidianSyncMode = syncEl instanceof HTMLInputElement && syncEl.checked;
       try {
         dbSetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME, gObsidianVaultName);
         dbSetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER, gObsidianNotesFolder);
+        dbSetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE, gObsidianSyncMode ? "1" : "");
         await persist();
         setObsidianSettingsMessage("Saved.");
         await refresh();
       } catch (err) {
         console.error(err);
         setObsidianSettingsMessage("Could not save Obsidian settings.");
+      }
+    });
+  }
+
+  const obsidianChooseVaultFolderBtn = document.getElementById("obsidianChooseVaultFolderBtn");
+  if (obsidianChooseVaultFolderBtn instanceof HTMLElement) {
+    obsidianChooseVaultFolderBtn.addEventListener("click", async () => {
+      setObsidianSettingsMessage("");
+      try {
+        if (!chrome?.runtime?.getURL || !chrome.tabs?.create) {
+          setObsidianSettingsMessage("Could not open folder picker tab (extension APIs missing).");
+          return;
+        }
+        const url = chrome.runtime.getURL("pick-vault.html");
+        await chrome.tabs.create({ url, active: true });
+        setObsidianSettingsMessage(
+          "Opened a tab to choose your vault folder (the popup cannot use the folder picker). Click “Choose folder…” there, then return here."
+        );
+      } catch (err) {
+        console.error("Obsidian vault link tab failed:", err);
+        const detail =
+          err instanceof Error
+            ? err.message || err.name
+            : typeof err === "string"
+              ? err
+              : "unknown error";
+        setObsidianSettingsMessage(`Could not open folder tab: ${String(detail).slice(0, 220)}`);
+      }
+    });
+  }
+
+  try {
+    const obsidianVaultBc = new BroadcastChannel("vim-todo-obsidian-vault");
+    obsidianVaultBc.onmessage = (ev) => {
+      if (ev?.data?.type !== "linked") return;
+      void (async () => {
+        try {
+          gObsidianSyncMode = true;
+          try {
+            dbSetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE, "1");
+          } catch {
+            // ignore
+          }
+          const syncEl = document.getElementById("obsidianSyncMode");
+          if (syncEl instanceof HTMLInputElement) syncEl.checked = true;
+
+          obsidianVaultRootHandle =
+            obsidianVaultIdb() && typeof obsidianVaultIdb().loadVaultHandle === "function"
+              ? await obsidianVaultIdb().loadVaultHandle()
+              : null;
+          if (obsidianVaultRootHandle) {
+            await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
+          }
+          setObsidianVaultFolderStatusUi();
+          setObsidianSettingsMessage(
+            "Vault folder linked and sync mode turned on. Click Obsidian on a card to merge with the .md file."
+          );
+          await persist();
+        } catch (e) {
+          console.error(e);
+        }
+      })();
+    };
+  } catch {
+    // BroadcastChannel unavailable
+  }
+
+  const obsidianClearVaultFolderBtn = document.getElementById("obsidianClearVaultFolderBtn");
+  if (obsidianClearVaultFolderBtn instanceof HTMLElement) {
+    obsidianClearVaultFolderBtn.addEventListener("click", async () => {
+      try {
+        if (obsidianVaultIdb() && typeof obsidianVaultIdb().clearVaultHandle === "function") {
+          await obsidianVaultIdb().clearVaultHandle();
+        }
+        obsidianVaultRootHandle = null;
+        setObsidianVaultFolderStatusUi();
+        setObsidianSettingsMessage("Vault folder disconnected.");
+      } catch (err) {
+        console.error(err);
+        setObsidianSettingsMessage("Could not disconnect folder.");
       }
     });
   }
@@ -6248,17 +6856,44 @@ async function main() {
     return true;
   }
 
+  function getSettingsSidebarTabs() {
+    return [
+      document.getElementById("settingsTabAi"),
+      document.getElementById("settingsTabObsidian"),
+      document.getElementById("settingsTabKeyboard"),
+    ].filter((t) => t instanceof HTMLElement && isElementInVisibleView(t));
+  }
+
+  function getSettingsActivePanelFocusables() {
+    const panelAi = document.getElementById("settingsPanelAi");
+    const panelObs = document.getElementById("settingsPanelObsidian");
+    const panelKbd = document.getElementById("settingsPanelKeyboard");
+    let panel = null;
+    if (panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden")) panel = panelAi;
+    else if (panelObs instanceof HTMLElement && !panelObs.hasAttribute("hidden")) panel = panelObs;
+    else if (panelKbd instanceof HTMLElement && !panelKbd.hasAttribute("hidden")) panel = panelKbd;
+    if (!panel) return [];
+    const sel =
+      'button:not([disabled]), [href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.from(panel.querySelectorAll(sel)).filter(
+      (el) => el instanceof HTMLElement && isElementInVisibleView(el)
+    );
+  }
+
+  function getSettingsSelectedTabEl() {
+    const tabs = getSettingsSidebarTabs();
+    return tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0] || null;
+  }
+
   function getGlobalNavTargets() {
     const targets = [];
 
     const themeSelectEl = document.getElementById("themeSelect");
     const settingsBtnEl = document.getElementById("settingsBtn");
     const manageTabsLink = document.getElementById("manageTabsLink");
-    const keyLayoutToggle = document.getElementById("keyLayoutToggle");
     const instructionsLink = document.getElementById("instructionsLink");
     const aboutLink = document.getElementById("aboutLink");
     if (themeSelectEl instanceof HTMLElement) targets.push(themeSelectEl);
-    if (keyLayoutToggle instanceof HTMLElement) targets.push(keyLayoutToggle);
     if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
     if (aboutLink instanceof HTMLElement) targets.push(aboutLink);
@@ -6319,14 +6954,19 @@ async function main() {
     if (settingsVisible) {
       const tabAi = document.getElementById("settingsTabAi");
       const tabObsidian = document.getElementById("settingsTabObsidian");
+      const tabKeyboard = document.getElementById("settingsTabKeyboard");
       const closeBtn = document.getElementById("closeSettingsBtn");
       const panelAi = document.getElementById("settingsPanelAi");
       const panelObsidian = document.getElementById("settingsPanelObsidian");
+      const panelKeyboard = document.getElementById("settingsPanelKeyboard");
       if (tabAi instanceof HTMLElement) targets.push(tabAi);
       if (tabObsidian instanceof HTMLElement) targets.push(tabObsidian);
+      if (tabKeyboard instanceof HTMLElement) targets.push(tabKeyboard);
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
       const aiPanelVisible = panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden");
       const obsidianPanelVisible = panelObsidian instanceof HTMLElement && !panelObsidian.hasAttribute("hidden");
+      const keyboardPanelVisible =
+        panelKeyboard instanceof HTMLElement && !panelKeyboard.hasAttribute("hidden");
       if (aiPanelVisible) {
         const endpoint = document.getElementById("aiEndpointBaseUrl");
         const model = document.getElementById("aiEndpointModel");
@@ -6340,12 +6980,24 @@ async function main() {
       if (obsidianPanelVisible) {
         const vaultName = document.getElementById("obsidianVaultName");
         const notesFolder = document.getElementById("obsidianNotesFolder");
+        const syncMode = document.getElementById("obsidianSyncMode");
+        const chooseVault = document.getElementById("obsidianChooseVaultFolderBtn");
+        const clearVault = document.getElementById("obsidianClearVaultFolderBtn");
         const saveObsidian = document.getElementById("saveObsidianSettingsBtn");
         const clearObsidianCache = document.getElementById("clearObsidianPathCacheBtn");
         if (vaultName instanceof HTMLElement) targets.push(vaultName);
         if (notesFolder instanceof HTMLElement) targets.push(notesFolder);
+        if (syncMode instanceof HTMLElement) targets.push(syncMode);
+        if (chooseVault instanceof HTMLElement) targets.push(chooseVault);
+        if (clearVault instanceof HTMLElement) targets.push(clearVault);
         if (saveObsidian instanceof HTMLElement) targets.push(saveObsidian);
         if (clearObsidianCache instanceof HTMLElement) targets.push(clearObsidianCache);
+      }
+      if (keyboardPanelVisible) {
+        const kq = document.getElementById("keyLayoutQwerty");
+        const kd = document.getElementById("keyLayoutDvorak");
+        if (kq instanceof HTMLElement) targets.push(kq);
+        if (kd instanceof HTMLElement) targets.push(kd);
       }
     }
 
@@ -6975,6 +7627,52 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
 
+        // Settings: vertical = sidebar tabs or panel fields; not the same as global linear order.
+        {
+          const settingsView = document.getElementById("settingsView");
+          const settingsVisible =
+            settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
+          const inSettings =
+            settingsVisible && activeEl2 instanceof Element && activeEl2.closest("#settingsView") !== null;
+          if (inSettings) {
+            const tabs = getSettingsSidebarTabs();
+            const tablist = settingsView.querySelector(".settingsTablist");
+            const inTablist =
+              activeEl2 instanceof Element &&
+              tablist instanceof HTMLElement &&
+              tablist.contains(activeEl2);
+            const panelFocusables = getSettingsActivePanelFocusables();
+            const panelIndex = activeEl2 instanceof HTMLElement ? panelFocusables.indexOf(activeEl2) : -1;
+            const closeBtn = document.getElementById("closeSettingsBtn");
+            if (inTablist) {
+              const idx = tabs.indexOf(activeEl2);
+              const nextIdx = idx >= 0 && idx < tabs.length - 1 ? idx + 1 : 0;
+              if (idx >= 0 && tabs[nextIdx]) safeFocus(tabs[nextIdx]);
+              return;
+            }
+            if (panelIndex >= 0 && panelIndex < panelFocusables.length - 1) {
+              safeFocus(panelFocusables[panelIndex + 1]);
+              return;
+            }
+            if (
+              panelIndex >= 0 &&
+              panelIndex === panelFocusables.length - 1 &&
+              closeBtn instanceof HTMLElement
+            ) {
+              safeFocus(closeBtn);
+              return;
+            }
+            if (activeEl2 === closeBtn) {
+              const pf = panelFocusables;
+              if (pf.length) safeFocus(pf[0]);
+              else moveGlobalFocus(+1);
+              return;
+            }
+            moveGlobalFocus(+1);
+            return;
+          }
+        }
+
         // Manage Tabs: down moves to next tab row (not across row buttons).
         {
           const manageTabsView = document.getElementById("manageTabsView");
@@ -7252,14 +7950,48 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
 
-        // AI view: up moves through Save → Custom Words → Model → Endpoint → Close → header.
+        // Settings: vertical = previous tab, previous panel field, or sidebar from first field.
         {
           const settingsView = document.getElementById("settingsView");
           const settingsVisible =
             settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
-          const inAiView =
+          const inSettings =
             settingsVisible && activeEl2 instanceof Element && activeEl2.closest("#settingsView") !== null;
-          if (inAiView) {
+          if (inSettings) {
+            const tabs = getSettingsSidebarTabs();
+            const tablist = settingsView.querySelector(".settingsTablist");
+            const inTablist =
+              activeEl2 instanceof Element &&
+              tablist instanceof HTMLElement &&
+              tablist.contains(activeEl2);
+            const panelFocusables = getSettingsActivePanelFocusables();
+            const panelIndex = activeEl2 instanceof HTMLElement ? panelFocusables.indexOf(activeEl2) : -1;
+            const closeBtn = document.getElementById("closeSettingsBtn");
+            if (inTablist) {
+              const idx = tabs.indexOf(activeEl2);
+              const aiTabEl = document.getElementById("settingsTabAi");
+              if (aiTabEl instanceof HTMLElement && activeEl2 === aiTabEl && closeBtn instanceof HTMLElement) {
+                safeFocus(closeBtn);
+                return;
+              }
+              const nextIdx = idx <= 0 ? tabs.length - 1 : idx - 1;
+              if (idx >= 0 && tabs[nextIdx]) safeFocus(tabs[nextIdx]);
+              return;
+            }
+            if (panelIndex > 0) {
+              safeFocus(panelFocusables[panelIndex - 1]);
+              return;
+            }
+            if (panelIndex === 0) {
+              const sel = getSettingsSelectedTabEl();
+              if (sel) safeFocus(sel);
+              return;
+            }
+            if (activeEl2 === closeBtn) {
+              const pf = panelFocusables;
+              if (pf.length) safeFocus(pf[pf.length - 1]);
+              return;
+            }
             moveGlobalFocus(-1);
             return;
           }
@@ -7544,6 +8276,56 @@ async function main() {
         }
         e.preventDefault();
         e.stopPropagation();
+
+        // Settings: left = focus sidebar (selected tab); right = into panel or next field / Close.
+        {
+          const settingsViewEl = document.getElementById("settingsView");
+          const inSettings =
+            settingsViewEl instanceof HTMLElement &&
+            !settingsViewEl.hasAttribute("hidden") &&
+            activeEl instanceof Element &&
+            activeEl.closest("#settingsView") !== null;
+          if (inSettings && (key === nav.left || key === nav.right)) {
+            const tabs = getSettingsSidebarTabs();
+            const tablist = settingsViewEl.querySelector(".settingsTablist");
+            const inTablist =
+              activeEl instanceof Element &&
+              tablist instanceof HTMLElement &&
+              tablist.contains(activeEl);
+            const panelFocusables = getSettingsActivePanelFocusables();
+            const panelIndex = activeEl instanceof HTMLElement ? panelFocusables.indexOf(activeEl) : -1;
+            const closeBtn = document.getElementById("closeSettingsBtn");
+            const onClose = activeEl === closeBtn;
+
+            if (key === nav.left) {
+              if (!inTablist && (onClose || panelIndex >= 0)) {
+                const sel = getSettingsSelectedTabEl();
+                if (sel) safeFocus(sel);
+              }
+              return;
+            }
+            if (key === nav.right) {
+              if (inTablist || onClose) {
+                const first = panelFocusables[0];
+                if (first) safeFocus(first);
+                return;
+              }
+              if (panelIndex >= 0 && panelIndex < panelFocusables.length - 1) {
+                safeFocus(panelFocusables[panelIndex + 1]);
+                return;
+              }
+              if (
+                panelIndex >= 0 &&
+                panelIndex === panelFocusables.length - 1 &&
+                closeBtn instanceof HTMLElement
+              ) {
+                safeFocus(closeBtn);
+                return;
+              }
+              return;
+            }
+          }
+        }
 
         // Manage Tabs: left/right navigates within a row, up/down navigates rows.
         {
@@ -8194,6 +8976,7 @@ async function main() {
 
           gObsidianVaultName = dbGetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME) || "";
           gObsidianNotesFolder = dbGetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER) || "";
+          gObsidianSyncMode = dbGetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE) === "1";
 
           clearObsidianCreatedPathCache();
 
@@ -9517,33 +10300,8 @@ async function main() {
     if (action === "openObsidian") {
       const noteId = Number(target.dataset.noteId);
       if (!Number.isFinite(noteId)) return;
-      let noteRow = null;
-      try {
-        const res = db.exec(
-          "SELECT id, board, text, notes_html, due_at FROM notes WHERE id = ?",
-          [noteId]
-        );
-        if (res.length && res[0].values?.length) noteRow = res[0].values[0];
-      } catch {
-        // ignore
-      }
-      if (!noteRow) return;
-      const dueRaw = noteRow[4];
-      const note = {
-        id: noteRow[0],
-        board: noteRow[1],
-        text: noteRow[2],
-        notes_html: noteRow[3],
-        due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
-      };
-      const url = resolveObsidianUrlForNote(db, note);
-      if (!url) return;
       e.preventDefault();
-      try {
-        window.location.assign(url);
-      } catch {
-        // ignore
-      }
+      await openObsidianForNote(noteId);
       return;
     }
 
@@ -9554,6 +10312,9 @@ async function main() {
       if (!(card instanceof HTMLElement)) return;
       const isOpen = openNoteEditorIds.has(noteId);
       setNotesEditorOpen(noteId, !isOpen);
+      if (!isOpen) {
+        void syncNoteWithObsidianVault(noteId, { navigateToObsidian: false });
+      }
       return;
     }
 
@@ -9789,9 +10550,33 @@ async function main() {
     );
   }
 
-  // Autosave rich notes HTML (debounced)
+  // Autosave rich notes HTML (debounced) + push to linked vault when sync mode is on
   {
     const saveTimers = new Map();
+
+    const flushNotesEditorToDbAndVault = (editor, html) => {
+      const noteId = Number(editor.dataset.noteId);
+      if (!Number.isFinite(noteId)) return;
+      const existing = saveTimers.get(noteId);
+      if (existing) clearTimeout(existing);
+      saveTimers.delete(noteId);
+      try {
+        setNotesHtml(db, noteId, html);
+      } catch (err) {
+        console.warn(err);
+        return;
+      }
+      void persist()
+        .then(() => {
+          if (gObsidianSyncMode && String(gObsidianVaultName || "").trim()) {
+            return pushNoteMarkdownToObsidianVault(noteId);
+          }
+        })
+        .catch((err) => {
+          console.warn(err);
+        });
+    };
+
     document.body.addEventListener("input", (e) => {
       const target = e.target;
       if (!(target instanceof HTMLElement)) return;
@@ -9804,26 +10589,29 @@ async function main() {
         vimUndoPush(noteId, target.innerHTML);
       }
 
-      const html = target.innerHTML;
       const existing = saveTimers.get(noteId);
       if (existing) clearTimeout(existing);
 
       const t = setTimeout(() => {
-        saveTimers.delete(noteId);
-        try {
-          setNotesHtml(db, noteId, html);
-        } catch (err) {
-          console.warn(err);
-          return;
-        }
-        void persist().catch((err) => {
-          // Popup can be closing/unloading; avoid unhandled promise rejections.
-          console.warn(err);
-        });
+        flushNotesEditorToDbAndVault(target, target.innerHTML);
       }, 350);
 
       saveTimers.set(noteId, t);
     });
+
+    document.body.addEventListener(
+      "focusout",
+      (e) => {
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.classList.contains("noteEditorArea")) return;
+        const related = e.relatedTarget;
+        const wrap = target.closest(".noteEditor");
+        if (related instanceof Node && wrap instanceof HTMLElement && wrap.contains(related)) return;
+        flushNotesEditorToDbAndVault(target, target.innerHTML);
+      },
+      true
+    );
   }
 
   // Add link on card back

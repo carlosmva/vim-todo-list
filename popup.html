@@ -25,7 +25,6 @@
           <div class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
             <select id="themeSelect" class="headerThemeSelect" aria-label="Theme"></select>
-            <button id="keyLayoutToggle" class="headerLink" type="button" aria-label="Keyboard layout"></button>
             <a id="manageTabsLink" class="headerLink" href="#" aria-label="Tabs">Tabs</a>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
             <a id="aboutLink" class="headerLink" href="#" aria-label="About">About</a>
@@ -226,6 +225,16 @@
               >
                 Obsidian
               </button>
+              <button
+                type="button"
+                id="settingsTabKeyboard"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelKeyboard"
+              >
+                Keyboard
+              </button>
             </div>
             <div class="settingsPanels">
               <div
@@ -309,8 +318,9 @@
                   Link cards to files under an Obsidian vault. Set the vault name exactly as shown in Obsidian (lower-left vault
                   menu). Each card maps to
                   <code>…/notes-folder/board-slug/title-slug.md</code>, or
-                  <code>…/title-slug-note-id.md</code> when two cards on the same board share the same title. The first open
-                  creates the note with your title, due date, and card notes as Markdown; later opens use the same file.
+                  <code>…/title-slug-note-id.md</code> when two cards on the same board share the same title.                   Use <b>Choose vault folder</b> — Chrome opens a tab where you pick the same folder Obsidian uses. Linking
+                  turns on <b>Sync mode</b> automatically. Each <b>Obsidian</b> button on a card compares that note’s Markdown
+                  file with the card and updates whichever side is newer (or asks if it’s a tie).
                 </p>
                 <div id="obsidianSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
                 <form id="obsidianSettingsForm" class="aiSettingsForm" aria-label="Obsidian settings">
@@ -334,6 +344,23 @@
                       autocomplete="off"
                     />
                   </div>
+                  <div class="aiSettingsRow obsidianSyncRow">
+                    <label class="obsidianSyncModeLabel">
+                      <input id="obsidianSyncMode" type="checkbox" />
+                      Sync mode (read/write vault files; Chromium folder picker)
+                    </label>
+                  </div>
+                  <div class="aiSettingsRow obsidianVaultFsRow">
+                    <span id="obsidianVaultFolderStatus" class="obsidianVaultFolderStatus" aria-live="polite"></span>
+                  </div>
+                  <div class="aiSettingsActions obsidianFsActions">
+                    <button id="obsidianChooseVaultFolderBtn" class="monoLinkButton" type="button">
+                      Choose vault folder…
+                    </button>
+                    <button id="obsidianClearVaultFolderBtn" class="monoLinkButton" type="button">
+                      Disconnect folder
+                    </button>
+                  </div>
                   <div class="aiSettingsActions">
                     <button id="saveObsidianSettingsBtn" class="monoLinkButton" type="submit">Save</button>
                     <button
@@ -346,6 +373,35 @@
                     </button>
                   </div>
                 </form>
+              </div>
+              <div
+                id="settingsPanelKeyboard"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabKeyboard"
+                hidden
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle">Keyboard</div>
+                </div>
+                <p class="obsidianIntro">
+                  In-app navigation (for example <kbd>Alt</kbd>+<kbd>H</kbd> vs <kbd>Alt</kbd>+<kbd>D</kbd> for Instructions)
+                  uses physical key labels. Pick the layout that matches your keyboard so the docs and shortcuts stay
+                  consistent.
+                </p>
+                <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Keyboard layout">
+                  <legend class="keyLayoutLegend">Layout</legend>
+                  <div class="keyLayoutRadios">
+                    <label class="keyLayoutRadioLabel">
+                      <input type="radio" name="keyLayoutChoice" id="keyLayoutQwerty" value="qwerty" />
+                      QWERTY
+                    </label>
+                    <label class="keyLayoutRadioLabel">
+                      <input type="radio" name="keyLayoutChoice" id="keyLayoutDvorak" value="dvorak" />
+                      Dvorak
+                    </label>
+                  </div>
+                </fieldset>
               </div>
             </div>
           </div>
@@ -380,9 +436,33 @@
       </div>
     </div>
 
+    <div id="obsidianSyncModal" class="obsidianSyncModal" hidden aria-hidden="true">
+      <div id="obsidianSyncModalBackdrop" class="obsidianSyncModal__backdrop"></div>
+      <div class="obsidianSyncModal__panel" role="dialog" aria-modal="true" aria-labelledby="obsidianSyncModalTitle">
+        <h3 id="obsidianSyncModalTitle" class="obsidianSyncModal__title">Obsidian and extension differ</h3>
+        <p class="obsidianSyncModal__hint">Same edit time — choose which Markdown to keep.</p>
+        <div class="obsidianSyncModal__grid">
+          <div>
+            <div class="obsidianSyncModal__colLabel">Extension</div>
+            <pre class="obsidianSyncModal__pre" id="obsidianSyncModalApp"></pre>
+          </div>
+          <div>
+            <div class="obsidianSyncModal__colLabel">Vault file</div>
+            <pre class="obsidianSyncModal__pre" id="obsidianSyncModalVault"></pre>
+          </div>
+        </div>
+        <div class="obsidianSyncModal__actions">
+          <button type="button" class="monoLinkButton" id="obsidianSyncModalUseApp">Use extension</button>
+          <button type="button" class="monoLinkButton" id="obsidianSyncModalUseVault">Use vault</button>
+          <button type="button" class="monoLinkButton" id="obsidianSyncModalCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- sql.js (SQLite WASM) and D3 will be copied into vendor/ -->
     <script src="vendor/sql-wasm.js"></script>
     <script src="vendor/d3.min.js"></script>
+    <script src="obsidian-vault-idb.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

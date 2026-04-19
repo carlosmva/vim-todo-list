@@ -385,33 +385,41 @@ body {
 
 .settingsChrome {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   gap: 0;
+  align-items: stretch;
 }
 
 .settingsTablist {
   display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
   gap: 0;
-  border-bottom: 1px solid var(--cds-border-subtle);
-  margin: 0 0 8px;
-  padding: 0 2px;
+  border-bottom: none;
+  border-right: 1px solid var(--cds-border-subtle);
+  margin: 0;
+  padding: 4px 0;
+  min-width: 9.25rem;
 }
 
 .settingsTab {
   appearance: none;
   background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
-  margin: 0 12px 0 0;
-  padding: 6px 2px 8px;
+  border-left: 2px solid transparent;
+  margin: 0;
+  padding: 8px 10px 8px 12px;
   font: inherit;
   font-size: 0.85rem;
   font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   color: inherit;
   cursor: pointer;
   opacity: 0.75;
+  text-align: left;
+  width: 100%;
+  border-radius: 0;
 }
 
 .settingsTab:hover {
@@ -421,7 +429,7 @@ body {
 .settingsTab[aria-selected="true"] {
   opacity: 1;
   font-weight: 600;
-  border-bottom-color: var(--cds-focus, currentColor);
+  border-left-color: var(--cds-focus, currentColor);
 }
 
 .settingsTab:focus,
@@ -436,7 +444,41 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  overflow: auto;
+  padding: 0 0 0 12px;
+}
+
+.keyLayoutFieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.keyLayoutLegend {
+  padding: 0;
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.keyLayoutRadios {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keyLayoutRadioLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.keyLayoutRadioLabel input {
+  margin: 0;
 }
 
 .settingsPanel {
@@ -457,6 +499,107 @@ body {
 
 .obsidianIntro code {
   font-size: 0.8rem;
+}
+
+.obsidianSyncRow .obsidianSyncModeLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.obsidianVaultFolderStatus {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.obsidianFsActions {
+  justify-content: flex-start;
+}
+
+.obsidianSyncModal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.obsidianSyncModal[hidden] {
+  display: none !important;
+}
+
+.obsidianSyncModal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.obsidianSyncModal__panel {
+  position: relative;
+  z-index: 1;
+  max-width: min(900px, 100%);
+  max-height: min(90vh, 100%);
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.obsidianSyncModal__title {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.obsidianSyncModal__hint {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.obsidianSyncModal__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 700px) {
+  .obsidianSyncModal__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.obsidianSyncModal__colLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.obsidianSyncModal__pre {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 8px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-field, #f4f4f4);
+}
+
+.obsidianSyncModal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .aiStatusLed {
