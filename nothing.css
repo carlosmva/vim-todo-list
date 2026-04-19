@@ -1,0 +1,703 @@
+/*
+ * Nothing-inspired theme — monochromatic, typographic, flat (no shadows/blur).
+ * Fonts (Google Fonts): Doto (display), Space Grotesk (UI), Space Mono (labels/data).
+ */
+
+[data-theme="nothing"] {
+  --nd-black: #000000;
+  --nd-surface: #111111;
+  --nd-surface-raised: #1a1a1a;
+  --nd-border: #222222;
+  --nd-border-visible: #333333;
+  --nd-text-disabled: #666666;
+  --nd-text-secondary: #999999;
+  --nd-text-primary: #e8e8e8;
+  --nd-text-display: #ffffff;
+  --nd-accent: #d71921;
+  --nd-success: #4a9e5c;
+  --nd-warning: #d4a843;
+  --nd-interactive: #5b9bf6;
+  --nd-priority-low: #999999;
+  --nd-priority-normal: #5b9bf6;
+  --nd-priority-high: #d71921;
+
+  --modern-font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+  --modern-font-size-base: 16px;
+  --modern-bg: var(--nd-black);
+  --modern-surface-1: var(--nd-surface);
+  --modern-surface-2: var(--nd-surface-raised);
+  --modern-surface-muted: var(--nd-surface);
+  --modern-text: var(--nd-text-primary);
+  --modern-text-subtle: var(--nd-text-secondary);
+  --modern-border: var(--nd-border);
+  --modern-border-strong: var(--nd-border-visible);
+  --modern-shadow-sm: none;
+  --modern-shadow-md: none;
+  --modern-focus: var(--nd-interactive);
+  --modern-link: var(--nd-interactive);
+  --modern-link-hover: #7eb0f8;
+  --modern-muted-on-dark: var(--nd-text-secondary);
+  --modern-radius-sm: 8px;
+  --modern-radius-md: 12px;
+  --modern-radius-lg: 16px;
+
+  --cds-layer: var(--nd-surface);
+  --cds-field: var(--nd-surface-raised);
+  --cds-layer-01: var(--nd-surface);
+  --cds-layer-02: var(--nd-surface-raised);
+  --cds-border-subtle: var(--nd-border);
+  --cds-border-strong: var(--nd-border-visible);
+  --cds-text-secondary: var(--nd-text-secondary);
+  --cds-focus: var(--nd-interactive);
+  --cds-support-error: var(--nd-accent);
+  --cds-support-success: var(--nd-success);
+  --cds-support-warning: var(--nd-warning);
+  --cds-layer-hover: rgba(255, 255, 255, 0.06);
+  --cds-layer-accent: var(--nd-border-visible);
+
+  --motion-ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+[data-theme="nothing-light"] {
+  --nd-black: #f5f5f5;
+  --nd-surface: #ffffff;
+  --nd-surface-raised: #f0f0f0;
+  --nd-border: #e8e8e8;
+  --nd-border-visible: #cccccc;
+  --nd-text-disabled: #999999;
+  --nd-text-secondary: #666666;
+  --nd-text-primary: #1a1a1a;
+  --nd-text-display: #000000;
+  --nd-accent: #d71921;
+  --nd-success: #4a9e5c;
+  --nd-warning: #d4a843;
+  --nd-interactive: #007aff;
+  --nd-priority-low: #666666;
+  --nd-priority-normal: #007aff;
+  --nd-priority-high: #d71921;
+
+  --modern-font-sans: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+  --modern-font-size-base: 16px;
+  --modern-bg: var(--nd-black);
+  --modern-surface-1: var(--nd-surface);
+  --modern-surface-2: var(--nd-surface-raised);
+  --modern-surface-muted: #fafafa;
+  --modern-text: var(--nd-text-primary);
+  --modern-text-subtle: var(--nd-text-secondary);
+  --modern-border: var(--nd-border);
+  --modern-border-strong: var(--nd-border-visible);
+  --modern-shadow-sm: none;
+  --modern-shadow-md: none;
+  --modern-focus: var(--nd-interactive);
+  --modern-link: var(--nd-interactive);
+  --modern-link-hover: #0062cc;
+
+  --cds-layer: var(--nd-surface);
+  --cds-field: var(--nd-surface-raised);
+  --cds-layer-01: var(--nd-surface);
+  --cds-layer-02: var(--nd-surface-raised);
+  --cds-border-subtle: var(--nd-border);
+  --cds-border-strong: var(--nd-border-visible);
+  --cds-text-secondary: var(--nd-text-secondary);
+  --cds-focus: var(--nd-interactive);
+  --cds-support-error: var(--nd-accent);
+  --cds-support-success: var(--nd-success);
+  --cds-support-warning: var(--nd-warning);
+  --cds-layer-hover: rgba(0, 0, 0, 0.04);
+  --cds-layer-accent: #e0e0e0;
+
+  --motion-ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/*
+ * Force true black behind the whole popup: Carbon + popup.css fallbacks can
+ * otherwise leave a light gray canvas; selected tabs used a white “pill”.
+ */
+html[data-theme="nothing"],
+html[data-theme="nothing"] body,
+html[data-theme="nothing"] body.bx--body {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+[data-theme="nothing"] .app {
+  background: #000000;
+  animation: none;
+}
+
+[data-theme="nothing"] .body {
+  background: #000000;
+}
+
+[data-theme="nothing-light"] .app {
+  background: transparent;
+  animation: none;
+}
+
+[data-theme="nothing"] .header,
+[data-theme="nothing-light"] .header {
+  border: 1px solid var(--modern-border-strong);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--modern-surface-1);
+  border-radius: var(--modern-radius-md);
+}
+
+[data-theme="nothing"] .headerRow {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 8px;
+}
+
+/* Doto: display / dot-matrix — keep ≥ ~24px in this compact popup */
+[data-theme="nothing"] .headerTitle {
+  font-family: "Doto", "Space Mono", ui-monospace, monospace;
+  font-weight: 500;
+  font-size: clamp(1.5rem, 4.2vw, 2.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--nd-text-display);
+  opacity: 1;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+  paint-order: normal;
+}
+
+[data-theme="nothing-light"] .headerTitle {
+  font-family: "Doto", "Space Mono", ui-monospace, monospace;
+  font-weight: 500;
+  font-size: clamp(1.5rem, 4.2vw, 2.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--nd-text-display);
+  opacity: 1;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+  paint-order: normal;
+}
+
+[data-theme="nothing"] .headerLink,
+[data-theme="nothing"] .monoLinkButton,
+[data-theme="nothing-light"] .headerLink,
+[data-theme="nothing-light"] .monoLinkButton {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  transition:
+    color 180ms var(--motion-ease-standard),
+    background-color 180ms var(--motion-ease-standard),
+    opacity 180ms var(--motion-ease-standard);
+}
+
+[data-theme="nothing"] .headerIconButton,
+[data-theme="nothing-light"] .headerIconButton {
+  border-radius: 4px;
+  transition:
+    color 180ms var(--motion-ease-standard),
+    background-color 180ms var(--motion-ease-standard),
+    opacity 180ms var(--motion-ease-standard);
+}
+
+[data-theme="nothing"] .headerThemeSelect,
+[data-theme="nothing-light"] .headerThemeSelect {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  border-radius: 4px;
+  border-color: var(--modern-border-strong);
+  background: var(--modern-surface-1);
+  color: var(--modern-text);
+  transition:
+    color 180ms var(--motion-ease-standard),
+    background-color 180ms var(--motion-ease-standard),
+    opacity 180ms var(--motion-ease-standard);
+}
+
+[data-theme="nothing"] .headerLink:hover,
+[data-theme="nothing"] .monoLinkButton:hover:not(:disabled),
+[data-theme="nothing-light"] .headerLink:hover,
+[data-theme="nothing-light"] .monoLinkButton:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+[data-theme="nothing"] .headerIconButton:hover,
+[data-theme="nothing-light"] .headerIconButton:hover {
+  background: transparent;
+  opacity: 0.9;
+}
+
+[data-theme="nothing"] .headerThemeSelect:hover,
+[data-theme="nothing-light"] .headerThemeSelect:hover {
+  background: var(--modern-surface-2);
+  text-decoration: none;
+}
+
+[data-theme="nothing"] .monoLinkButton:focus,
+[data-theme="nothing"] .monoLinkButton:focus-visible,
+[data-theme="nothing"] .headerLink:focus,
+[data-theme="nothing"] .headerLink:focus-visible,
+[data-theme="nothing"] .headerThemeSelect:focus,
+[data-theme="nothing"] .headerThemeSelect:focus-visible,
+[data-theme="nothing"] .headerIconButton:focus,
+[data-theme="nothing"] .headerIconButton:focus-visible,
+[data-theme="nothing-light"] .monoLinkButton:focus,
+[data-theme="nothing-light"] .monoLinkButton:focus-visible,
+[data-theme="nothing-light"] .headerLink:focus,
+[data-theme="nothing-light"] .headerLink:focus-visible,
+[data-theme="nothing-light"] .headerThemeSelect:focus,
+[data-theme="nothing-light"] .headerThemeSelect:focus-visible,
+[data-theme="nothing-light"] .headerIconButton:focus,
+[data-theme="nothing-light"] .headerIconButton:focus-visible {
+  outline: 2px solid var(--modern-focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+[data-theme="nothing"] .monoLinkButton[data-action="deleteLink"]:hover:not(:disabled),
+[data-theme="nothing"] .monoLinkButton[data-action="deleteNote"]:hover:not(:disabled),
+[data-theme="nothing-light"] .monoLinkButton[data-action="deleteLink"]:hover:not(:disabled),
+[data-theme="nothing-light"] .monoLinkButton[data-action="deleteNote"]:hover:not(:disabled) {
+  color: var(--nd-accent) !important;
+}
+
+[data-theme="nothing"] .monoLinkButton[data-action="complete"]:hover:not(:disabled),
+[data-theme="nothing-light"] .monoLinkButton[data-action="complete"]:hover:not(:disabled) {
+  color: var(--nd-success) !important;
+}
+
+[data-theme="nothing"] a,
+[data-theme="nothing-light"] a {
+  color: var(--modern-link);
+}
+
+[data-theme="nothing"] a:hover,
+[data-theme="nothing-light"] a:hover {
+  color: var(--modern-link-hover);
+}
+
+[data-theme="nothing"] .headerLink,
+[data-theme="nothing"] .headerThemeSelect,
+[data-theme="nothing"] .headerIconButton,
+[data-theme="nothing"] .monoLinkButton,
+[data-theme="nothing-light"] .headerLink,
+[data-theme="nothing-light"] .headerThemeSelect,
+[data-theme="nothing-light"] .headerIconButton,
+[data-theme="nothing-light"] .monoLinkButton {
+  color: var(--modern-text) !important;
+}
+
+[data-theme="nothing"] .headerLink:hover,
+[data-theme="nothing"] .headerIconButton:hover,
+[data-theme="nothing"] .monoLinkButton:hover:not(:disabled),
+[data-theme="nothing-light"] .headerLink:hover,
+[data-theme="nothing-light"] .headerIconButton:hover,
+[data-theme="nothing-light"] .monoLinkButton:hover:not(:disabled) {
+  color: var(--nd-text-display) !important;
+}
+
+[data-theme="nothing"] .headerThemeSelect:hover,
+[data-theme="nothing-light"] .headerThemeSelect:hover {
+  color: var(--nd-text-display) !important;
+}
+
+[data-theme="nothing"] .create,
+[data-theme="nothing-light"] .create {
+  box-shadow: none;
+  border: 1px solid var(--modern-border-strong);
+  background: var(--modern-surface-1);
+}
+
+[data-theme="nothing"] .instructionsContent,
+[data-theme="nothing-light"] .instructionsContent {
+  box-shadow: none;
+  border: 1px solid var(--modern-border-strong);
+  background: var(--modern-surface-2);
+}
+
+[data-theme="nothing"] .instructionsTitle,
+[data-theme="nothing-light"] .instructionsTitle {
+  font-family: "Space Grotesk", var(--modern-font-sans);
+  font-weight: 500;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+  color: var(--modern-text);
+}
+
+[data-theme="nothing"] .colTitle,
+[data-theme="nothing-light"] .colTitle {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--modern-text-subtle);
+}
+
+[data-theme="nothing"] .col,
+[data-theme="nothing-light"] .col {
+  box-shadow: none;
+  border: 1px solid var(--modern-border);
+  background: var(--modern-surface-1);
+}
+
+[data-theme="nothing"] .noteCard,
+[data-theme="nothing-light"] .noteCard {
+  box-shadow: none;
+  border: 1px solid var(--modern-border);
+  background: var(--modern-surface-2);
+  transition:
+    border-color 200ms var(--motion-ease-standard),
+    opacity 200ms var(--motion-ease-standard);
+}
+
+[data-theme="nothing"] .noteCard:hover,
+[data-theme="nothing-light"] .noteCard:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--modern-border-strong);
+}
+
+[data-theme="nothing"] .noteCard.is-flipped,
+[data-theme="nothing-light"] .noteCard.is-flipped {
+  box-shadow: none;
+}
+
+[data-theme="nothing"] .is-dragging,
+[data-theme="nothing-light"] .is-dragging {
+  box-shadow: none;
+  opacity: 0.65;
+}
+
+[data-theme="nothing"] .noteCard[data-priority="low"] .noteText,
+[data-theme="nothing-light"] .noteCard[data-priority="low"] .noteText {
+  color: var(--nd-text-primary) !important;
+}
+
+[data-theme="nothing"] .noteCard[data-priority="normal"] .noteText,
+[data-theme="nothing-light"] .noteCard[data-priority="normal"] .noteText {
+  color: var(--nd-priority-normal) !important;
+}
+
+[data-theme="nothing"] .noteCard[data-priority="high"] .noteText,
+[data-theme="nothing-light"] .noteCard[data-priority="high"] .noteText {
+  color: var(--nd-priority-high) !important;
+}
+
+[data-theme="nothing"] .attachmentPill,
+[data-theme="nothing-light"] .attachmentPill {
+  border: 1px solid var(--modern-border-strong);
+  background: var(--modern-surface-1);
+  border-radius: 999px;
+}
+
+[data-theme="nothing"] .noteEditorArea,
+[data-theme="nothing-light"] .noteEditorArea {
+  border: 1px solid var(--modern-border-strong);
+  border-radius: var(--modern-radius-sm);
+  background: var(--modern-surface-2);
+  color: var(--modern-text);
+}
+
+[data-theme="nothing"] .noteTextRenameInput,
+[data-theme="nothing-light"] .noteTextRenameInput {
+  background: var(--modern-surface-2);
+  color: var(--modern-text);
+  border-color: var(--modern-border-strong);
+}
+
+[data-theme="nothing"] .create .bx--text-input,
+[data-theme="nothing"] .cardFilterRow .bx--text-input,
+[data-theme="nothing"] .manageTabsAdd .bx--text-input,
+[data-theme="nothing"] .aiSettingsForm .bx--text-input,
+[data-theme="nothing"] .linkForm .bx--text-input,
+[data-theme="nothing-light"] .create .bx--text-input,
+[data-theme="nothing-light"] .cardFilterRow .bx--text-input,
+[data-theme="nothing-light"] .manageTabsAdd .bx--text-input,
+[data-theme="nothing-light"] .aiSettingsForm .bx--text-input,
+[data-theme="nothing-light"] .linkForm .bx--text-input {
+  border-radius: var(--modern-radius-sm);
+  border-color: var(--modern-border-strong);
+  background: var(--modern-surface-2) !important;
+  color: var(--modern-text) !important;
+  box-shadow: none;
+}
+
+[data-theme="nothing"] input.bx--text-input,
+[data-theme="nothing"] textarea.bx--text-input {
+  background: var(--nd-surface-raised) !important;
+  color: var(--nd-text-primary) !important;
+}
+
+[data-theme="nothing"] .create .bx--text-input:focus,
+[data-theme="nothing"] .cardFilterRow .bx--text-input:focus,
+[data-theme="nothing-light"] .create .bx--text-input:focus,
+[data-theme="nothing-light"] .cardFilterRow .bx--text-input:focus {
+  border-color: var(--modern-text);
+  box-shadow: none;
+  outline: 2px solid var(--modern-focus);
+  outline-offset: 1px;
+}
+
+[data-theme="nothing"] .tabs,
+[data-theme="nothing-light"] .tabs {
+  background: transparent !important;
+  --tab-bg: transparent;
+  --tab-text: var(--nd-text-secondary);
+  --tab-bg-active: transparent;
+  --tab-text-active: var(--nd-text-display);
+}
+
+/* Unclip: popup.css fixes .tabs to 26px tall */
+[data-theme="nothing"] .tabs.bx--tabs,
+[data-theme="nothing"] .tabs.bx--tabs--container,
+[data-theme="nothing-light"] .tabs.bx--tabs,
+[data-theme="nothing-light"] .tabs.bx--tabs--container {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+/* Segmented control: one frame, gap-separated segments, no Carbon “floating tab” motion */
+[data-theme="nothing"] .tabs .bx--tabs__nav,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: stretch !important;
+  min-height: auto !important;
+  height: auto !important;
+  margin-inline-start: 0 !important;
+  padding: 3px !important;
+  gap: 3px !important;
+  border: 1px solid var(--modern-border-strong);
+  border-radius: 10px;
+  background: var(--modern-surface-1) !important;
+  box-shadow: none !important;
+}
+
+[data-theme="nothing"] .tabs .bx--tabs__nav-item,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-item {
+  flex: 1 1 auto;
+  min-width: min(96px, 100%);
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+[data-theme="nothing"] .tabs .bx--tabs__nav-link,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link {
+  transform: none !important;
+  box-shadow: none !important;
+  width: 100%;
+  justify-content: center;
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 0.6875rem !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  min-height: 30px !important;
+  height: auto !important;
+  padding: 6px 10px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  transition:
+    background-color 200ms var(--motion-ease-standard),
+    color 200ms var(--motion-ease-standard);
+}
+
+[data-theme="nothing"] .tabs .bx--tabs__nav-link {
+  color: var(--nd-text-secondary) !important;
+  background: transparent !important;
+}
+
+/* Dark: active = raised charcoal + white label (monochrome, no blue) */
+[data-theme="nothing"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link,
+[data-theme="nothing"] .tabs .bx--tabs__nav-link[aria-selected="true"],
+[data-theme="nothing"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:hover,
+[data-theme="nothing"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:focus,
+[data-theme="nothing"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:focus-visible,
+[data-theme="nothing"] .tabs .bx--tabs__nav-link[aria-selected="true"]:hover,
+[data-theme="nothing"] .tabs .bx--tabs__nav-link[aria-selected="true"]:focus,
+[data-theme="nothing"] .tabs .bx--tabs__nav-link[aria-selected="true"]:focus-visible {
+  background: var(--nd-surface-raised) !important;
+  color: var(--nd-text-display) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Light: active = ink fill + paper label */
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link {
+  color: var(--nd-text-secondary) !important;
+  background: transparent !important;
+}
+
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link[aria-selected="true"],
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:hover,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:focus,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-item--selected .bx--tabs__nav-link:focus-visible,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link[aria-selected="true"]:hover,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link[aria-selected="true"]:focus,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link[aria-selected="true"]:focus-visible {
+  background: var(--nd-text-display) !important;
+  color: var(--nd-black) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+[data-theme="nothing"] .tabs .bx--tabs__nav-link:hover:not([aria-selected="true"]),
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link:hover:not([aria-selected="true"]) {
+  background: rgba(128, 128, 128, 0.08) !important;
+  color: var(--nd-text-primary) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Keyboard focus: neutral hairline — never theme blue */
+[data-theme="nothing"] .tabs .bx--tabs__nav-link:focus,
+[data-theme="nothing"] .tabs .bx--tabs__nav-link:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.45) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link:focus,
+[data-theme="nothing-light"] .tabs .bx--tabs__nav-link:focus-visible {
+  outline: 1px solid var(--nd-text-display) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+[data-theme="nothing"] .calendarRightPane,
+[data-theme="nothing-light"] .calendarRightPane {
+  border-left-color: var(--modern-border);
+}
+
+[data-theme="nothing"] .calendarTable th,
+[data-theme="nothing"] .calendarTable td,
+[data-theme="nothing-light"] .calendarTable th,
+[data-theme="nothing-light"] .calendarTable td {
+  border-color: var(--modern-border);
+}
+
+[data-theme="nothing"] .calendarMonthTitle,
+[data-theme="nothing-light"] .calendarMonthTitle {
+  font-family: "Space Grotesk", var(--modern-font-sans);
+  font-weight: 500;
+}
+
+[data-theme="nothing"] .calendarDayLabel,
+[data-theme="nothing-light"] .calendarDayLabel {
+  font-family: "Space Mono", monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-theme="nothing"] .noteAutocomplete,
+[data-theme="nothing-light"] .noteAutocomplete {
+  border-color: var(--modern-border-strong);
+  background: var(--modern-surface-1);
+}
+
+[data-theme="nothing"] .aiSettingsRow label,
+[data-theme="nothing-light"] .aiSettingsRow label {
+  font-family: "Space Mono", monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--modern-text-subtle);
+}
+
+[data-theme="nothing"] .aiSettingsHint code,
+[data-theme="nothing-light"] .aiSettingsHint code {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+[data-theme="nothing"] body,
+[data-theme="nothing"] .app,
+[data-theme="nothing"] .header,
+[data-theme="nothing"] .create,
+[data-theme="nothing"] .col,
+[data-theme="nothing"] .noteCard,
+[data-theme="nothing"] .instructionsContent,
+[data-theme="nothing"] .instructionsHeader,
+[data-theme="nothing"] .instructionsTitle,
+[data-theme="nothing"] .dashboardTable,
+[data-theme="nothing"] .dashboardTable th,
+[data-theme="nothing"] .dashboardTable td,
+[data-theme="nothing"] .calendarTable,
+[data-theme="nothing"] .calendarTable th,
+[data-theme="nothing"] .calendarTable td,
+[data-theme="nothing"] .calendarMonthTitle,
+[data-theme="nothing"] .calendarCell--empty,
+[data-theme="nothing"] .calendarContent,
+[data-theme="nothing"] .calendarRightPane,
+[data-theme="nothing"] .manageTabsMessage,
+[data-theme="nothing"] .manageTabsName,
+[data-theme="nothing"] .noteAttachments,
+[data-theme="nothing"] .noteAttachmentsTitle,
+[data-theme="nothing"] .noteBackBody,
+[data-theme="nothing"] .noteText {
+  color: var(--modern-text);
+}
+
+[data-theme="nothing-light"] body,
+[data-theme="nothing-light"] .app,
+[data-theme="nothing-light"] .header,
+[data-theme="nothing-light"] .create,
+[data-theme="nothing-light"] .col,
+[data-theme="nothing-light"] .noteCard,
+[data-theme="nothing-light"] .instructionsContent,
+[data-theme="nothing-light"] .instructionsHeader,
+[data-theme="nothing-light"] .instructionsTitle,
+[data-theme="nothing-light"] .dashboardTable,
+[data-theme="nothing-light"] .dashboardTable th,
+[data-theme="nothing-light"] .dashboardTable td,
+[data-theme="nothing-light"] .calendarTable,
+[data-theme="nothing-light"] .calendarTable th,
+[data-theme="nothing-light"] .calendarTable td,
+[data-theme="nothing-light"] .calendarMonthTitle,
+[data-theme="nothing-light"] .calendarCell--empty,
+[data-theme="nothing-light"] .calendarContent,
+[data-theme="nothing-light"] .calendarRightPane,
+[data-theme="nothing-light"] .manageTabsMessage,
+[data-theme="nothing-light"] .manageTabsName,
+[data-theme="nothing-light"] .noteAttachments,
+[data-theme="nothing-light"] .noteAttachmentsTitle,
+[data-theme="nothing-light"] .noteBackBody,
+[data-theme="nothing-light"] .noteText {
+  color: var(--modern-text);
+}
+
+[data-theme="nothing"] .board::-webkit-scrollbar-thumb,
+[data-theme="nothing"] .list::-webkit-scrollbar-thumb,
+[data-theme="nothing"] .instructionsContent::-webkit-scrollbar-thumb,
+[data-theme="nothing-light"] .board::-webkit-scrollbar-thumb,
+[data-theme="nothing-light"] .list::-webkit-scrollbar-thumb,
+[data-theme="nothing-light"] .instructionsContent::-webkit-scrollbar-thumb {
+  background: var(--modern-border-strong);
+  border-radius: 4px;
+}
+
+[data-theme="nothing"] .board,
+[data-theme="nothing"] .list,
+[data-theme="nothing"] .instructionsContent,
+[data-theme="nothing-light"] .board,
+[data-theme="nothing-light"] .list,
+[data-theme="nothing-light"] .instructionsContent {
+  scrollbar-color: var(--modern-border-strong) transparent;
+}
+
+[data-theme="nothing"] .noteBackButtonsRow .monoLinkButton:focus,
+[data-theme="nothing"] .noteBackButtonsRow .monoLinkButton:focus-visible,
+[data-theme="nothing-light"] .noteBackButtonsRow .monoLinkButton:focus,
+[data-theme="nothing-light"] .noteBackButtonsRow .monoLinkButton:focus-visible {
+  box-shadow: none !important;
+}

@@ -7,10 +7,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Walter+Turncoat&display=swap" rel="stylesheet" />
+    <!-- Nothing design system: Doto (display), Space Grotesk (UI), Space Mono (labels / data) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@400..700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
     <link href="https://db.onlinewebfonts.com/c/02ed244366f143349129a8f2e39872a6?family=Kelvinized+Normal" rel="stylesheet" />
     <link rel="stylesheet" href="vendor/carbon.min.css" />
     <link rel="stylesheet" href="popup.css" />
     <link rel="stylesheet" href="modern.css" />
+    <link rel="stylesheet" href="nothing.css" />
   </head>
   <body class="bx--body">
     <div class="app" role="application" aria-label="Notes Kanban">
@@ -18,12 +24,37 @@
         <div class="headerRow">
           <div class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
-            <button id="themeToggle" class="headerLink" type="button" aria-label="Theme"></button>
-            <a id="aiSettingsLink" class="headerLink" href="#" aria-label="AI">AI</a>
-            <a id="manageTabsLink" class="headerLink" href="#" aria-label="Tabs">Tabs</a>
+            <select id="themeSelect" class="headerThemeSelect" aria-label="Theme"></select>
             <button id="keyLayoutToggle" class="headerLink" type="button" aria-label="Keyboard layout"></button>
+            <a id="manageTabsLink" class="headerLink" href="#" aria-label="Tabs">Tabs</a>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
             <a id="aboutLink" class="headerLink" href="#" aria-label="About">About</a>
+            <button id="settingsBtn" class="headerIconButton" type="button" aria-label="Settings" title="Settings">
+              <svg
+                class="headerIconButtonSvg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -168,66 +199,155 @@
           </div>
         </div>
 
-        <div id="aiSettingsView" class="view" aria-label="AI" hidden>
+        <div id="settingsView" class="view" aria-label="Settings" hidden>
           <div class="instructionsHeader">
-            <div class="instructionsTitle aiSettingsTitle">
-              AI
-              <span
-                id="aiStatusLed"
-                class="aiStatusLed aiStatusLed--red"
-                role="img"
-                aria-label="LLM status: unknown"
-                title="LLM status: unknown"
-              ></span>
-            </div>
-            <button id="closeAiSettingsBtn" class="monoLinkButton" type="button">
-              Close
-            </button>
+            <div class="instructionsTitle">Settings</div>
+            <button id="closeSettingsBtn" class="monoLinkButton" type="button">Close</button>
           </div>
-          <div class="instructionsContent">
-            <div id="aiSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
-            <form id="aiSettingsForm" class="aiSettingsForm" aria-label="AI settings">
-              <div class="aiSettingsRow">
-                <label for="aiEndpointBaseUrl">Endpoint base URL</label>
-                <input
-                  id="aiEndpointBaseUrl"
-                  class="bx--text-input"
-                  type="url"
-                  inputmode="url"
-                  placeholder="http://localhost:11434 or http://host:port"
-                  autocomplete="off"
-                />
+          <div class="settingsChrome">
+            <div class="settingsTablist" role="tablist" aria-label="Settings sections">
+              <button
+                type="button"
+                id="settingsTabAi"
+                class="settingsTab"
+                role="tab"
+                aria-selected="true"
+                aria-controls="settingsPanelAi"
+              >
+                AI
+              </button>
+              <button
+                type="button"
+                id="settingsTabObsidian"
+                class="settingsTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settingsPanelObsidian"
+              >
+                Obsidian
+              </button>
+            </div>
+            <div class="settingsPanels">
+              <div
+                id="settingsPanelAi"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabAi"
+              >
+                <div class="instructionsHeader settingsSubHeader">
+                  <div class="instructionsTitle aiSettingsTitle">
+                    AI
+                    <span
+                      id="aiStatusLed"
+                      class="aiStatusLed aiStatusLed--red"
+                      role="img"
+                      aria-label="LLM status: unknown"
+                      title="LLM status: unknown"
+                    ></span>
+                  </div>
+                </div>
+                <div id="aiSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+                <form id="aiSettingsForm" class="aiSettingsForm" aria-label="AI settings">
+                  <div class="aiSettingsRow">
+                    <label for="aiEndpointBaseUrl">Endpoint base URL</label>
+                    <input
+                      id="aiEndpointBaseUrl"
+                      class="bx--text-input"
+                      type="url"
+                      inputmode="url"
+                      placeholder="http://localhost:11434 or http://host:port"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow">
+                    <label for="aiEndpointModel">Model name (optional)</label>
+                    <input
+                      id="aiEndpointModel"
+                      class="bx--text-input"
+                      type="text"
+                      placeholder="e.g. llama3.2:latest"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow">
+                    <label for="aiCustomWords">Custom words (one per line)</label>
+                    <textarea
+                      id="aiCustomWords"
+                      class="bx--text-input"
+                      rows="3"
+                      placeholder="One word per line"
+                      autocomplete="off"
+                    ></textarea>
+                  </div>
+                  <div class="aiSettingsActions">
+                    <button id="saveAiSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+                  </div>
+                </form>
+                <p class="aiSettingsHint">
+                  <b>CORS / 403</b>: On the machine running Ollama, set OLLAMA_ORIGINS and fully restart. <b>Linux (systemd)</b>:
+                  <code>sudo systemctl edit ollama</code>, add <code>[Service]</code> and
+                  <code>Environment="OLLAMA_ORIGINS=chrome-extension://*"</code>, then
+                  <code>sudo systemctl daemon-reload && sudo systemctl restart ollama</code>. Or use this extension:
+                  <code id="aiSettingsExtensionOrigin">chrome-extension://…</code>. Test with <code>OLLAMA_ORIGINS=*</code> if
+                  needed.
+                </p>
+                <p class="aiSettingsHint">
+                  <b>Test on server</b>: SSH to the Ollama machine and run
+                  <code id="aiSettingsCurlTest">curl -H "Origin: chrome-extension://…" http://localhost:11434/api/tags</code>.
+                  If 403, OLLAMA_ORIGINS is not applied. Verify:
+                  <code>systemctl show ollama --property=Environment</code>.
+                </p>
               </div>
-              <div class="aiSettingsRow">
-                <label for="aiEndpointModel">Model name (optional)</label>
-                <input
-                  id="aiEndpointModel"
-                  class="bx--text-input"
-                  type="text"
-                  placeholder="e.g. llama3.2:latest"
-                  autocomplete="off"
-                />
+              <div
+                id="settingsPanelObsidian"
+                class="settingsPanel instructionsContent"
+                role="tabpanel"
+                aria-labelledby="settingsTabObsidian"
+                hidden
+              >
+                <p class="obsidianIntro">
+                  Link cards to files under an Obsidian vault. Set the vault name exactly as shown in Obsidian (lower-left vault
+                  menu). Each card maps to
+                  <code>…/notes-folder/board-slug/title-slug.md</code>, or
+                  <code>…/title-slug-note-id.md</code> when two cards on the same board share the same title. The first open
+                  creates the note with your title, due date, and card notes as Markdown; later opens use the same file.
+                </p>
+                <div id="obsidianSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+                <form id="obsidianSettingsForm" class="aiSettingsForm" aria-label="Obsidian settings">
+                  <div class="aiSettingsRow">
+                    <label for="obsidianVaultName">Vault name</label>
+                    <input
+                      id="obsidianVaultName"
+                      class="bx--text-input"
+                      type="text"
+                      placeholder="e.g. MyVault"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsRow">
+                    <label for="obsidianNotesFolder">Notes folder (optional)</label>
+                    <input
+                      id="obsidianNotesFolder"
+                      class="bx--text-input"
+                      type="text"
+                      placeholder="vim-todo-list (relative to vault root)"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="aiSettingsActions">
+                    <button id="saveObsidianSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+                    <button
+                      id="clearObsidianPathCacheBtn"
+                      class="monoLinkButton"
+                      type="button"
+                      title="Clear which paths have already been created. Use if the first open failed or you deleted the file in Obsidian and need to create it again."
+                    >
+                      Reset first-open cache
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div class="aiSettingsRow">
-                <label for="aiCustomWords">Custom words (one per line)</label>
-                <textarea
-                  id="aiCustomWords"
-                  class="bx--text-input"
-                  rows="3"
-                  placeholder="One word per line"
-                  autocomplete="off"
-                ></textarea>
-              </div>
-              <div class="aiSettingsActions">
-                <button id="saveAiSettingsBtn" class="monoLinkButton" type="submit">Save</button>
-              </div>
-            </form>
-            <p class="aiSettingsHint">
-              <b>CORS / 403</b>: On the machine running Ollama, set OLLAMA_ORIGINS and fully restart. <b>Linux (systemd)</b>: <code>sudo systemctl edit ollama</code>, add <code>[Service]</code> and <code>Environment="OLLAMA_ORIGINS=chrome-extension://*"</code>, then <code>sudo systemctl daemon-reload && sudo systemctl restart ollama</code>. Or use this extension: <code id="aiSettingsExtensionOrigin">chrome-extension://…</code>. Test with <code>OLLAMA_ORIGINS=*</code> if needed.
-            </p>
-            <p class="aiSettingsHint">
-              <b>Test on server</b>: SSH to the Ollama machine and run <code id="aiSettingsCurlTest">curl -H "Origin: chrome-extension://…" http://localhost:11434/api/tags</code>. If 403, OLLAMA_ORIGINS is not applied. Verify: <code>systemctl show ollama --property=Environment</code>.
-            </p>
+            </div>
           </div>
         </div>
 

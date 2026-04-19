@@ -70,6 +70,58 @@ body {
   text-decoration-thickness: 2px;
 }
 
+/* Theme: native dropdown, aligned with header link typography */
+.headerThemeSelect {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: inherit;
+  cursor: pointer;
+  max-width: 12rem;
+  min-width: 7rem;
+  padding: 1px 6px;
+  margin: 0;
+  vertical-align: baseline;
+  border-radius: 3px;
+  border: 1px solid var(--cds-border-subtle, rgba(0, 0, 0, 0.2));
+  background: var(--cds-layer, transparent);
+}
+
+.headerThemeSelect:focus,
+.headerThemeSelect:focus-visible {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+}
+
+.headerIconButton {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 2px;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  line-height: 0;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.headerIconButton:hover {
+  opacity: 0.85;
+}
+
+.headerIconButton:focus,
+.headerIconButton:focus-visible {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+}
+
+.headerIconButtonSvg {
+  display: block;
+}
+
 /* Monospaced link-style action controls (buttons semantically, links visually) */
 .monoLinkButton {
   appearance: none;
@@ -331,6 +383,82 @@ body {
   gap: 8px;
 }
 
+.settingsChrome {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.settingsTablist {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  margin: 0 0 8px;
+  padding: 0 2px;
+}
+
+.settingsTab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin: 0 12px 0 0;
+  padding: 6px 2px 8px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.settingsTab:hover {
+  opacity: 1;
+}
+
+.settingsTab[aria-selected="true"] {
+  opacity: 1;
+  font-weight: 600;
+  border-bottom-color: var(--cds-focus, currentColor);
+}
+
+.settingsTab:focus,
+.settingsTab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-color: var(--cds-focus, currentColor);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.settingsPanels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.settingsPanel {
+  flex: 1;
+  min-height: 0;
+}
+
+.settingsSubHeader {
+  margin-top: 0;
+}
+
+.obsidianIntro {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  opacity: 0.92;
+}
+
+.obsidianIntro code {
+  font-size: 0.8rem;
+}
+
 .aiStatusLed {
   width: 10px;
   height: 10px;
@@ -483,7 +611,9 @@ body {
 
 .aiSettingsActions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .createButtons {

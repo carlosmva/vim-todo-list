@@ -9,7 +9,190 @@ const THEME_KEY = "theme_v1";
 const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
 const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
-const THEME_ORDER = ["light", "dark", "solarized-light", "solarized-dark", "emacs", "command-line", "chalkboard"];
+const THEME_ORDER = [
+  "light",
+  "dark",
+  "solarized-light",
+  "solarized-dark",
+  "emacs",
+  "command-line",
+  "chalkboard",
+  "nothing",
+  "nothing-light",
+];
+
+/** Set when DB loads; used by renderNotes for “Open in Obsidian”. */
+let gObsidianVaultName = "";
+let gObsidianNotesFolder = "";
+
+function slugifyObsidianBoardSegment(s) {
+  let t = String(s || "").trim();
+  if (!t) return "board";
+  t = t.replace(/[^\w\u00C0-\u024f\-]+/g, "-").replace(/^-+|-+$/g, "");
+  return (t || "board").slice(0, 48);
+}
+
+/** File basename segment from card title (without .md). */
+function slugifyObsidianNoteTitle(text) {
+  let t = String(text || "").trim();
+  if (!t) return "";
+  t = t.replace(/[^\w\u00C0-\u024f\-]+/g, "-").replace(/^-+|-+$/g, "");
+  return (t || "").slice(0, 48);
+}
+
+/**
+ * Basename stem for Obsidian: `title-slug` when unique on this board, `title-slug-id` when another card shares the same slug.
+ */
+function obsidianBaseFilenameStem(db, note) {
+  const id = Number(note?.id);
+  if (!Number.isFinite(id)) return "";
+  const titleSlug = slugifyObsidianNoteTitle(note.text);
+  if (!titleSlug) return `note-${id}`;
+
+  let rows = [];
+  try {
+    const res = db.exec("SELECT id, text FROM notes WHERE board = ?", [note.board]);
+    if (res.length && res[0].values) rows = res[0].values;
+  } catch {
+    return `${titleSlug}-${id}`;
+  }
+
+  let sameSlugCount = 0;
+  for (const row of rows) {
+    if (slugifyObsidianNoteTitle(row[1]) === titleSlug) sameSlugCount++;
+  }
+  if (sameSlugCount > 1) return `${titleSlug}-${id}`;
+  return titleSlug;
+}
+
+function obsidianHtmlToPlain(html) {
+  if (typeof html !== "string" || !html.trim()) return "";
+  const el = document.createElement("div");
+  el.innerHTML = html;
+  const s = el.textContent || "";
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function formatDueDateForObsidian(ts) {
+  if (!ts || !Number.isFinite(ts)) return "";
+  const d = new Date(ts);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+const OBSIDIAN_NEW_CONTENT_MAX = 20000;
+
+function buildObsidianMarkdown(note) {
+  const id = Number(note?.id);
+  const title = String(note.text || "").trim() || `Note ${Number.isFinite(id) ? id : ""}`.trim();
+  const lines = [];
+  lines.push(`# ${title}`);
+  lines.push("");
+  const due = note.due_at != null ? Number(note.due_at) : null;
+  if (due != null && Number.isFinite(due)) {
+    lines.push(`**Due:** ${formatDueDateForObsidian(due)}`);
+    lines.push("");
+  }
+  const rich = note.notes_html && String(note.notes_html).trim();
+  if (rich) {
+    const plain = obsidianHtmlToPlain(rich);
+    if (plain) {
+      lines.push(plain);
+      lines.push("");
+    }
+  }
+  lines.push("---");
+  lines.push(`*Board: ${String(note.board || "")} · Vim To-Do (id ${Number.isFinite(id) ? id : "?"})*`);
+  let out = lines.join("\n");
+  if (out.length > OBSIDIAN_NEW_CONTENT_MAX) {
+    out = `${out.slice(0, OBSIDIAN_NEW_CONTENT_MAX)}\n\n…`;
+  }
+  return out;
+}
+
+function obsidianRelativeFilePath(db, note) {
+  const folder = String(gObsidianNotesFolder || "").trim().replace(/^\/+|\/+$/g, "");
+  const boardSeg = slugifyObsidianBoardSegment(note.board);
+  const id = Number(note?.id);
+  if (!Number.isFinite(id)) return "";
+  const base = obsidianBaseFilenameStem(db, note);
+  if (!base) return "";
+  const rel = folder ? `${folder}/${boardSeg}/${base}.md` : `${boardSeg}/${base}.md`;
+  return rel.replace(/\\/g, "/");
+}
+
+/** localStorage keys: first successful path uses `new`, then `open` so Obsidian does not create `1`, `1 1`, `1 2`, … */
+const OBSIDIAN_PATH_CREATED_PREFIX = "obsidianPathCreated_v1:";
+
+/** Per note id + vault so the filename can change (e.g. duplicate title) without re-firing `new`. */
+function obsidianPathStorageKey(vault, noteId) {
+  return `${OBSIDIAN_PATH_CREATED_PREFIX}${vault}\n${String(noteId)}`;
+}
+
+function obsidianPathHasBeenCreated(vault, noteId) {
+  try {
+    return localStorage.getItem(obsidianPathStorageKey(vault, noteId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markObsidianPathCreated(vault, noteId) {
+  try {
+    localStorage.setItem(obsidianPathStorageKey(vault, noteId), "1");
+  } catch {
+    // ignore
+  }
+}
+
+function clearObsidianCreatedPathCache() {
+  try {
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(OBSIDIAN_PATH_CREATED_PREFIX)) toRemove.push(k);
+    }
+    for (const k of toRemove) localStorage.removeItem(k);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * First open for this vault path uses `new` (creates folders/file). Later opens use `open` so Obsidian does not
+ * duplicate notes when the file already exists.
+ */
+function resolveObsidianUrlForNote(db, note) {
+  const vault = String(gObsidianVaultName || "").trim();
+  if (!vault) return "";
+  const file = obsidianRelativeFilePath(db, note);
+  if (!file) return "";
+  const nid = Number(note?.id);
+  if (!Number.isFinite(nid)) return "";
+  const encV = encodeURIComponent(vault);
+  const encF = encodeURIComponent(file);
+  if (!obsidianPathHasBeenCreated(vault, nid)) {
+    markObsidianPathCreated(vault, nid);
+    const md = buildObsidianMarkdown(note);
+    const encC = encodeURIComponent(md);
+    return `obsidian://new?vault=${encV}&file=${encF}&content=${encC}`;
+  }
+  return `obsidian://open?vault=${encV}&file=${encF}`;
+}
+
+function priorityColorsForTheme() {
+  const root = document.documentElement;
+  const t = root.getAttribute("data-theme") || "";
+  if (t === "nothing" || t === "nothing-light") {
+    const cs = getComputedStyle(root);
+    return {
+      low: cs.getPropertyValue("--nd-priority-low").trim() || "#999999",
+      normal: cs.getPropertyValue("--nd-priority-normal").trim() || "#5b9bf6",
+      high: cs.getPropertyValue("--nd-priority-high").trim() || "#d71921",
+    };
+  }
+  return { low: "#8d8d8d", normal: "#0f62fe", high: "#da1e28" };
+}
 
 const isMac =
   typeof navigator !== "undefined" &&
@@ -1188,6 +1371,20 @@ function renderNotes(db, notes) {
     notesBtn.dataset.action = "toggleNotes";
     notesBtn.dataset.noteId = String(note.id);
 
+    let obsidianBtn = null;
+    if (String(gObsidianVaultName || "").trim()) {
+      obsidianBtn = document.createElement("button");
+      obsidianBtn.type = "button";
+      obsidianBtn.textContent = "Obsidian";
+      obsidianBtn.className = "monoLinkButton";
+      obsidianBtn.dataset.action = "openObsidian";
+      obsidianBtn.dataset.noteId = String(note.id);
+      obsidianBtn.setAttribute(
+        "aria-label",
+        "Create or open this note in Obsidian (vault must match Settings)"
+      );
+    }
+
     const moveBtn = document.createElement("button");
     moveBtn.className = "monoLinkButton";
 
@@ -1244,6 +1441,7 @@ function renderNotes(db, notes) {
     footer.appendChild(flipBtn);
     footer.appendChild(priorityBtn);
     footer.appendChild(notesBtn);
+    if (obsidianBtn) footer.appendChild(obsidianBtn);
     footer.appendChild(deleteBtn);
     footer.appendChild(moveBtn);
     const moveArrowsSpacer = document.createElement("span");
@@ -1657,19 +1855,27 @@ async function main() {
   const aboutView = document.getElementById("aboutView");
   const dashboardView = document.getElementById("dashboardView");
   const calendarView = document.getElementById("calendarView");
-  const aiSettingsView = document.getElementById("aiSettingsView");
+  const settingsView = document.getElementById("settingsView");
   const manageTabsView = document.getElementById("manageTabsView");
   const instructionsLink = document.getElementById("instructionsLink");
   const aboutLink = document.getElementById("aboutLink");
-  const aiSettingsLink = document.getElementById("aiSettingsLink");
+  const settingsBtn = document.getElementById("settingsBtn");
   const manageTabsLink = document.getElementById("manageTabsLink");
-  const themeToggle = document.getElementById("themeToggle");
+  const themeSelect = document.getElementById("themeSelect");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
   const closeAboutBtn = document.getElementById("closeAboutBtn");
   const closeDashboardBtn = document.getElementById("closeDashboardBtn");
   const closeCalendarBtn = document.getElementById("closeCalendarBtn");
-  const closeAiSettingsBtn = document.getElementById("closeAiSettingsBtn");
+  const closeSettingsBtn = document.getElementById("closeSettingsBtn");
   const closeManageTabsBtn = document.getElementById("closeManageTabsBtn");
+  const settingsTabAi = document.getElementById("settingsTabAi");
+  const settingsTabObsidian = document.getElementById("settingsTabObsidian");
+  const settingsPanelAi = document.getElementById("settingsPanelAi");
+  const settingsPanelObsidian = document.getElementById("settingsPanelObsidian");
+  const obsidianVaultNameInput = document.getElementById("obsidianVaultName");
+  const obsidianNotesFolderInput = document.getElementById("obsidianNotesFolder");
+  const obsidianSettingsForm = document.getElementById("obsidianSettingsForm");
+  const obsidianSettingsMessage = document.getElementById("obsidianSettingsMessage");
   const instructionsContent = document.getElementById("instructionsContent");
   const dashboardContent = document.getElementById("dashboardContent");
   const calendarContent = document.getElementById("calendarContent");
@@ -1737,7 +1943,7 @@ async function main() {
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1747,7 +1953,7 @@ async function main() {
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1757,7 +1963,7 @@ async function main() {
     if (aboutView instanceof HTMLElement) aboutView.hidden = false;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1767,7 +1973,7 @@ async function main() {
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = false;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
@@ -1777,17 +1983,31 @@ async function main() {
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = false;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
+    if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
   }
 
-  function showAiSettingsView() {
+  function setSettingsSection(section) {
+    const obs = section === "obsidian";
+    if (settingsPanelAi instanceof HTMLElement) settingsPanelAi.hidden = obs;
+    if (settingsPanelObsidian instanceof HTMLElement) settingsPanelObsidian.hidden = !obs;
+    if (settingsTabAi instanceof HTMLElement) {
+      settingsTabAi.setAttribute("aria-selected", obs ? "false" : "true");
+    }
+    if (settingsTabObsidian instanceof HTMLElement) {
+      settingsTabObsidian.setAttribute("aria-selected", obs ? "true" : "false");
+    }
+  }
+
+  function showSettingsView(section) {
     if (notesView instanceof HTMLElement) notesView.hidden = true;
     if (instructionsView instanceof HTMLElement) instructionsView.hidden = true;
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = false;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = false;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = true;
+    setSettingsSection(section === "obsidian" ? "obsidian" : "ai");
   }
 
   function showManageTabsView() {
@@ -1796,19 +2016,40 @@ async function main() {
     if (aboutView instanceof HTMLElement) aboutView.hidden = true;
     if (dashboardView instanceof HTMLElement) dashboardView.hidden = true;
     if (calendarView instanceof HTMLElement) calendarView.hidden = true;
-    if (aiSettingsView instanceof HTMLElement) aiSettingsView.hidden = true;
+    if (settingsView instanceof HTMLElement) settingsView.hidden = true;
     if (manageTabsView instanceof HTMLElement) manageTabsView.hidden = false;
   }
 
   const keyLayoutToggle = document.getElementById("keyLayoutToggle");
-  const THEME_LABELS = { light: "Light", dark: "Dark", "solarized-light": "Solarized", "solarized-dark": "Solarized Dark", emacs: "Emacs", "command-line": "Command Line", chalkboard: "Chalkboard" };
+  const THEME_LABELS = {
+    light: "Light",
+    dark: "Dark",
+    "solarized-light": "Solarized",
+    "solarized-dark": "Solarized Dark",
+    emacs: "Emacs",
+    "command-line": "Command Line",
+    chalkboard: "Chalkboard",
+    nothing: "Nothing",
+    "nothing-light": "Nothing Light",
+  };
+
+  function populateThemeSelect() {
+    if (!(themeSelect instanceof HTMLSelectElement)) return;
+    themeSelect.innerHTML = "";
+    for (const id of THEME_ORDER) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = THEME_LABELS[id] || id;
+      themeSelect.appendChild(opt);
+    }
+  }
 
   function applyTheme(t) {
     const value = THEME_ORDER.includes(t) ? t : "light";
     document.documentElement.setAttribute("data-theme", value);
-    if (themeToggle instanceof HTMLElement) {
-      themeToggle.textContent = THEME_LABELS[value] || value;
-      themeToggle.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}. Click to switch.`);
+    if (themeSelect instanceof HTMLSelectElement) {
+      themeSelect.value = value;
+      themeSelect.setAttribute("aria-label", `Theme: ${THEME_LABELS[value] || value}`);
     }
     if (window.parent !== window) {
       try {
@@ -2018,7 +2259,7 @@ async function main() {
       return { year: y, month: m, days, monthName: monthNames[m] };
     };
 
-    const priorityColors = { low: "#8d8d8d", normal: "#0f62fe", high: "#da1e28" };
+    const priorityColors = priorityColorsForTheme();
     const priorityOrder = ["high", "normal", "low"];
 
     let html = '<div class="calendarGrid">';
@@ -2164,7 +2405,7 @@ async function main() {
 
   function renderDashboardCharts(s) {
     const keys = ["low", "normal", "high"];
-    const colors = { low: "#8d8d8d", normal: "#0f62fe", high: "#da1e28" };
+    const colors = priorityColorsForTheme();
     const labels = { low: "L", normal: "N", high: "H" };
     const ariaLabels = { low: "Low", normal: "Normal", high: "High" };
     const margin = { top: 36, right: 12, bottom: 32, left: 36 };
@@ -2351,7 +2592,8 @@ async function main() {
   }
 
   function queueAiSettingsHealthCheck({ delayMs = 250 } = {}) {
-    if (!(aiSettingsView instanceof HTMLElement) || aiSettingsView.hidden) return;
+    if (!(settingsView instanceof HTMLElement) || settingsView.hidden) return;
+    if (settingsPanelAi instanceof HTMLElement && settingsPanelAi.hidden) return;
 
     if (aiHealthTimer) clearTimeout(aiHealthTimer);
     aiHealthTimer = setTimeout(async () => {
@@ -2390,7 +2632,7 @@ async function main() {
         else setAiStatusLedState("red", "not working");
       } catch (err) {
         if (token !== aiHealthToken) return;
-        if (!(aiSettingsView instanceof HTMLElement) || aiSettingsView.hidden) return;
+        if (!(settingsView instanceof HTMLElement) || settingsView.hidden) return;
 
         const isAbort = String(err?.name || "")
           .toLowerCase()
@@ -2480,6 +2722,8 @@ async function main() {
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
   const APP_SETTING_THEME = "app.theme";
+  const APP_SETTING_OBSIDIAN_VAULT_NAME = "obsidian.vaultName";
+  const APP_SETTING_OBSIDIAN_NOTES_FOLDER = "obsidian.notesFolder";
 
   function dbGetAppSettingString(key) {
     const k = String(key || "");
@@ -2561,6 +2805,9 @@ async function main() {
     }
   }
 
+  gObsidianVaultName = dbGetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME) || "";
+  gObsidianNotesFolder = dbGetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER) || "";
+
   // Theme: load from DB first, migrate from chrome.storage if needed.
   let didMigrateTheme = false;
   let theme = dbGetAppSettingString(APP_SETTING_THEME) || null;
@@ -2581,6 +2828,7 @@ async function main() {
     }
   }
 
+  populateThemeSelect();
   applyTheme(theme);
 
   // Shared caches for autocomplete (new note + notes editor).
@@ -2734,10 +2982,11 @@ async function main() {
 
   updateKeyLayoutToggleUi();
 
-  if (themeToggle instanceof HTMLElement) {
-    themeToggle.addEventListener("click", async () => {
-      const idx = THEME_ORDER.indexOf(theme);
-      theme = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+  if (themeSelect instanceof HTMLSelectElement) {
+    themeSelect.addEventListener("change", async () => {
+      const v = themeSelect.value;
+      if (!THEME_ORDER.includes(v)) return;
+      theme = v;
       applyTheme(theme);
       try {
         dbSetAppSettingString(APP_SETTING_THEME, theme);
@@ -4845,43 +5094,64 @@ async function main() {
     });
   }
 
-  // AI Settings view toggle
-  if (aiSettingsLink instanceof HTMLElement) {
-    aiSettingsLink.addEventListener("click", (e) => {
+  function openSettingsToAiPanel() {
+    setAiSettingsMessage("");
+    showSettingsView("ai");
+    const extId = chrome.runtime?.id || "";
+    const extOriginEl = document.getElementById("aiSettingsExtensionOrigin");
+    if (extOriginEl instanceof HTMLElement && extId) {
+      extOriginEl.textContent = `chrome-extension://${extId}`;
+    }
+    const curlEl = document.getElementById("aiSettingsCurlTest");
+    if (curlEl instanceof HTMLElement && extId) {
+      curlEl.textContent = `curl -H "Origin: chrome-extension://${extId}" http://localhost:11434/api/tags`;
+    }
+    if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
+      aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
+      aiEndpointBaseUrlInput.focus();
+      try {
+        aiEndpointBaseUrlInput.select();
+      } catch {
+        // ignore
+      }
+      if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
+        aiCustomWordsInput.value = Array.isArray(aiCustomWords) ? aiCustomWords.join("\n") : "";
+        queueAutosizeTextarea(aiCustomWordsInput);
+      }
+
+      if (aiEndpointModelInput instanceof HTMLInputElement) {
+        aiEndpointModelInput.value = aiEndpointModel || "";
+      }
+
+      queueAiSettingsHealthCheck({ delayMs: 0 });
+    } else if (closeSettingsBtn instanceof HTMLElement) {
+      closeSettingsBtn.focus();
+    }
+  }
+
+  if (settingsBtn instanceof HTMLElement) {
+    settingsBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      setAiSettingsMessage("");
-      showAiSettingsView();
-      const extId = chrome.runtime?.id || "";
-      const extOriginEl = document.getElementById("aiSettingsExtensionOrigin");
-      if (extOriginEl instanceof HTMLElement && extId) {
-        extOriginEl.textContent = `chrome-extension://${extId}`;
-      }
-      const curlEl = document.getElementById("aiSettingsCurlTest");
-      if (curlEl instanceof HTMLElement && extId) {
-        curlEl.textContent = `curl -H "Origin: chrome-extension://${extId}" http://localhost:11434/api/tags`;
-      }
-      if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
-        aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
-        aiEndpointBaseUrlInput.focus();
-        try {
-          aiEndpointBaseUrlInput.select();
-        } catch {
-          // ignore
-        }
-        if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
-          aiCustomWordsInput.value = Array.isArray(aiCustomWords) ? aiCustomWords.join("\n") : "";
-          queueAutosizeTextarea(aiCustomWordsInput);
-        }
+      openSettingsToAiPanel();
+    });
+  }
 
-        if (aiEndpointModelInput instanceof HTMLInputElement) {
-          aiEndpointModelInput.value = aiEndpointModel || "";
-        }
-
-        // Update status indicator when opening AI Settings.
-        queueAiSettingsHealthCheck({ delayMs: 0 });
-      } else if (closeAiSettingsBtn instanceof HTMLElement) {
-        closeAiSettingsBtn.focus();
+  if (settingsTabAi instanceof HTMLElement) {
+    settingsTabAi.addEventListener("click", () => {
+      setSettingsSection("ai");
+      queueAiSettingsHealthCheck({ delayMs: 0 });
+    });
+  }
+  if (settingsTabObsidian instanceof HTMLElement) {
+    settingsTabObsidian.addEventListener("click", () => {
+      setSettingsSection("obsidian");
+      if (obsidianVaultNameInput instanceof HTMLInputElement) {
+        obsidianVaultNameInput.value = gObsidianVaultName || "";
       }
+      if (obsidianNotesFolderInput instanceof HTMLInputElement) {
+        obsidianNotesFolderInput.value = gObsidianNotesFolder || "";
+      }
+      if (obsidianVaultNameInput instanceof HTMLElement) obsidianVaultNameInput.focus();
     });
   }
   if (manageTabsLink instanceof HTMLElement) {
@@ -4925,8 +5195,8 @@ async function main() {
       if (input instanceof HTMLElement) input.focus();
     });
   }
-  if (closeAiSettingsBtn instanceof HTMLElement) {
-    closeAiSettingsBtn.addEventListener("click", () => {
+  if (closeSettingsBtn instanceof HTMLElement) {
+    closeSettingsBtn.addEventListener("click", () => {
       showNotesView();
       const input = document.getElementById("noteText");
       if (input instanceof HTMLElement) input.focus();
@@ -5056,6 +5326,41 @@ async function main() {
         setAiSettingsMessage("Could not save settings.");
         queueAiSettingsHealthCheck({ delayMs: 0 });
       }
+    });
+  }
+
+  function setObsidianSettingsMessage(text) {
+    if (obsidianSettingsMessage instanceof HTMLElement) obsidianSettingsMessage.textContent = text || "";
+  }
+
+  if (obsidianSettingsForm instanceof HTMLFormElement) {
+    obsidianSettingsForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setObsidianSettingsMessage("");
+      const v =
+        obsidianVaultNameInput instanceof HTMLInputElement ? obsidianVaultNameInput.value.trim() : "";
+      const f =
+        obsidianNotesFolderInput instanceof HTMLInputElement ? obsidianNotesFolderInput.value.trim() : "";
+      gObsidianVaultName = v;
+      gObsidianNotesFolder = f.replace(/^\/+|\/+$/g, "");
+      try {
+        dbSetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME, gObsidianVaultName);
+        dbSetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER, gObsidianNotesFolder);
+        await persist();
+        setObsidianSettingsMessage("Saved.");
+        await refresh();
+      } catch (err) {
+        console.error(err);
+        setObsidianSettingsMessage("Could not save Obsidian settings.");
+      }
+    });
+  }
+
+  const clearObsidianPathCacheBtn = document.getElementById("clearObsidianPathCacheBtn");
+  if (clearObsidianPathCacheBtn instanceof HTMLElement) {
+    clearObsidianPathCacheBtn.addEventListener("click", () => {
+      clearObsidianCreatedPathCache();
+      setObsidianSettingsMessage('Cleared “first open” cache. Next Obsidian click will create the file if missing.');
     });
   }
 
@@ -5946,24 +6251,24 @@ async function main() {
   function getGlobalNavTargets() {
     const targets = [];
 
-    const themeToggle = document.getElementById("themeToggle");
-    const aiSettingsLink = document.getElementById("aiSettingsLink");
+    const themeSelectEl = document.getElementById("themeSelect");
+    const settingsBtnEl = document.getElementById("settingsBtn");
     const manageTabsLink = document.getElementById("manageTabsLink");
     const keyLayoutToggle = document.getElementById("keyLayoutToggle");
     const instructionsLink = document.getElementById("instructionsLink");
     const aboutLink = document.getElementById("aboutLink");
-    if (themeToggle instanceof HTMLElement) targets.push(themeToggle);
-    if (aiSettingsLink instanceof HTMLElement) targets.push(aiSettingsLink);
-    if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
+    if (themeSelectEl instanceof HTMLElement) targets.push(themeSelectEl);
     if (keyLayoutToggle instanceof HTMLElement) targets.push(keyLayoutToggle);
+    if (manageTabsLink instanceof HTMLElement) targets.push(manageTabsLink);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
     if (aboutLink instanceof HTMLElement) targets.push(aboutLink);
+    if (settingsBtnEl instanceof HTMLElement) targets.push(settingsBtnEl);
 
     const notesView = document.getElementById("notesView");
     const instructionsView = document.getElementById("instructionsView");
     const aboutView = document.getElementById("aboutView");
     const dashboardView = document.getElementById("dashboardView");
-    const aiSettingsView = document.getElementById("aiSettingsView");
+    const settingsView = document.getElementById("settingsView");
     const manageTabsView = document.getElementById("manageTabsView");
 
     const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
@@ -5971,7 +6276,7 @@ async function main() {
     const aboutVisible = aboutView instanceof HTMLElement && !aboutView.hasAttribute("hidden");
     const dashboardVisible = dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
     const calendarVisible = calendarView instanceof HTMLElement && !calendarView.hasAttribute("hidden");
-    const aiSettingsVisible = aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
+    const settingsVisible = settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
     const manageTabsVisible = manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
     if (notesVisible) {
@@ -6011,17 +6316,37 @@ async function main() {
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
     }
 
-    if (aiSettingsVisible) {
-      const closeBtn = document.getElementById("closeAiSettingsBtn");
-      const endpoint = document.getElementById("aiEndpointBaseUrl");
-      const model = document.getElementById("aiEndpointModel");
-      const customWords = document.getElementById("aiCustomWords");
-      const saveBtn = document.getElementById("saveAiSettingsBtn");
+    if (settingsVisible) {
+      const tabAi = document.getElementById("settingsTabAi");
+      const tabObsidian = document.getElementById("settingsTabObsidian");
+      const closeBtn = document.getElementById("closeSettingsBtn");
+      const panelAi = document.getElementById("settingsPanelAi");
+      const panelObsidian = document.getElementById("settingsPanelObsidian");
+      if (tabAi instanceof HTMLElement) targets.push(tabAi);
+      if (tabObsidian instanceof HTMLElement) targets.push(tabObsidian);
       if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
-      if (endpoint instanceof HTMLElement) targets.push(endpoint);
-      if (model instanceof HTMLElement) targets.push(model);
-      if (customWords instanceof HTMLElement) targets.push(customWords);
-      if (saveBtn instanceof HTMLElement) targets.push(saveBtn);
+      const aiPanelVisible = panelAi instanceof HTMLElement && !panelAi.hasAttribute("hidden");
+      const obsidianPanelVisible = panelObsidian instanceof HTMLElement && !panelObsidian.hasAttribute("hidden");
+      if (aiPanelVisible) {
+        const endpoint = document.getElementById("aiEndpointBaseUrl");
+        const model = document.getElementById("aiEndpointModel");
+        const customWords = document.getElementById("aiCustomWords");
+        const saveBtn = document.getElementById("saveAiSettingsBtn");
+        if (endpoint instanceof HTMLElement) targets.push(endpoint);
+        if (model instanceof HTMLElement) targets.push(model);
+        if (customWords instanceof HTMLElement) targets.push(customWords);
+        if (saveBtn instanceof HTMLElement) targets.push(saveBtn);
+      }
+      if (obsidianPanelVisible) {
+        const vaultName = document.getElementById("obsidianVaultName");
+        const notesFolder = document.getElementById("obsidianNotesFolder");
+        const saveObsidian = document.getElementById("saveObsidianSettingsBtn");
+        const clearObsidianCache = document.getElementById("clearObsidianPathCacheBtn");
+        if (vaultName instanceof HTMLElement) targets.push(vaultName);
+        if (notesFolder instanceof HTMLElement) targets.push(notesFolder);
+        if (saveObsidian instanceof HTMLElement) targets.push(saveObsidian);
+        if (clearObsidianCache instanceof HTMLElement) targets.push(clearObsidianCache);
+      }
     }
 
     if (dashboardVisible) {
@@ -6168,15 +6493,15 @@ async function main() {
           if (calendarBtn instanceof HTMLElement) safeFocus(calendarBtn);
           return;
         }
-        const aiSettingsViewEl = document.getElementById("aiSettingsView");
+        const settingsViewEl = document.getElementById("settingsView");
         const manageTabsViewEl = document.getElementById("manageTabsView");
         const instructionsViewEl = document.getElementById("instructionsView");
         const aboutViewEl = document.getElementById("aboutView");
-        const inAiSettings = aiSettingsViewEl instanceof HTMLElement && !aiSettingsViewEl.hasAttribute("hidden");
+        const inSettings = settingsViewEl instanceof HTMLElement && !settingsViewEl.hasAttribute("hidden");
         const inManageTabs = manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden");
         const inInstructions = instructionsViewEl instanceof HTMLElement && !instructionsViewEl.hasAttribute("hidden");
         const inAbout = aboutViewEl instanceof HTMLElement && !aboutViewEl.hasAttribute("hidden");
-        if (inAiSettings || inManageTabs || inInstructions || inAbout) {
+        if (inSettings || inManageTabs || inInstructions || inAbout) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
@@ -6780,7 +7105,7 @@ async function main() {
           const instructionsView = document.getElementById("instructionsView");
           const aboutView = document.getElementById("aboutView");
           const dashboardView = document.getElementById("dashboardView");
-          const aiSettingsView = document.getElementById("aiSettingsView");
+          const settingsView = document.getElementById("settingsView");
           const manageTabsView = document.getElementById("manageTabsView");
 
           const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
@@ -6789,8 +7114,8 @@ async function main() {
           const aboutVisible = aboutView instanceof HTMLElement && !aboutView.hasAttribute("hidden");
           const dashboardVisible =
             dashboardView instanceof HTMLElement && !dashboardView.hasAttribute("hidden");
-          const aiSettingsVisible =
-            aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
+          const settingsVisible =
+            settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
           const manageTabsVisible =
             manageTabsView instanceof HTMLElement && !manageTabsView.hasAttribute("hidden");
 
@@ -6806,8 +7131,8 @@ async function main() {
             return;
           }
 
-          if (aiSettingsVisible) {
-            const closeBtn = document.getElementById("closeAiSettingsBtn");
+          if (settingsVisible) {
+            const closeBtn = document.getElementById("closeSettingsBtn");
             if (closeBtn instanceof HTMLElement) safeFocus(closeBtn);
             return;
           }
@@ -6929,11 +7254,11 @@ async function main() {
 
         // AI view: up moves through Save → Custom Words → Model → Endpoint → Close → header.
         {
-          const aiSettingsView = document.getElementById("aiSettingsView");
-          const aiSettingsVisible =
-            aiSettingsView instanceof HTMLElement && !aiSettingsView.hasAttribute("hidden");
+          const settingsView = document.getElementById("settingsView");
+          const settingsVisible =
+            settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
           const inAiView =
-            aiSettingsVisible && activeEl2 instanceof Element && activeEl2.closest("#aiSettingsView") !== null;
+            settingsVisible && activeEl2 instanceof Element && activeEl2.closest("#settingsView") !== null;
           if (inAiView) {
             moveGlobalFocus(-1);
             return;
@@ -7023,8 +7348,8 @@ async function main() {
             return;
           }
           if (inCreateNoteRow) {
-            const themeToggle = document.getElementById("themeToggle");
-            if (themeToggle instanceof HTMLElement && safeFocus(themeToggle)) return;
+            const themeSelectEl = document.getElementById("themeSelect");
+            if (themeSelectEl instanceof HTMLElement && safeFocus(themeSelectEl)) return;
             return;
           }
         }
@@ -7343,12 +7668,12 @@ async function main() {
       if (openNoteEditorIds.size > 0) return;
       const calendarViewEl = document.getElementById("calendarView");
       if (calendarViewEl instanceof HTMLElement && !calendarViewEl.hasAttribute("hidden")) return;
-      const aiSettingsViewEl = document.getElementById("aiSettingsView");
+      const settingsViewEl = document.getElementById("settingsView");
       const manageTabsViewEl = document.getElementById("manageTabsView");
       const instructionsViewEl = document.getElementById("instructionsView");
       const aboutViewEl = document.getElementById("aboutView");
       if (
-        (aiSettingsViewEl instanceof HTMLElement && !aiSettingsViewEl.hasAttribute("hidden")) ||
+        (settingsViewEl instanceof HTMLElement && !settingsViewEl.hasAttribute("hidden")) ||
         (manageTabsViewEl instanceof HTMLElement && !manageTabsViewEl.hasAttribute("hidden")) ||
         (instructionsViewEl instanceof HTMLElement && !instructionsViewEl.hasAttribute("hidden")) ||
         (aboutViewEl instanceof HTMLElement && !aboutViewEl.hasAttribute("hidden"))
@@ -7866,6 +8191,11 @@ async function main() {
               // ignore
             }
           }
+
+          gObsidianVaultName = dbGetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME) || "";
+          gObsidianNotesFolder = dbGetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER) || "";
+
+          clearObsidianCreatedPathCache();
 
           boards = queryBoards(db);
           if (!boards.length) {
@@ -9061,9 +9391,10 @@ async function main() {
   });
 
   document.body.addEventListener("click", async (e) => {
-    const target = e.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.tagName !== "BUTTON") return;
+    const raw = e.target;
+    if (!(raw instanceof Element)) return;
+    const target = raw.closest("button[data-action]");
+    if (!(target instanceof HTMLButtonElement)) return;
 
     const action = target.dataset.action;
     if (!action) return;
@@ -9180,6 +9511,39 @@ async function main() {
       updateNoteDueAt(db, noteId, null);
       await persist();
       await refresh();
+      return;
+    }
+
+    if (action === "openObsidian") {
+      const noteId = Number(target.dataset.noteId);
+      if (!Number.isFinite(noteId)) return;
+      let noteRow = null;
+      try {
+        const res = db.exec(
+          "SELECT id, board, text, notes_html, due_at FROM notes WHERE id = ?",
+          [noteId]
+        );
+        if (res.length && res[0].values?.length) noteRow = res[0].values[0];
+      } catch {
+        // ignore
+      }
+      if (!noteRow) return;
+      const dueRaw = noteRow[4];
+      const note = {
+        id: noteRow[0],
+        board: noteRow[1],
+        text: noteRow[2],
+        notes_html: noteRow[3],
+        due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
+      };
+      const url = resolveObsidianUrlForNote(db, note);
+      if (!url) return;
+      e.preventDefault();
+      try {
+        window.location.assign(url);
+      } catch {
+        // ignore
+      }
       return;
     }
 

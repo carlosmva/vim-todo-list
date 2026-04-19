@@ -154,6 +154,26 @@
   box-shadow: -1px 2px 2px 0 rgba(0, 0, 0, 0.3), inset 0 0 8px 0 rgba(0, 0, 0, 0.15);
 }
 
+/*
+ * Native <select> menus are painted by the OS/browser and ignore most CSS on
+ * <option>. Setting color-scheme on the root matches the platform menu to the
+ * theme so option text stays readable (fixes light popup + light text on dark themes).
+ */
+html[data-theme="light"],
+html[data-theme="solarized-light"],
+html[data-theme="emacs"],
+html[data-theme="nothing-light"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"],
+html[data-theme="solarized-dark"],
+html[data-theme="command-line"],
+html[data-theme="chalkboard"],
+html[data-theme="nothing"] {
+  color-scheme: dark;
+}
+
 html {
   font-size: var(--modern-font-size-base);
 }
@@ -463,7 +483,8 @@ button,
 }
 
 .monoLinkButton,
-.headerLink {
+.headerLink,
+.headerThemeSelect {
   border-radius: var(--modern-radius-sm);
   transition:
     color var(--motion-fast) var(--motion-ease-standard),
@@ -473,7 +494,8 @@ button,
 }
 
 .monoLinkButton:hover:not(:disabled),
-.headerLink:hover {
+.headerLink:hover,
+.headerThemeSelect:hover {
   background: rgba(15, 98, 254, 0.09);
   text-decoration: none;
 }
@@ -493,21 +515,25 @@ button,
 }
 
 [data-theme="dark"] .headerLink,
+[data-theme="dark"] .headerThemeSelect,
 [data-theme="dark"] .monoLinkButton,
 [data-theme="dark"] .noteActions .monoLinkButton,
 [data-theme="dark"] .noteBackButtonsRow .monoLinkButton,
 [data-theme="dark"] .createButtons .monoLinkButton,
 [data-theme="solarized-dark"] .headerLink,
+[data-theme="solarized-dark"] .headerThemeSelect,
 [data-theme="solarized-dark"] .monoLinkButton,
 [data-theme="solarized-dark"] .noteActions .monoLinkButton,
 [data-theme="solarized-dark"] .noteBackButtonsRow .monoLinkButton,
 [data-theme="solarized-dark"] .createButtons .monoLinkButton,
 [data-theme="command-line"] .headerLink,
+[data-theme="command-line"] .headerThemeSelect,
 [data-theme="command-line"] .monoLinkButton,
 [data-theme="command-line"] .noteActions .monoLinkButton,
 [data-theme="command-line"] .noteBackButtonsRow .monoLinkButton,
 [data-theme="command-line"] .createButtons .monoLinkButton,
 [data-theme="chalkboard"] .headerLink,
+[data-theme="chalkboard"] .headerThemeSelect,
 [data-theme="chalkboard"] .monoLinkButton,
 [data-theme="chalkboard"] .noteActions .monoLinkButton,
 [data-theme="chalkboard"] .noteBackButtonsRow .monoLinkButton,
@@ -516,27 +542,32 @@ button,
 }
 
 [data-theme="dark"] .headerLink:hover,
+[data-theme="dark"] .headerThemeSelect:hover,
 [data-theme="dark"] .monoLinkButton:hover:not(:disabled) {
   color: #ffffff !important;
 }
 
 [data-theme="solarized-dark"] .headerLink:hover,
+[data-theme="solarized-dark"] .headerThemeSelect:hover,
 [data-theme="solarized-dark"] .monoLinkButton:hover:not(:disabled) {
   color: #fdf6e3 !important;
 }
 
 [data-theme="command-line"] .headerLink:hover,
+[data-theme="command-line"] .headerThemeSelect:hover,
 [data-theme="command-line"] .monoLinkButton:hover:not(:disabled) {
   color: #33ff66 !important;
 }
 
 [data-theme="chalkboard"] .headerLink:hover,
+[data-theme="chalkboard"] .headerThemeSelect:hover,
 [data-theme="chalkboard"] .monoLinkButton:hover:not(:disabled) {
   color: #ffff66 !important;
 }
 
 .monoLinkButton:focus-visible,
-.headerLink:focus-visible {
+.headerLink:focus-visible,
+.headerThemeSelect:focus-visible {
   outline: 2px solid var(--modern-focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 3px rgba(15, 98, 254, 0.26);
