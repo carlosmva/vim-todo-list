@@ -146,6 +146,7 @@ function buildObsidianMarkdown(note) {
   }
   lines.push("---");
   lines.push(`*Board: ${String(note.board || "")} · Vim To-Do (id ${Number.isFinite(id) ? id : "?"})*`);
+  lines.push(note.status === "complete" ? "#vim-todo/complete" : "#vim-todo/pending");
   let out = lines.join("\n");
   if (out.length > OBSIDIAN_NEW_CONTENT_MAX) {
     out = `${out.slice(0, OBSIDIAN_NEW_CONTENT_MAX)}\n\n…`;
@@ -202,9 +203,21 @@ function clearObsidianCreatedPathCache() {
 }
 
 /**
+ * Build `obsidian://new` with encoded Markdown (Sync mode should verify the file exists before using `open`).
+ */
+function buildObsidianNewProtocolUrl(vault, relPath, note) {
+  const encV = encodeURIComponent(vault);
+  const encF = encodeURIComponent(relPath);
+  const md = buildObsidianMarkdown(note);
+  const encC = encodeURIComponent(md);
+  return `obsidian://new?vault=${encV}&file=${encF}&content=${encC}`;
+}
+
+/**
  * First open for this vault path uses `new` (creates folders/file). Later opens use `open` only — never `new`
  * again for the same path, or Obsidian creates "note 1", "note 2", … instead of updating the file.
  * To push edited Markdown after the first create, use Sync mode + linked vault folder (writes the .md on disk).
+ * (Marks "created" only for this URI-only path — when Sync is on, prefer checking disk before `open`.)
  */
 function resolveObsidianUrlForNote(db, note) {
   const vault = String(gObsidianVaultName || "").trim();
@@ -217,9 +230,7 @@ function resolveObsidianUrlForNote(db, note) {
   const encF = encodeURIComponent(file);
   if (!obsidianPathHasBeenCreated(vault, nid)) {
     markObsidianPathCreated(vault, nid);
-    const md = buildObsidianMarkdown(note);
-    const encC = encodeURIComponent(md);
-    return `obsidian://new?vault=${encV}&file=${encF}&content=${encC}`;
+    return buildObsidianNewProtocolUrl(vault, file, note);
   }
   return `obsidian://open?vault=${encV}&file=${encF}`;
 }
@@ -1663,6 +1674,16 @@ function getObsidianCardSyncBadge(noteId) {
     };
   }
 
+  if (obsidianSyncScanState === "paused_editor") {
+    return {
+      className: "noteObsidianSyncBadge noteObsidianSyncBadge--muted",
+      text: "Vault: waiting",
+      meta: "Close the open notes editor to refresh vault status.",
+      title:
+        "Vault compare is temporarily paused while a card’s notes editor is open, so your in-progress edits are not reset. Close the notes editor to refresh status.",
+    };
+  }
+
   if (obsidianSyncScanState === "scanning") {
     return {
       className: "noteObsidianSyncBadge noteObsidianSyncBadge--checking",
@@ -1671,7 +1692,7 @@ function getObsidianCardSyncBadge(noteId) {
     };
   }
 
-  const st = obsidianSyncStatusByNoteId.get(noteId);
+  const st = obsidianSyncStatusByNoteId.get(Number(noteId));
   const base = { className: "noteObsidianSyncBadge", text: "Vault: —", title: "" };
 
   switch (st) {
@@ -1712,7 +1733,7 @@ function getObsidianCardSyncBadge(noteId) {
     }
     case "permission_denied": {
       const ph =
-        obsidianSyncGlobalBadgeHint || obsidianSyncErrorHintByNoteId.get(noteId) || "";
+        obsidianSyncGlobalBadgeHint || obsidianSyncErrorHintByNoteId.get(Number(noteId)) || "";
       return {
         className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
         text: "Vault: permission denied",
@@ -1722,7 +1743,7 @@ function getObsidianCardSyncBadge(noteId) {
       };
     }
     case "path_mismatch": {
-      const ph = obsidianSyncErrorHintByNoteId.get(noteId) || "";
+      const ph = obsidianSyncErrorHintByNoteId.get(Number(noteId)) || "";
       return {
         className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
         text: "Vault: path conflict",
@@ -1732,7 +1753,7 @@ function getObsidianCardSyncBadge(noteId) {
       };
     }
     case "read_error": {
-      const ph = obsidianSyncErrorHintByNoteId.get(noteId) || "";
+      const ph = obsidianSyncErrorHintByNoteId.get(Number(noteId)) || "";
       return {
         className: "noteObsidianSyncBadge noteObsidianSyncBadge--warn",
         text: "Vault: read error",
@@ -1816,14 +1837,30 @@ function renderNotes(db, notes) {
       syncRow.setAttribute("role", "status");
       syncRow.setAttribute("aria-live", "polite");
       syncRow.setAttribute("aria-atomic", "true");
-      syncRow.setAttribute("aria-label", `Obsidian ${syncBadgeInfo.text}`);
+      const ariaLabel =
+        syncBadgeInfo.meta != null && String(syncBadgeInfo.meta).trim()
+          ? `Obsidian ${syncBadgeInfo.text}. ${syncBadgeInfo.meta}`
+          : `Obsidian ${syncBadgeInfo.text}`;
+      syncRow.setAttribute("aria-label", ariaLabel);
       const syncBadge = document.createElement("span");
       syncBadge.className = syncBadgeInfo.className;
       syncBadge.setAttribute("aria-hidden", "true");
       const syncBadgeText = document.createElement("span");
       syncBadgeText.className = "noteObsidianSyncBadge__text";
       syncBadgeText.textContent = syncBadgeInfo.text;
-      syncBadge.appendChild(syncBadgeText);
+      if (syncBadgeInfo.meta != null && String(syncBadgeInfo.meta).trim()) {
+        const stack = document.createElement("span");
+        stack.className = "noteObsidianSyncBadge__stack";
+        stack.appendChild(syncBadgeText);
+        const metaEl = document.createElement("span");
+        metaEl.className = "noteObsidianSyncBadge__meta";
+        metaEl.textContent = syncBadgeInfo.meta;
+        stack.appendChild(metaEl);
+        syncBadge.appendChild(stack);
+        syncBadge.classList.add("noteObsidianSyncBadge--stacked");
+      } else {
+        syncBadge.appendChild(syncBadgeText);
+      }
       if (syncBadgeInfo.title) syncBadge.title = syncBadgeInfo.title;
       syncRow.appendChild(syncBadge);
       front.appendChild(syncRow);
@@ -2407,6 +2444,71 @@ async function main() {
   const aiEndpointModelInput = document.getElementById("aiEndpointModel");
   const aiCustomWordsInput = document.getElementById("aiCustomWords");
   const aiStatusLed = document.getElementById("aiStatusLed");
+  const aiSettingsUnsavedBanner = document.getElementById("aiSettingsUnsavedBanner");
+  const obsidianSettingsUnsavedBanner = document.getElementById("obsidianSettingsUnsavedBanner");
+  const saveAiSettingsBtnEl = document.getElementById("saveAiSettingsBtn");
+  const saveObsidianSettingsBtnEl = document.getElementById("saveObsidianSettingsBtn");
+
+  let aiSettingsSavedSnapshot = { url: "", model: "", words: "" };
+  let obsidianSettingsSavedSnapshot = { vault: "", folder: "", sync: false };
+
+  function readAiSettingsFormSnapshot() {
+    return {
+      url:
+        aiEndpointBaseUrlInput instanceof HTMLInputElement
+          ? String(aiEndpointBaseUrlInput.value || "").trim()
+          : "",
+      model:
+        aiEndpointModelInput instanceof HTMLInputElement
+          ? String(aiEndpointModelInput.value || "").trim()
+          : "",
+      words: aiCustomWordsInput instanceof HTMLTextAreaElement ? String(aiCustomWordsInput.value || "") : "",
+    };
+  }
+
+  function aiSnapshotsEqual(a, b) {
+    return a.url === b.url && a.model === b.model && a.words === b.words;
+  }
+
+  function readObsidianSettingsFormSnapshot() {
+    const syncEl = document.getElementById("obsidianSyncMode");
+    return {
+      vault: obsidianVaultNameInput instanceof HTMLInputElement ? obsidianVaultNameInput.value.trim() : "",
+      folder: obsidianNotesFolderInput instanceof HTMLInputElement ? obsidianNotesFolderInput.value.trim() : "",
+      sync: syncEl instanceof HTMLInputElement && syncEl.checked,
+    };
+  }
+
+  function obsidianSnapshotsEqual(a, b) {
+    return a.vault === b.vault && a.folder === b.folder && a.sync === b.sync;
+  }
+
+  function commitAiSettingsSavedSnapshot() {
+    aiSettingsSavedSnapshot = readAiSettingsFormSnapshot();
+    updateAiSettingsDirtyUi();
+  }
+
+  function updateAiSettingsDirtyUi() {
+    const dirty = !aiSnapshotsEqual(readAiSettingsFormSnapshot(), aiSettingsSavedSnapshot);
+    if (aiSettingsUnsavedBanner instanceof HTMLElement) aiSettingsUnsavedBanner.hidden = !dirty;
+    if (saveAiSettingsBtnEl instanceof HTMLElement) {
+      saveAiSettingsBtnEl.classList.toggle("settingsSaveButton--unsaved", dirty);
+    }
+  }
+
+  function commitObsidianSettingsSavedSnapshot() {
+    obsidianSettingsSavedSnapshot = readObsidianSettingsFormSnapshot();
+    updateObsidianSettingsDirtyUi();
+  }
+
+  function updateObsidianSettingsDirtyUi() {
+    const dirty = !obsidianSnapshotsEqual(readObsidianSettingsFormSnapshot(), obsidianSettingsSavedSnapshot);
+    if (obsidianSettingsUnsavedBanner instanceof HTMLElement) obsidianSettingsUnsavedBanner.hidden = !dirty;
+    if (saveObsidianSettingsBtnEl instanceof HTMLElement) {
+      saveObsidianSettingsBtnEl.classList.toggle("settingsSaveButton--unsaved", dirty);
+    }
+  }
+
   const cardFilterRow = document.getElementById("cardFilterRow");
   const cardFilterInput = document.getElementById("cardFilterInput");
   const manageTabsMessage = document.getElementById("manageTabsMessage");
@@ -2415,6 +2517,7 @@ async function main() {
   const addTabName = document.getElementById("addTabName");
   const noteAutocomplete = document.getElementById("noteAutocomplete");
   const guidedTour = document.getElementById("guidedTour");
+  const guidedTourPanel = guidedTour instanceof HTMLElement ? guidedTour.querySelector(".guidedTour__panel") : null;
   const guidedTourProgress = document.getElementById("guidedTourProgress");
   const guidedTourTitle = document.getElementById("guidedTourTitle");
   const guidedTourBody = document.getElementById("guidedTourBody");
@@ -2452,7 +2555,10 @@ async function main() {
   }
 
   if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
-    aiCustomWordsInput.addEventListener("input", () => autosizeTextarea(aiCustomWordsInput));
+    aiCustomWordsInput.addEventListener("input", () => {
+      autosizeTextarea(aiCustomWordsInput);
+      updateAiSettingsDirtyUi();
+    });
   }
 
   function setCardFilterVisible(visible) {
@@ -2624,12 +2730,80 @@ async function main() {
       guidedTourTarget.classList.remove("guidedTourTarget");
     }
     guidedTourTarget = null;
+    if (guidedTour instanceof HTMLElement) {
+      guidedTour.classList.remove("guidedTour--hasTarget");
+    }
+    if (guidedTourPanel instanceof HTMLElement) {
+      guidedTourPanel.classList.remove("guidedTour__panel--anchored");
+      guidedTourPanel.style.left = "";
+      guidedTourPanel.style.top = "";
+      guidedTourPanel.style.transform = "";
+    }
+  }
+
+  function getGuidedTourSpotlightRadius(target) {
+    const computed = window.getComputedStyle(target);
+    const radius = parseFloat(computed.borderTopLeftRadius || "0");
+    return Number.isFinite(radius) ? Math.min(Math.max(radius + 8, 8), 18) : 8;
+  }
+
+  function positionGuidedTourPanel(targetRect) {
+    if (!(guidedTourPanel instanceof HTMLElement) || !(targetRect instanceof DOMRect)) return;
+    const margin = 12;
+    const gap = 14;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const panelRect = guidedTourPanel.getBoundingClientRect();
+    const targetCenter = targetRect.left + targetRect.width / 2;
+    const left = Math.min(
+      Math.max(margin, targetCenter - panelRect.width / 2),
+      Math.max(margin, viewportWidth - panelRect.width - margin)
+    );
+    let top = targetRect.bottom + gap;
+
+    if (top + panelRect.height > viewportHeight - margin) {
+      top = targetRect.top - panelRect.height - gap;
+    }
+    if (top < margin) {
+      top = Math.max(margin, viewportHeight - panelRect.height - margin);
+    }
+
+    guidedTourPanel.classList.add("guidedTour__panel--anchored");
+    guidedTourPanel.style.left = `${Math.round(left)}px`;
+    guidedTourPanel.style.top = `${Math.round(top)}px`;
+    guidedTourPanel.style.transform = "none";
+  }
+
+  function updateGuidedTourSpotlight() {
+    if (!(guidedTour instanceof HTMLElement) || !(guidedTourTarget instanceof HTMLElement)) return;
+    const rect = guidedTourTarget.getBoundingClientRect();
+    const padding = 8;
+    const x = Math.max(8, rect.left - padding);
+    const y = Math.max(8, rect.top - padding);
+    const width = Math.min(window.innerWidth - x - 8, rect.width + padding * 2);
+    const height = Math.min(window.innerHeight - y - 8, rect.height + padding * 2);
+
+    guidedTour.style.setProperty("--guided-tour-spotlight-x", `${Math.round(x)}px`);
+    guidedTour.style.setProperty("--guided-tour-spotlight-y", `${Math.round(y)}px`);
+    guidedTour.style.setProperty("--guided-tour-spotlight-width", `${Math.round(Math.max(width, 24))}px`);
+    guidedTour.style.setProperty("--guided-tour-spotlight-height", `${Math.round(Math.max(height, 24))}px`);
+    guidedTour.style.setProperty("--guided-tour-spotlight-radius", `${getGuidedTourSpotlightRadius(guidedTourTarget)}px`);
+    guidedTour.classList.add("guidedTour--hasTarget");
+    positionGuidedTourPanel(new DOMRect(x, y, width, height));
   }
 
   function prepareGuidedTourStep(step) {
     if (!step) return;
     if (step.view === "settings") {
       showSettingsView(step.section || "boards");
+      if (step.section === "ai") {
+        syncAiSettingsFormFieldsFromGlobals();
+        commitAiSettingsSavedSnapshot();
+      }
+      if (step.section === "obsidian") {
+        syncObsidianSettingsFormFieldsFromGlobals();
+        commitObsidianSettingsSavedSnapshot();
+      }
     } else {
       showNotesView();
     }
@@ -2658,14 +2832,19 @@ async function main() {
 
     requestAnimationFrame(() => {
       const target = step.target ? document.querySelector(step.target) : null;
-      if (target instanceof HTMLElement && isElementInVisibleView(target)) {
-        guidedTourTarget = target;
-        guidedTourTarget.classList.add("guidedTourTarget");
+      if (target instanceof HTMLElement) {
         try {
-          guidedTourTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+          target.scrollIntoView({ block: "center", inline: "nearest" });
         } catch {
           // ignore
         }
+        requestAnimationFrame(() => {
+          if (target instanceof HTMLElement && isElementInVisibleView(target)) {
+            guidedTourTarget = target;
+            guidedTourTarget.classList.add("guidedTourTarget");
+            updateGuidedTourSpotlight();
+          }
+        });
       }
       if (guidedTourNext instanceof HTMLElement) safeFocus(guidedTourNext);
     });
@@ -2840,7 +3019,7 @@ async function main() {
 	          `<div class="instructionsKeyList">
 	            ${keyRow(combo(mod, fmt(nav.left)) + " / " + combo(mod, fmt(nav.right)), "Move across card action buttons.")}
 	            ${keyRow(keycap("Enter"), "Activate the focused action.")}
-	            ${keyRow(keycap(":x"), "Close notes editor or flipped links panel.")}
+		            ${keyRow(keycap(":x"), "Close notes editor (pushing to Obsidian when sync is on) or flipped links panel.")}
 	          </div>
 	          <ul>
 	            <li>Use the arrow action buttons to move a card up or down within its column.</li>
@@ -4914,6 +5093,69 @@ async function main() {
     }
   }
 
+  function splitMarkdownConflictLines(value) {
+    const text = String(value || "").slice(0, 12000);
+    if (!text) return [""];
+    return text.split(/\r\n|\n|\r/);
+  }
+
+  function appendConflictDiffLine(parent, line, className, prefix) {
+    const row = document.createElement("span");
+    row.className = `obsidianConflictModal__diffLine ${className}`;
+    const marker = document.createElement("span");
+    marker.className = "obsidianConflictModal__diffMarker";
+    marker.textContent = prefix;
+    const content = document.createElement("span");
+    content.className = "obsidianConflictModal__diffContent";
+    content.textContent = line || " ";
+    row.append(marker, content);
+    parent.appendChild(row);
+  }
+
+  function renderObsidianConflictDiff(appEl, vaultEl, appMd, vaultMd) {
+    const appLines = splitMarkdownConflictLines(appMd);
+    const vaultLines = splitMarkdownConflictLines(vaultMd);
+    appEl.replaceChildren();
+    vaultEl.replaceChildren();
+
+    if (appLines.length > 650 || vaultLines.length > 650) {
+      appendConflictDiffLine(appEl, "Diff is large; showing plain preview.", "obsidianConflictModal__diffLine--note", " ");
+      appendConflictDiffLine(vaultEl, "Diff is large; showing plain preview.", "obsidianConflictModal__diffLine--note", " ");
+      for (const line of appLines) appendConflictDiffLine(appEl, line, "obsidianConflictModal__diffLine--same", " ");
+      for (const line of vaultLines) appendConflictDiffLine(vaultEl, line, "obsidianConflictModal__diffLine--same", " ");
+      return;
+    }
+
+    const rows = vaultLines.length + 1;
+    const cols = appLines.length + 1;
+    const dp = Array.from({ length: rows }, () => new Uint16Array(cols));
+    for (let i = vaultLines.length - 1; i >= 0; i -= 1) {
+      for (let j = appLines.length - 1; j >= 0; j -= 1) {
+        dp[i][j] =
+          vaultLines[i] === appLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+
+    let i = 0;
+    let j = 0;
+    while (i < vaultLines.length || j < appLines.length) {
+      if (i < vaultLines.length && j < appLines.length && vaultLines[i] === appLines[j]) {
+        appendConflictDiffLine(vaultEl, vaultLines[i], "obsidianConflictModal__diffLine--same", " ");
+        appendConflictDiffLine(appEl, appLines[j], "obsidianConflictModal__diffLine--same", " ");
+        i += 1;
+        j += 1;
+      } else if (j < appLines.length && (i >= vaultLines.length || dp[i][j + 1] >= dp[i + 1][j])) {
+        appendConflictDiffLine(vaultEl, "", "obsidianConflictModal__diffLine--blank", " ");
+        appendConflictDiffLine(appEl, appLines[j], "obsidianConflictModal__diffLine--added", "+");
+        j += 1;
+      } else {
+        appendConflictDiffLine(vaultEl, vaultLines[i], "obsidianConflictModal__diffLine--removed", "-");
+        appendConflictDiffLine(appEl, "", "obsidianConflictModal__diffLine--blank", " ");
+        i += 1;
+      }
+    }
+  }
+
   function showObsidianConflictModal_(appMd, vaultMd, meta = {}) {
     return new Promise((resolve) => {
       const modal = document.getElementById("obsidianConflictModal");
@@ -4932,8 +5174,9 @@ async function main() {
         hideObsidianConflictModal();
         resolve(choice);
       };
-      if (preApp instanceof HTMLElement) preApp.textContent = String(appMd || "").slice(0, 12000);
-      if (preVault instanceof HTMLElement) preVault.textContent = String(vaultMd || "").slice(0, 12000);
+      if (preApp instanceof HTMLElement && preVault instanceof HTMLElement) {
+        renderObsidianConflictDiff(preApp, preVault, appMd, vaultMd);
+      }
       if (hintEl instanceof HTMLElement) {
         const vf = meta.vaultFileTime;
         const au = meta.appUpdatedAt;
@@ -5040,6 +5283,10 @@ async function main() {
     // Full `refresh()` inside this scan replaces all cards and destroys contenteditable nodes; never
     // run while a rich notes editor is open or typing becomes impossible / flickers.
     if (openNoteEditorIds.size > 0) {
+      obsidianSyncScanState = "paused_editor";
+      obsidianSyncStatusByNoteId.clear();
+      obsidianSyncErrorHintByNoteId.clear();
+      await refresh();
       return;
     }
 
@@ -5076,7 +5323,7 @@ async function main() {
       const st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
       if (st !== "granted") {
         for (const row of queryNotes(db, activeBoard)) {
-          obsidianSyncStatusByNoteId.set(row.id, "permission_needs_gesture");
+          obsidianSyncStatusByNoteId.set(Number(row.id), "permission_needs_gesture");
         }
         obsidianSyncGlobalBadgeHint =
           "queryPermission is not “granted”. Click “Grant folder access” in Settings → Obsidian (or Obsidian on a card), then reopen the popup or wait for badges to refresh.";
@@ -5090,7 +5337,7 @@ async function main() {
         (e instanceof Error ? e.message : String(e)).slice(0, 300) ||
         "Could not verify folder permission.";
       for (const row of queryNotes(db, activeBoard)) {
-        obsidianSyncStatusByNoteId.set(row.id, "permission_denied");
+        obsidianSyncStatusByNoteId.set(Number(row.id), "permission_denied");
       }
       obsidianSyncScanState = "done";
       await refresh();
@@ -5100,7 +5347,7 @@ async function main() {
     for (const note of queryNotes(db, activeBoard)) {
       const relPath = obsidianRelativeFilePath(db, note);
       if (!relPath) {
-        obsidianSyncStatusByNoteId.set(note.id, "no_path");
+        obsidianSyncStatusByNoteId.set(Number(note.id), "no_path");
         continue;
       }
       const appMd = buildObsidianMarkdown(note);
@@ -5109,15 +5356,15 @@ async function main() {
         const fh = await getFileHandleFromVaultPath(obsidianVaultRootHandle, relPath, false);
         const file = await fh.getFile();
         const nf = normalizeObsidianMarkdown(await file.text());
-        obsidianSyncStatusByNoteId.set(note.id, na === nf ? "synced" : "diverged");
+        obsidianSyncStatusByNoteId.set(Number(note.id), na === nf ? "synced" : "diverged");
       } catch (e) {
         const { kind, hint } = classifyObsidianVaultAccessError(e);
-        if (hint) obsidianSyncErrorHintByNoteId.set(note.id, hint);
+        if (hint) obsidianSyncErrorHintByNoteId.set(Number(note.id), hint);
         let status = "read_error";
         if (kind === "missing") status = "missing";
         else if (kind === "path_mismatch") status = "path_mismatch";
         else if (kind === "permission") status = "permission_denied";
-        obsidianSyncStatusByNoteId.set(note.id, status);
+        obsidianSyncStatusByNoteId.set(Number(note.id), status);
         if (kind !== "missing") {
           console.warn("Obsidian: vault scan read failed", relPath, e);
         }
@@ -5128,7 +5375,8 @@ async function main() {
     await refresh();
   }
 
-  async function pushNoteMarkdownToObsidianVault(noteId) {
+  async function pushNoteMarkdownToObsidianVault(noteId, opts = {}) {
+    const force = opts.force === true;
     if (!Number.isFinite(noteId)) return;
     if (!String(gObsidianVaultName || "").trim()) {
       console.warn("Obsidian: skipped vault push (set vault name in Settings).");
@@ -5166,7 +5414,7 @@ async function main() {
     let noteRow = null;
     try {
       const res = db.exec(
-        "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+        "SELECT id, board, text, status, notes_html, due_at, updated_at FROM notes WHERE id = ?",
         [noteId]
       );
       if (res.length && res[0].values?.length) noteRow = res[0].values[0];
@@ -5174,14 +5422,15 @@ async function main() {
       return;
     }
     if (!noteRow) return;
-    const dueRaw = noteRow[4];
+    const dueRaw = noteRow[5];
     const note = {
       id: noteRow[0],
       board: noteRow[1],
       text: noteRow[2],
-      notes_html: noteRow[3],
+      status: noteRow[3],
+      notes_html: noteRow[4],
       due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
-      updated_at: noteRow[5],
+      updated_at: noteRow[6],
     };
 
     const relPath = obsidianRelativeFilePath(db, note);
@@ -5194,7 +5443,9 @@ async function main() {
       const fh = await getFileHandleFromVaultPath(obsidianVaultRootHandle, relPath, false);
       const file = await fh.getFile();
       const nf = normalizeObsidianMarkdown(await file.text());
-      if (na !== nf) {
+      const appUpdatedAt = Number.isFinite(Number(note.updated_at)) ? Number(note.updated_at) : 0;
+      const vaultNewerByClock = file.lastModified > appUpdatedAt + OBSIDIAN_VAULT_TIME_SLACK_MS;
+      if (na !== nf && !force && vaultNewerByClock) {
         console.warn(
           "Obsidian: skipped automatic vault push — on-disk .md differs from this note. Open Notes or Obsidian on this card to compare and choose."
         );
@@ -5220,6 +5471,7 @@ async function main() {
    */
   async function flushPendingNotesEditorSave(noteId, flushOpts = {}) {
     const skipVaultPush = flushOpts.skipVaultPush === true;
+    const forceVaultPush = flushOpts.forceVaultPush === true;
     if (!Number.isFinite(noteId)) return;
     const existing = notesEditorSaveTimers.get(noteId);
     if (existing) clearTimeout(existing);
@@ -5236,7 +5488,7 @@ async function main() {
     }
     await persist();
     if (!skipVaultPush && gObsidianSyncMode && String(gObsidianVaultName || "").trim()) {
-      await pushNoteMarkdownToObsidianVault(noteId);
+      await pushNoteMarkdownToObsidianVault(noteId, { force: forceVaultPush });
     }
   }
 
@@ -5255,7 +5507,7 @@ async function main() {
     let noteRow = null;
     try {
       const res = db.exec(
-        "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+        "SELECT id, board, text, status, notes_html, due_at, updated_at FROM notes WHERE id = ?",
         [noteId]
       );
       if (res.length && res[0].values?.length) noteRow = res[0].values[0];
@@ -5263,21 +5515,89 @@ async function main() {
       return;
     }
     if (!noteRow) return;
-    const dueRaw = noteRow[4];
+    const dueRaw = noteRow[5];
     const note = {
       id: noteRow[0],
       board: noteRow[1],
       text: noteRow[2],
-      notes_html: noteRow[3],
+      status: noteRow[3],
+      notes_html: noteRow[4],
       due_at: dueRaw != null && dueRaw !== "" ? Number(dueRaw) : null,
-      updated_at: noteRow[5],
+      updated_at: noteRow[6],
     };
 
     const relPath = obsidianRelativeFilePath(db, note);
     if (!relPath) return;
 
-    function navigateUriFallback() {
+    async function navigateUriFallback() {
       if (!navigateToObsidian) return;
+      const v = String(gObsidianVaultName || "").trim();
+      if (!v) return;
+      const file = obsidianRelativeFilePath(db, note);
+      if (!file) return;
+      const nid = Number(note?.id);
+      if (!Number.isFinite(nid)) return;
+
+      if (obsidianPathHasBeenCreated(v, nid)) {
+        if (gObsidianSyncMode && obsidianVaultRootHandle) {
+          try {
+            await reloadObsidianVaultHandleFromStorage();
+            if (obsidianVaultRootHandle) {
+              let st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+              if (st !== "granted") {
+                await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
+                st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+              }
+              if (st === "granted") {
+                try {
+                  await getFileHandleFromVaultPath(obsidianVaultRootHandle, file, false);
+                  openObsidianProtocolUrl(buildObsidianOpenUrlOnly(v, file));
+                  return;
+                } catch {
+                  try {
+                    localStorage.removeItem(obsidianPathStorageKey(v, nid));
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Obsidian: navigateUriFallback cache revalidate", e);
+          }
+        } else {
+          openObsidianProtocolUrl(buildObsidianOpenUrlOnly(v, file));
+          return;
+        }
+      }
+
+      if (gObsidianSyncMode && obsidianVaultRootHandle) {
+        try {
+          await reloadObsidianVaultHandleFromStorage();
+          if (obsidianVaultRootHandle) {
+            let st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+            if (st !== "granted") {
+              await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
+              st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+            }
+            if (st === "granted") {
+              try {
+                await getFileHandleFromVaultPath(obsidianVaultRootHandle, file, false);
+                markObsidianPathCreated(v, nid);
+                openObsidianProtocolUrl(buildObsidianOpenUrlOnly(v, file));
+                return;
+              } catch {
+                // no file at path — use new without marking
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Obsidian: navigateUriFallback vault check", e);
+        }
+        openObsidianProtocolUrl(buildObsidianNewProtocolUrl(v, file, note));
+        return;
+      }
+
       const url = resolveObsidianUrlForNote(db, note);
       if (url) openObsidianProtocolUrl(url);
     }
@@ -5291,25 +5611,28 @@ async function main() {
       const skipVaultWrite = opts.skipVaultWrite === true;
       if (!navigateToObsidian) return;
       let openRel = relPath;
+      let noteForOpen = note;
       try {
         const res = db.exec(
-          "SELECT id, board, text, notes_html, due_at, updated_at FROM notes WHERE id = ?",
+          "SELECT id, board, text, status, notes_html, due_at, updated_at FROM notes WHERE id = ?",
           [noteId]
         );
         if (res.length && res[0].values?.length) {
           const row = res[0].values[0];
-          const dueR = row[4];
+          const dueR = row[5];
           const freshNote = {
             id: row[0],
             board: row[1],
             text: row[2],
-            notes_html: row[3],
+            status: row[3],
+            notes_html: row[4],
             due_at: dueR != null && dueR !== "" ? Number(dueR) : null,
-            updated_at: row[5],
+            updated_at: row[6],
           };
+          noteForOpen = freshNote;
           const computed = obsidianRelativeFilePath(db, freshNote);
           if (computed) openRel = computed;
-          if (!skipVaultWrite) {
+          if (!skipVaultWrite && obsidianVaultRootHandle) {
             const freshMd = buildObsidianMarkdown(freshNote);
             await writeMarkdownFileAtVaultPath(obsidianVaultRootHandle, openRel, freshMd);
             await bumpNoteUpdatedAtToVaultFile(db, noteId, obsidianVaultRootHandle, openRel);
@@ -5319,11 +5642,37 @@ async function main() {
       } catch (e) {
         console.warn("Obsidian: could not refresh vault file before open", e);
       }
-      openObsidianProtocolUrl(buildObsidianOpenUrlOnly(vault, openRel));
+      if (!navigateToObsidian) return;
+
+      const v = vault;
+      try {
+        await reloadObsidianVaultHandleFromStorage();
+        if (obsidianVaultRootHandle) {
+          let st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+          if (st !== "granted") {
+            await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" }).catch(() => {});
+            st = await obsidianVaultRootHandle.queryPermission({ mode: "readwrite" });
+          }
+          if (st === "granted") {
+            try {
+              await getFileHandleFromVaultPath(obsidianVaultRootHandle, openRel, false);
+              markObsidianPathCreated(v, Number(noteForOpen.id));
+              openObsidianProtocolUrl(buildObsidianOpenUrlOnly(v, openRel));
+              return;
+            } catch {
+              openObsidianProtocolUrl(buildObsidianNewProtocolUrl(v, openRel, noteForOpen));
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Obsidian: navigateOpenOnly vault verify", e);
+      }
+      openObsidianProtocolUrl(buildObsidianNewProtocolUrl(v, openRel, noteForOpen));
     }
 
     if (!gObsidianSyncMode || !obsidianVaultRootHandle) {
-      navigateUriFallback();
+      await navigateUriFallback();
       return;
     }
 
@@ -5332,12 +5681,12 @@ async function main() {
       if (st !== "granted") {
         const r = await obsidianVaultRootHandle.requestPermission({ mode: "readwrite" });
         if (r !== "granted") {
-          navigateUriFallback();
+          await navigateUriFallback();
           return;
         }
       }
     } catch {
-      navigateUriFallback();
+      await navigateUriFallback();
       return;
     }
 
@@ -6521,6 +6870,14 @@ async function main() {
     keepCardInView(card);
   }
 
+  function closeNotesEditorFromCommand(noteId, closeOpts = {}) {
+    if (!Number.isFinite(noteId)) return;
+    setNotesEditorOpen(noteId, false, closeOpts);
+    void flushPendingNotesEditorSave(noteId, { forceVaultPush: true }).catch((err) => {
+      console.warn("Obsidian: could not push notes after :x", err);
+    });
+  }
+
   function closeCardOverlays(card) {
     if (!(card instanceof HTMLElement)) return;
     const noteId = getNoteIdFromCardElement(card);
@@ -6733,6 +7090,16 @@ async function main() {
       }
     });
   }
+  window.addEventListener("resize", () => {
+    if (guidedTourActive) updateGuidedTourSpotlight();
+  });
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (guidedTourActive) updateGuidedTourSpotlight();
+    },
+    true
+  );
   document.addEventListener(
     "keydown",
     (e) => {
@@ -6785,6 +7152,33 @@ async function main() {
     }
   }
 
+  function syncAiSettingsFormFieldsFromGlobals() {
+    populateAiSettingsStaticHints();
+    if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
+      aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
+    }
+    if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
+      aiCustomWordsInput.value = Array.isArray(aiCustomWords) ? aiCustomWords.join("\n") : "";
+      queueAutosizeTextarea(aiCustomWordsInput);
+    }
+    if (aiEndpointModelInput instanceof HTMLInputElement) {
+      aiEndpointModelInput.value = aiEndpointModel || "";
+    }
+    queueAiSettingsHealthCheck({ delayMs: 0 });
+  }
+
+  function syncObsidianSettingsFormFieldsFromGlobals() {
+    if (obsidianVaultNameInput instanceof HTMLInputElement) {
+      obsidianVaultNameInput.value = gObsidianVaultName || "";
+    }
+    if (obsidianNotesFolderInput instanceof HTMLInputElement) {
+      obsidianNotesFolderInput.value = gObsidianNotesFolder || "";
+    }
+    const syncEl = document.getElementById("obsidianSyncMode");
+    if (syncEl instanceof HTMLInputElement) syncEl.checked = gObsidianSyncMode;
+    setObsidianVaultFolderStatusUi();
+  }
+
   function focusMainBoardSwitcherTab() {
     const activeTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
     const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
@@ -6807,25 +7201,15 @@ async function main() {
   function openSettingsToAiPanel() {
     setAiSettingsMessage("");
     showSettingsView("ai");
-    populateAiSettingsStaticHints();
     if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
-      aiEndpointBaseUrlInput.value = aiEndpointBaseUrl || "";
+      syncAiSettingsFormFieldsFromGlobals();
+      commitAiSettingsSavedSnapshot();
       aiEndpointBaseUrlInput.focus();
       try {
         aiEndpointBaseUrlInput.select();
       } catch {
         // ignore
       }
-      if (aiCustomWordsInput instanceof HTMLTextAreaElement) {
-        aiCustomWordsInput.value = Array.isArray(aiCustomWords) ? aiCustomWords.join("\n") : "";
-        queueAutosizeTextarea(aiCustomWordsInput);
-      }
-
-      if (aiEndpointModelInput instanceof HTMLInputElement) {
-        aiEndpointModelInput.value = aiEndpointModel || "";
-      }
-
-      queueAiSettingsHealthCheck({ delayMs: 0 });
     } else if (closeSettingsBtn instanceof HTMLElement) {
       closeSettingsBtn.focus();
     }
@@ -6859,21 +7243,26 @@ async function main() {
 	  if (settingsTabObsidian instanceof HTMLElement) {
 	    settingsTabObsidian.addEventListener("click", () => {
 	      setSettingsSection("obsidian");
-      if (obsidianVaultNameInput instanceof HTMLInputElement) {
-        obsidianVaultNameInput.value = gObsidianVaultName || "";
-      }
-      if (obsidianNotesFolderInput instanceof HTMLInputElement) {
-        obsidianNotesFolderInput.value = gObsidianNotesFolder || "";
-      }
-      const syncEl = document.getElementById("obsidianSyncMode");
-      if (syncEl instanceof HTMLInputElement) syncEl.checked = gObsidianSyncMode;
-      setObsidianVaultFolderStatusUi();
+	      syncObsidianSettingsFormFieldsFromGlobals();
+	      commitObsidianSettingsSavedSnapshot();
 	      if (obsidianVaultNameInput instanceof HTMLElement) obsidianVaultNameInput.focus();
 	    });
 	  }
 	  if (obsidianVaultNameInput instanceof HTMLInputElement) {
 	    obsidianVaultNameInput.addEventListener("input", () => {
 	      setObsidianVaultFolderStatusUi();
+	      updateObsidianSettingsDirtyUi();
+	    });
+	  }
+	  if (obsidianNotesFolderInput instanceof HTMLInputElement) {
+	    obsidianNotesFolderInput.addEventListener("input", () => {
+	      updateObsidianSettingsDirtyUi();
+	    });
+	  }
+	  const obsidianSyncModeInput = document.getElementById("obsidianSyncMode");
+	  if (obsidianSyncModeInput instanceof HTMLInputElement) {
+	    obsidianSyncModeInput.addEventListener("change", () => {
+	      updateObsidianSettingsDirtyUi();
 	    });
 	  }
   if (settingsTabKeyboard instanceof HTMLElement) {
@@ -6960,6 +7349,7 @@ async function main() {
   if (aiEndpointBaseUrlInput instanceof HTMLInputElement) {
     aiEndpointBaseUrlInput.addEventListener("input", () => {
       queueAiSettingsHealthCheck({ delayMs: 450 });
+      updateAiSettingsDirtyUi();
     });
     aiEndpointBaseUrlInput.addEventListener("blur", () => {
       queueAiSettingsHealthCheck({ delayMs: 0 });
@@ -6968,6 +7358,7 @@ async function main() {
   if (aiEndpointModelInput instanceof HTMLInputElement) {
     aiEndpointModelInput.addEventListener("input", () => {
       queueAiSettingsHealthCheck({ delayMs: 450 });
+      updateAiSettingsDirtyUi();
     });
     aiEndpointModelInput.addEventListener("blur", () => {
       queueAiSettingsHealthCheck({ delayMs: 0 });
@@ -7068,6 +7459,7 @@ async function main() {
         }
 
         queueAiSettingsHealthCheck({ delayMs: 0 });
+        commitAiSettingsSavedSnapshot();
       } catch (err) {
         console.error(err);
         setAiSettingsMessage("Could not save settings.");
@@ -7099,6 +7491,7 @@ async function main() {
 	        await persist();
 	        setObsidianVaultFolderStatusUi();
 	        setObsidianSettingsMessage("Saved.");
+	        commitObsidianSettingsSavedSnapshot();
 	        await refresh();
         if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
       } catch (err) {
@@ -7178,6 +7571,26 @@ async function main() {
       if (ev?.data?.type !== "linked") return;
       void (async () => {
         try {
+          let filledVaultFromFolder = false;
+          const suggested =
+            typeof ev.data?.folderName === "string" ? ev.data.folderName.trim() : "";
+          if (suggested) {
+            const prev = String(gObsidianVaultName || "").trim();
+            const inputEl = document.getElementById("obsidianVaultName");
+            const inputEmpty =
+              !(inputEl instanceof HTMLInputElement) || !String(inputEl.value || "").trim();
+            if (!prev || inputEmpty) {
+              gObsidianVaultName = suggested;
+              if (inputEl instanceof HTMLInputElement) inputEl.value = suggested;
+              try {
+                dbSetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME, gObsidianVaultName);
+              } catch {
+                // ignore
+              }
+              filledVaultFromFolder = true;
+            }
+          }
+
           gObsidianSyncMode = true;
           try {
             dbSetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE, "1");
@@ -7194,11 +7607,15 @@ async function main() {
           gObsidianVaultFolderLinked = !!obsidianVaultRootHandle;
           setObsidianVaultFolderStatusUi();
           setObsidianSettingsMessage(
-            "Vault folder linked and sync mode turned on. Use “Grant folder access…” if badges still ask for permission, then Obsidian on a card to merge."
+            filledVaultFromFolder
+              ? `Vault name set to “${suggested}” from the selected folder (edit if Obsidian shows something different). Vault folder linked and sync mode turned on. Use “Grant folder access…” if badges still ask for permission, then Obsidian on a card to merge.`
+              : "Vault folder linked and sync mode turned on. Use “Grant folder access…” if badges still ask for permission, then Obsidian on a card to merge."
           );
           await persist();
           await refresh();
           if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
+          syncObsidianSettingsFormFieldsFromGlobals();
+          commitObsidianSettingsSavedSnapshot();
         } catch (e) {
           console.error(e);
         }
@@ -9137,7 +9554,7 @@ async function main() {
           if (key === "x") {
             e.preventDefault();
             e.stopPropagation();
-            setNotesEditorOpen(pending.noteId, false, { focusEditor: false, focusToggleOnClose: true });
+            closeNotesEditorFromCommand(pending.noteId, { focusEditor: false, focusToggleOnClose: true });
             return;
           }
 
@@ -10647,7 +11064,7 @@ async function main() {
 
       if (k === "x") {
         if (vimPendingIs(noteId, ":", 4000)) {
-          setNotesEditorOpen(noteId, false, { focusEditor: false, focusToggleOnClose: true });
+          closeNotesEditorFromCommand(noteId, { focusEditor: false, focusToggleOnClose: true });
         }
         vimClearPending(noteId);
         return;
@@ -12411,9 +12828,9 @@ async function main() {
     );
   }
 
-  // Autosave rich notes HTML (debounced) + push to linked vault when sync mode is on
+  // Autosave rich notes HTML to SQLite while editing. Obsidian push is explicit (:x / Obsidian action).
   {
-    const flushNotesEditorToDbAndVault = (editor, html) => {
+    const flushNotesEditorToDb = (editor, html) => {
       const noteId = Number(editor.dataset.noteId);
       if (!Number.isFinite(noteId)) return;
       const existing = notesEditorSaveTimers.get(noteId);
@@ -12425,15 +12842,9 @@ async function main() {
         console.warn(err);
         return;
       }
-      void persist()
-        .then(() => {
-          if (gObsidianSyncMode && String(gObsidianVaultName || "").trim()) {
-            return pushNoteMarkdownToObsidianVault(noteId);
-          }
-        })
-        .catch((err) => {
-          console.warn(err);
-        });
+      void persist().catch((err) => {
+        console.warn(err);
+      });
     };
 
     document.body.addEventListener("input", (e) => {
@@ -12452,7 +12863,7 @@ async function main() {
       if (existing) clearTimeout(existing);
 
       const t = setTimeout(() => {
-        flushNotesEditorToDbAndVault(target, target.innerHTML);
+        flushNotesEditorToDb(target, target.innerHTML);
       }, 350);
 
       notesEditorSaveTimers.set(noteId, t);
@@ -12467,7 +12878,7 @@ async function main() {
         const related = e.relatedTarget;
         const wrap = target.closest(".noteEditor");
         if (related instanceof Node && wrap instanceof HTMLElement && wrap.contains(related)) return;
-        flushNotesEditorToDbAndVault(target, target.innerHTML);
+        flushNotesEditorToDb(target, target.innerHTML);
       },
       true
     );

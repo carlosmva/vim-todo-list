@@ -463,6 +463,9 @@
                   </div>
                 </div>
                 <div id="aiSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+                <p id="aiSettingsUnsavedBanner" class="settingsUnsavedBanner" role="status" hidden>
+                  You have unsaved changes — click Save to apply.
+                </p>
                 <form id="aiSettingsForm" class="aiSettingsForm" aria-label="AI settings">
                   <div class="aiSettingsRow">
                     <label for="aiEndpointBaseUrl">Endpoint base URL</label>
@@ -496,7 +499,9 @@
                     ></textarea>
                   </div>
                   <div class="aiSettingsActions">
-                    <button id="saveAiSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+                    <button id="saveAiSettingsBtn" class="monoLinkButton settingsSaveButton" type="submit">
+                      Save
+                    </button>
                   </div>
                 </form>
                 <p class="aiSettingsHint">
@@ -532,6 +537,9 @@
                   an existing note without creating duplicates).
                 </p>
                 <div id="obsidianSettingsMessage" class="manageTabsMessage" aria-live="polite"></div>
+                <p id="obsidianSettingsUnsavedBanner" class="settingsUnsavedBanner" role="status" hidden>
+                  You have unsaved changes — click Save Obsidian Settings to apply.
+                </p>
                 <form id="obsidianSettingsForm" class="aiSettingsForm" aria-label="Obsidian settings">
                   <div class="aiSettingsRow">
                     <label for="obsidianVaultName">Vault name</label>
@@ -593,7 +601,11 @@
                     </div>
                   </div>
                   <div class="aiSettingsActions obsidianSettingsActions">
-                    <button id="saveObsidianSettingsBtn" class="monoLinkButton obsidianSettingsSaveButton" type="submit">
+                    <button
+                      id="saveObsidianSettingsBtn"
+                      class="monoLinkButton obsidianSettingsSaveButton settingsSaveButton"
+                      type="submit"
+                    >
                       Save Obsidian Settings
                     </button>
                     <button
@@ -646,6 +658,7 @@
 
     <div id="guidedTour" class="guidedTour" hidden aria-hidden="true">
       <div class="guidedTour__backdrop"></div>
+      <div class="guidedTour__spotlight" aria-hidden="true"></div>
       <section
         class="guidedTour__panel"
         role="dialog"

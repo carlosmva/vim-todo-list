@@ -28,16 +28,51 @@
     return;
   }
 
+  /**
+   * Obsidian stores settings in a hidden `.obsidian` folder *inside* the vault. If the user picks that
+   * folder by mistake, use its parent as the vault root when the API allows.
+   */
+  async function resolveVaultRootDirectoryHandle(picked) {
+    if (!picked || typeof picked.name !== "string") return picked;
+    if (picked.name.toLowerCase() !== ".obsidian") return picked;
+    const gp =
+      picked &&
+      typeof picked.getParentHandle === "function"
+        ? picked.getParentHandle.bind(picked)
+        : null;
+    if (!gp) {
+      return null;
+    }
+    try {
+      return await gp();
+    } catch {
+      return null;
+    }
+  }
+
   if (btn instanceof HTMLButtonElement) {
     btn.addEventListener("click", async () => {
       setMessage("Opening folder picker…", "pending");
       setBusy(true);
       try {
-        const handle = await showDirectoryPicker({ mode: "readwrite" });
+        let handle = await showDirectoryPicker({ mode: "readwrite" });
+        const resolved = await resolveVaultRootDirectoryHandle(handle);
+        if (resolved === null && handle && handle.name && handle.name.toLowerCase() === ".obsidian") {
+          setMessage(
+            "You selected the “.obsidian” folder (Obsidian’s settings folder inside a vault). In the picker, open the parent folder and select your vault root — the folder whose name matches Obsidian’s lower-left vault name — not “.obsidian”.",
+            "error"
+          );
+          return;
+        }
+        handle = resolved || handle;
+
         await window.ObsidianVaultIdb.saveVaultHandle(handle);
         try {
           const bc = new BroadcastChannel("vim-todo-obsidian-vault");
-          bc.postMessage({ type: "linked" });
+          bc.postMessage({
+            type: "linked",
+            folderName: typeof handle.name === "string" ? handle.name : "",
+          });
           bc.close();
         } catch {
           // ignore
