@@ -10,7 +10,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
 
 - Two columns per board: **Pending** and **Complete**
 - Multiple **boards** via tabs
-- Per-card actions row: **Priority**, **Attachments**, **Notes**, **Delete**, **Mark complete / Move to pending**
+- Per-card actions row: **Priority**, **Links**, **Notes**, **Delete**, **Mark complete / Move to pending**
 - **Reorder cards**: ↑/↓ buttons or drag-and-drop to move cards up or down within Pending or Complete
 - Priority levels: `low`, `normal`, `high`
   - Text colors: low = black, normal = blue, high = red
@@ -54,7 +54,7 @@ Configure everything under **Settings** (gear) → **Obsidian**.
 - Type a note in **New note** and click **Add**.
 - Use **Mark complete** / **Move to pending** to move cards between columns.
 - Use **↑** / **↓** or drag-and-drop to reorder cards within Pending or Complete.
-- Use **Attachments** to flip the card and manage links.
+- Use **Links** to flip the card and manage saved URLs.
 - Use **Notes** to open the rich notes editor for that card.
 - Use **Priority** to cycle `normal → high → low → normal`.
 

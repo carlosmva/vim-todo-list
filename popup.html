@@ -209,77 +209,105 @@
 
         <div id="aboutView" class="view" aria-label="About" hidden>
           <div class="instructionsHeader">
-            <div class="instructionsTitle">About</div>
+            <h2 class="instructionsTitle">About</h2>
             <button id="closeAboutBtn" class="monoLinkButton" type="button">
               Close
             </button>
           </div>
-          <div id="aboutContent" class="instructionsContent">
-            <p class="aboutAppName">vim-todo-list</p>
-            <p class="aboutBy">by</p>
-            <p class="aboutCompany">
-              <a href="https://northeasternsoftware.com/" target="_blank" rel="noopener noreferrer" translate="no"
-                >Northeastern Software Services LLC</a
+          <div id="aboutContent" class="instructionsContent aboutLanding">
+            <section class="aboutHero" aria-labelledby="aboutHeadline">
+              <p class="aboutEyebrow">Chrome extension · Keyboard-first · Local SQLite</p>
+              <p class="aboutBrandName">vim-todo-list</p>
+              <p class="aboutHeadline" id="aboutHeadline">Capture todos at keyboard speed—stored locally, no account.</p>
+              <p class="aboutSubhead">
+                Boards, priorities, links, and notes in local SQLite—no cloud account. One of several tools to help you
+                capture, structure, and act faster.
+              </p>
+              <p class="aboutByLine">
+                <span class="aboutBy">by</span>
+                <a
+                  class="aboutByLink"
+                  href="https://northeasternsoftware.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  translate="no"
+                  >Northeastern Software Services LLC</a
+                >
+              </p>
+              <div class="aboutHeroActions">
+                <a
+                  class="aboutCtaPrimary"
+                  href="https://github.com/carlosmva/vim-todo-list"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >View on GitHub</a
+                >
+                <a
+                  class="aboutCtaSecondary"
+                  href="https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >Get from Chrome Web Store</a
+                >
+              </div>
+            </section>
+
+            <p class="aboutTrust">
+              <span class="aboutTrustLine">Built independently</span>
+              <span class="aboutTrustSep" aria-hidden="true">·</span>
+              <span class="aboutTrustLine">Practical tools that actually get used</span>
+            </p>
+
+            <section class="aboutMore" aria-labelledby="aboutMoreHeading">
+              <h3 class="aboutSectionTitle" id="aboutMoreHeading">More from this studio</h3>
+              <ul class="aboutProducts">
+                <li class="aboutProduct">
+                  <p class="aboutProductName">
+                    🚀
+                    <a href="https://ezsolve.io/" target="_blank" rel="noopener noreferrer" translate="no">EzSolve</a>
+                  </p>
+                  <p class="aboutProductBody">From notes → to root causes → to action. Bring structure and accountability to problem solving.</p>
+                </li>
+                <li class="aboutProduct">
+                  <p class="aboutProductName">
+                    💪
+                    <a
+                      href="https://apps.apple.com/us/app/gymcade-workout-tracker/id6744276387"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      translate="no"
+                      >GymCade</a
+                    >
+                  </p>
+                  <p class="aboutProductBody">Turn your workouts into a game. Stay consistent, level up, and track progress visually.</p>
+                </li>
+                <li class="aboutProduct">
+                  <p class="aboutProductName">
+                    🥗
+                    <a href="https://apps.apple.com/us/app/ondiet-ai/id6759893218" target="_blank" rel="noopener noreferrer" translate="no"
+                      >OnDiet AI</a
+                    >
+                  </p>
+                  <p class="aboutProductBody">Upload a diet plan → get instant shopping lists and meal prep steps.</p>
+                </li>
+                <li class="aboutProduct">
+                  <p class="aboutProductName">
+                    🌍
+                    <a href="https://apps.apple.com/us/app/hourloom/id6761745195" target="_blank" rel="noopener noreferrer" translate="no"
+                      >Hourloom</a
+                    >
+                  </p>
+                  <p class="aboutProductBody">Track multiple time zones with clean, customizable clock layouts.</p>
+                </li>
+              </ul>
+            </section>
+
+            <section class="aboutSupportSection" aria-label="Support development">
+              <a class="aboutCtaSupport" href="https://buymeacoffee.com/carlosx" target="_blank" rel="noopener noreferrer"
+                >Support development on Buy Me a Coffee</a
               >
-            </p>
-            <p class="aboutRepo">
-              <a href="https://github.com/carlosmva/vim-todo-list" target="_blank" rel="noopener noreferrer">GitHub</a>
-            </p>
-            <p class="aboutSummary">
-              This extension is part of a growing set of tools designed to help you capture, structure, and act on information
-              faster.
-            </p>
-            <h3 class="aboutSectionTitle">Explore More</h3>
-            <ul class="aboutProducts">
-              <li class="aboutProduct">
-                <p class="aboutProductName">
-                  🚀
-                  <a href="https://ezsolve.io/" target="_blank" rel="noopener noreferrer" translate="no">EzSolve</a>
-                </p>
-                <p class="aboutProductBody">From notes → to root causes → to action. Bring structure and accountability to problem solving.</p>
-              </li>
-              <li class="aboutProduct">
-                <p class="aboutProductName">
-                  💪
-                  <a
-                    href="https://apps.apple.com/us/app/gymcade-workout-tracker/id6744276387"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    translate="no"
-                    >GymCade</a
-                  >
-                </p>
-                <p class="aboutProductBody">Turn your workouts into a game. Stay consistent, level up, and track progress visually.</p>
-              </li>
-              <li class="aboutProduct">
-                <p class="aboutProductName">
-                  🥗
-                  <a href="https://apps.apple.com/us/app/ondiet-ai/id6759893218" target="_blank" rel="noopener noreferrer" translate="no"
-                    >OnDiet AI</a
-                  >
-                </p>
-                <p class="aboutProductBody">Upload a diet plan → get instant shopping lists and meal prep steps.</p>
-              </li>
-              <li class="aboutProduct">
-                <p class="aboutProductName">
-                  🌍
-                  <a href="https://apps.apple.com/us/app/hourloom/id6761745195" target="_blank" rel="noopener noreferrer" translate="no"
-                    >Hourloom</a
-                  >
-                </p>
-                <p class="aboutProductBody">Track multiple time zones with clean, customizable clock layouts.</p>
-              </li>
-            </ul>
-            <p class="aboutFooter">💡 Built independently. Focused on practical tools that actually get used.</p>
-            <p class="aboutSupport">
-              <a
-                class="aboutSupportLink"
-                href="https://buymeacoffee.com/carlosx"
-                target="_blank"
-                rel="noopener noreferrer"
-                >Enjoying the extension? Consider supporting development ☕</a
-              >
-            </p>
+              <p class="aboutSupportHint">Helps keep updates and fixes coming. Thank you.</p>
+            </section>
           </div>
         </div>
 

@@ -1586,6 +1586,8 @@ function noteMatchesFilter(note, query) {
 }
 
 const CARD_ACTION_ICON_PATHS = {
+  /** Same clip as legacy "attachments" name; flip control is labeled "Links" in the UI. */
+  links: ["M8 12.5 16.2 4.3a3.2 3.2 0 0 1 4.5 4.5L10.9 18.6a5 5 0 0 1-7.1-7.1l9.7-9.7"],
   attachments: ["M8 12.5 16.2 4.3a3.2 3.2 0 0 1 4.5 4.5L10.9 18.6a5 5 0 0 1-7.1-7.1l9.7-9.7"],
   priority: ["M6 21V4", "M7 4h10l-1.8 4L17 12H7"],
   notes: ["M6 4h9l3 3v13H6z", "M14 4v4h4", "M9 11h6", "M9 15h6"],
@@ -1844,7 +1846,7 @@ function renderNotes(db, notes) {
     if (links.length) {
       const title = document.createElement("div");
       title.className = "noteAttachmentsTitle";
-      title.textContent = "Attachments:";
+      title.textContent = "Links:";
       attachments.appendChild(title);
 
       const items = document.createElement("div");
@@ -1939,7 +1941,7 @@ function renderNotes(db, notes) {
     flipBtn.type = "button";
     flipBtn.dataset.action = "flip";
     flipBtn.dataset.noteId = String(note.id);
-    applyCardActionIcon(flipBtn, "attachments", "Open attachments", { tooltip: "Attachments" });
+    applyCardActionIcon(flipBtn, "links", "Open links", { tooltip: "Links" });
 
     const moveUpBtn = document.createElement("button");
     moveUpBtn.type = "button";
@@ -2838,7 +2840,7 @@ async function main() {
 	          `<div class="instructionsKeyList">
 	            ${keyRow(combo(mod, fmt(nav.left)) + " / " + combo(mod, fmt(nav.right)), "Move across card action buttons.")}
 	            ${keyRow(keycap("Enter"), "Activate the focused action.")}
-	            ${keyRow(keycap(":x"), "Close notes editor or flipped attachments.")}
+	            ${keyRow(keycap(":x"), "Close notes editor or flipped links panel.")}
 	          </div>
 	          <ul>
 	            <li>Use the arrow action buttons to move a card up or down within its column.</li>
@@ -4843,7 +4845,7 @@ async function main() {
     if (!board || !boards.includes(board)) return;
     if (board === activeBoard) return;
 
-    // Navigating to another board should close any open overlays (Notes editor / Attachments).
+    // Navigating to another board should close any open overlays (Notes editor / flipped links).
     // This keeps navigation predictable and avoids carrying open states across boards.
     for (const card of document.querySelectorAll(".noteCard[data-note-id]")) {
       if (!(card instanceof HTMLElement)) continue;
@@ -6627,7 +6629,8 @@ async function main() {
     aboutLink.addEventListener("click", (e) => {
       e.preventDefault();
       showAboutView();
-      if (closeAboutBtn instanceof HTMLElement) closeAboutBtn.focus();
+      const firstAbout = getAboutFocusables()[1] || closeAboutBtn;
+      if (firstAbout instanceof HTMLElement) safeFocus(firstAbout);
     });
   }
   if (tourBtn instanceof HTMLElement) {
@@ -8245,6 +8248,48 @@ async function main() {
     return true;
   }
 
+  function getAboutFocusables() {
+    const view = document.getElementById("aboutView");
+    if (!(view instanceof HTMLElement)) return [];
+    const sel =
+      'button:not([disabled]), a[href]:not([hidden]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.from(view.querySelectorAll(sel)).filter(
+      (el) => el instanceof HTMLElement && isElementInVisibleView(el)
+    );
+  }
+
+  function moveAboutFocus(delta) {
+    const targets = getAboutFocusables();
+    if (!targets.length) return false;
+
+    const active = document.activeElement;
+    const currentIdx = active instanceof HTMLElement ? targets.indexOf(active) : -1;
+    let nextIdx = currentIdx;
+    if (nextIdx === -1) nextIdx = delta < 0 ? targets.length - 1 : 0;
+    else nextIdx = Math.min(targets.length - 1, Math.max(0, nextIdx + delta));
+
+    const target = targets[nextIdx];
+    if (!safeFocus(target)) return false;
+    if (target !== active && target.closest("#aboutContent")) {
+      try {
+        target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  }
+
+  function getHeaderNavTargets() {
+    return [
+      document.getElementById("themeSelect"),
+      document.getElementById("instructionsLink"),
+      document.getElementById("aboutLink"),
+      document.getElementById("tourBtn"),
+      document.getElementById("settingsBtn"),
+    ].filter((t) => t instanceof HTMLElement && isElementInVisibleView(t));
+  }
+
   function getGlobalNavTargets() {
     const targets = [];
 
@@ -8252,9 +8297,11 @@ async function main() {
     const settingsBtnEl = document.getElementById("settingsBtn");
     const instructionsLink = document.getElementById("instructionsLink");
     const aboutLink = document.getElementById("aboutLink");
+    const tourBtnEl = document.getElementById("tourBtn");
     if (themeSelectEl instanceof HTMLElement) targets.push(themeSelectEl);
     if (instructionsLink instanceof HTMLElement) targets.push(instructionsLink);
     if (aboutLink instanceof HTMLElement) targets.push(aboutLink);
+    if (tourBtnEl instanceof HTMLElement) targets.push(tourBtnEl);
     if (settingsBtnEl instanceof HTMLElement) targets.push(settingsBtnEl);
 
     const notesView = document.getElementById("notesView");
@@ -8305,8 +8352,7 @@ async function main() {
     }
 
     if (aboutVisible) {
-      const closeBtn = document.getElementById("closeAboutBtn");
-      if (closeBtn instanceof HTMLElement) targets.push(closeBtn);
+      targets.push(...getAboutFocusables());
     }
 
     if (settingsVisible) {
@@ -9139,6 +9185,19 @@ async function main() {
           }
         }
 
+        {
+          const aboutViewEl = document.getElementById("aboutView");
+          const inAbout =
+            aboutViewEl instanceof HTMLElement &&
+            !aboutViewEl.hasAttribute("hidden") &&
+            activeEl2 instanceof Element &&
+            activeEl2.closest("#aboutView") !== null;
+          if (inAbout) {
+            moveAboutFocus(+1);
+            return;
+          }
+        }
+
         if (moveCreateFormFocusByVisualDirection(key, nav)) return;
 
         // Settings: vertical = sidebar tabs or panel fields; not the same as global linear order.
@@ -9563,6 +9622,19 @@ async function main() {
           }
         }
 
+        {
+          const aboutViewEl = document.getElementById("aboutView");
+          const inAbout =
+            aboutViewEl instanceof HTMLElement &&
+            !aboutViewEl.hasAttribute("hidden") &&
+            activeEl2 instanceof Element &&
+            activeEl2.closest("#aboutView") !== null;
+          if (inAbout) {
+            moveAboutFocus(-1);
+            return;
+          }
+        }
+
         if (moveCreateFormFocusByVisualDirection(key, nav)) return;
 
         // Settings: vertical = previous tab, previous panel field, or sidebar from first field.
@@ -9924,6 +9996,24 @@ async function main() {
         e.preventDefault();
         e.stopPropagation();
 
+        // Header: Alt+left/right steps through controls in DOM order (theme → … → settings).
+        if (
+          (key === nav.left || key === nav.right) &&
+          activeEl instanceof Element &&
+          activeEl.closest(".headerLinks")
+        ) {
+          const headerTargets = getHeaderNavTargets();
+          const idx = activeEl instanceof HTMLElement ? headerTargets.indexOf(activeEl) : -1;
+          if (idx >= 0) {
+            const delta = key === nav.right ? 1 : -1;
+            const nextIdx = Math.min(headerTargets.length - 1, Math.max(0, idx + delta));
+            if (headerTargets[nextIdx]) {
+              safeFocus(headerTargets[nextIdx]);
+              return;
+            }
+          }
+        }
+
         // Settings: left = focus sidebar (selected tab); right = into panel or next field / Close.
         {
           const settingsViewEl = document.getElementById("settingsView");
@@ -9983,6 +10073,19 @@ async function main() {
             activeEl.closest("#instructionsView") !== null;
           if (inInstructions && (key === nav.left || key === nav.right)) {
             moveInstructionsFocus(key === nav.right ? +1 : -1);
+            return;
+          }
+        }
+
+        {
+          const aboutViewEl = document.getElementById("aboutView");
+          const inAbout =
+            aboutViewEl instanceof HTMLElement &&
+            !aboutViewEl.hasAttribute("hidden") &&
+            activeEl instanceof Element &&
+            activeEl.closest("#aboutView") !== null;
+          if (inAbout && (key === nav.left || key === nav.right)) {
+            moveAboutFocus(key === nav.right ? +1 : -1);
             return;
           }
         }

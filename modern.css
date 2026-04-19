@@ -787,65 +787,202 @@ button,
   paint-order: stroke fill;
 }
 
-#aboutContent {
+/* About view — landing-style layout (hero → trust → more tools → support CTA) */
+#aboutContent.aboutLanding {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  padding: var(--modern-space-5);
+  align-items: stretch;
+  gap: 0;
+  padding: var(--modern-space-4) var(--modern-space-5) var(--modern-space-5);
   text-align: center;
 }
 
-.aboutAppName {
-  font-size: 1.1rem;
+.aboutHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 36rem;
+  margin: 0 auto;
+  padding-bottom: var(--modern-space-4);
+}
+
+.aboutEyebrow {
+  margin: 0 0 var(--modern-space-2);
+  font-size: 0.7rem;
   font-weight: 600;
-  margin: 0;
-}
-
-.aboutBy {
-  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--modern-text-subtle);
+  text-wrap: balance;
+}
+
+.aboutBrandName {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.aboutHeadline {
   margin: 0;
+  max-width: 32ch;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
-.aboutCompany {
-  font-size: 0.95rem;
-  margin: 0;
-}
-
-.aboutRepo {
-  font-size: 0.85rem;
-  margin: 0.5rem 0 0;
-}
-
-.aboutSummary {
-  margin: 0.75rem 0 0.25rem;
-  max-width: 60ch;
-  font-size: 0.86rem;
-  line-height: 1.45;
+.aboutSubhead {
+  margin: var(--modern-space-3) 0 0;
+  max-width: 52ch;
+  font-size: 0.88rem;
+  line-height: 1.5;
   color: var(--modern-text-subtle);
   text-wrap: pretty;
 }
 
-.aboutSectionTitle {
-  margin: 0.85rem 0 0.2rem;
+.aboutByLine {
+  margin: var(--modern-space-3) 0 0;
+  font-size: 0.85rem;
+  color: var(--modern-text-subtle);
+}
+
+.aboutBy {
+  margin-right: 0.25rem;
+}
+
+.aboutByLink {
+  color: var(--modern-link, #0f62fe);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.aboutByLink:hover {
+  color: var(--modern-link-hover, #0043ce);
+  text-decoration: underline;
+}
+
+.aboutHeroActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--modern-space-2);
   width: 100%;
-  max-width: 60ch;
+  max-width: 20rem;
+  margin-top: var(--modern-space-4);
+}
+
+.aboutCtaPrimary,
+.aboutCtaSecondary,
+.aboutCtaSupport {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.55rem 1.15rem;
+  border-radius: var(--modern-radius-sm);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-base) var(--motion-ease-standard),
+    color var(--motion-base) var(--motion-ease-standard),
+    border-color var(--motion-base) var(--motion-ease-standard),
+    box-shadow var(--motion-base) var(--motion-ease-standard);
+}
+
+.aboutCtaPrimary {
+  border: 1px solid transparent;
+  background: var(--modern-focus, #0f62fe);
+  /* Must win over theme rules like `[data-theme] a { color: var(--modern-link) }`, which
+     often equals `--modern-focus` and would make the label invisible on filled CTAs. */
+  color: #ffffff !important;
+  box-shadow: var(--modern-shadow-sm);
+}
+
+.aboutCtaPrimary:hover {
+  filter: brightness(1.06);
+  color: #ffffff !important;
+}
+
+.aboutCtaPrimary:focus-visible {
+  outline: 2px solid var(--modern-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
+.aboutCtaSecondary {
+  border: 1px solid var(--modern-border-strong);
+  background: var(--modern-surface-muted);
+  color: var(--modern-text);
+}
+
+.aboutCtaSecondary:hover {
+  border-color: var(--modern-focus, #0f62fe);
+  color: var(--modern-link, #0f62fe);
+}
+
+.aboutCtaSecondary:focus-visible {
+  outline: 2px solid var(--modern-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
+[data-theme="command-line"] .aboutCtaPrimary {
+  background: #0d1a0d;
+  color: var(--modern-text) !important;
+  border: 1px solid var(--modern-focus);
+  box-shadow: none;
+}
+
+[data-theme="command-line"] .aboutCtaPrimary:hover {
+  filter: none;
+  background: #142614;
+  color: var(--modern-text) !important;
+}
+
+[data-theme="command-line"] .aboutCtaSecondary {
+  background: transparent;
+  border-color: var(--modern-border-strong);
+}
+
+.aboutTrust {
+  margin: 0 auto;
+  padding: var(--modern-space-3) var(--modern-space-2);
+  max-width: 52ch;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--modern-text-subtle);
+  text-wrap: balance;
+}
+
+.aboutTrustSep {
+  margin: 0 0.35rem;
+  opacity: 0.65;
+}
+
+.aboutMore {
+  margin: var(--modern-space-2) auto 0;
+  padding-top: var(--modern-space-3);
+  border-top: 1px solid var(--modern-border);
+  width: 100%;
+  max-width: 36rem;
   text-align: left;
+}
+
+.aboutSectionTitle {
+  margin: 0 0 var(--modern-space-2);
   font-size: 0.95rem;
   font-weight: 600;
   text-wrap: balance;
 }
 
 .aboutProducts {
-  margin: 0.35rem 0 0;
+  margin: 0;
   padding-left: 1.1rem;
-  width: 100%;
-  max-width: 60ch;
-  text-align: left;
   display: grid;
-  gap: 0.6rem;
+  gap: 0.65rem;
 }
 
 .aboutProduct {
@@ -864,32 +1001,35 @@ button,
   overflow-wrap: anywhere;
 }
 
-.aboutFooter {
-  margin: 0.85rem 0 0;
-  max-width: 60ch;
-  font-size: 0.85rem;
+.aboutSupportSection {
+  margin: var(--modern-space-4) auto 0;
+  padding-top: var(--modern-space-4);
+  border-top: 1px solid var(--modern-border);
+  max-width: 36rem;
+  width: 100%;
+}
+
+.aboutCtaSupport {
+  width: 100%;
+  max-width: 20rem;
+  margin: 0 auto;
+  border: 1px dashed var(--modern-border-strong);
+  background: transparent;
+  color: var(--modern-link, #0f62fe);
+  font-weight: 600;
+}
+
+.aboutCtaSupport:hover {
+  border-style: solid;
+  border-color: var(--modern-link, #0f62fe);
+  background: var(--modern-surface-muted);
+}
+
+.aboutSupportHint {
+  margin: var(--modern-space-2) 0 0;
+  font-size: 0.78rem;
   line-height: 1.4;
   color: var(--modern-text-subtle);
-}
-
-.aboutSupport {
-  margin: 1rem 0 0;
-  max-width: 60ch;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  text-align: center;
-  text-wrap: balance;
-}
-
-.aboutSupportLink {
-  color: var(--modern-link, #0f62fe);
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.aboutSupportLink:hover {
-  color: var(--modern-link-hover, #0043ce);
-  text-decoration: underline;
 }
 
 .list {
