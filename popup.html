@@ -60,11 +60,13 @@
       <div class="body">
         <div id="notesView" class="view" aria-label="Notes view">
           <form id="createForm" class="create" aria-label="Create note">
-            <div class="createNoteRow">
-              <div class="bx--form-item createNoteTextCell">
+            <div class="createFieldsRow">
+              <div class="bx--form-item createField createField--note">
+                <label class="createFieldLabel" for="noteText">Task</label>
                 <div class="noteTextInlineWrap">
                   <input
                     id="noteText"
+                    name="noteText"
                     class="bx--text-input"
                     type="text"
                     placeholder="New note…"
@@ -75,27 +77,48 @@
                   <div id="noteTextTrail" class="noteInlineTrail" aria-hidden="true" hidden></div>
                 </div>
               </div>
-              <div class="bx--form-item createDueDateCell">
+              <div class="bx--form-item createField createField--due">
+                <label class="createFieldLabel" for="noteDueDate">Due</label>
                 <input
                   id="noteDueDate"
+                  name="noteDueDate"
                   class="bx--text-input"
                   type="date"
-                  aria-label="Due date (optional)"
+                  autocomplete="off"
                 />
+              </div>
+            </div>
+
+            <div class="createDueQuickRow">
+              <div class="createDueQuickActions" aria-label="Quick due dates">
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="today">
+                  Today
+                </button>
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="1w">
+                  +1w
+                </button>
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="2w">
+                  +2w
+                </button>
+                <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="1mo">
+                  +1mo
+                </button>
               </div>
             </div>
 
             <div id="noteAutocomplete" class="noteAutocomplete" aria-label="Autocomplete suggestions" hidden></div>
 
-            <div class="createButtons" aria-label="Actions">
-              <div class="createButtonsRight">
+            <div class="createActionsRow" aria-label="Actions">
+              <div class="createModuleActions" aria-label="Modules">
                 <button id="dashboardBtn" class="monoLinkButton" type="button">
                   Dashboard
                 </button>
                 <button id="calendarBtn" class="monoLinkButton" type="button">
                   Calendar
                 </button>
-                <button class="monoLinkButton" type="submit">Add</button>
+              </div>
+              <div class="createSubmitCell">
+                <button class="monoLinkButton" type="submit">Add Task</button>
               </div>
             </div>
           </form>
@@ -150,7 +173,7 @@
 
         <div id="instructionsView" class="view" aria-label="Instructions" hidden>
           <div class="instructionsHeader">
-            <div class="instructionsTitle">Instructions</div>
+            <h2 class="instructionsTitle">Instructions</h2>
             <button id="closeInstructionsBtn" class="monoLinkButton" type="button">
               Close
             </button>
@@ -428,31 +451,48 @@
                   <div class="aiSettingsRow obsidianVaultFsRow">
                     <span id="obsidianVaultFolderStatus" class="obsidianVaultFolderStatus" aria-live="polite"></span>
                   </div>
-                  <div class="aiSettingsActions obsidianFsActions">
-                    <button id="obsidianChooseVaultFolderBtn" class="monoLinkButton" type="button">
-                      Choose vault folder…
-                    </button>
-                    <button
-                      id="obsidianGrantVaultAccessBtn"
-                      class="monoLinkButton"
-                      type="button"
-                      title="Opens a tab where Chromium can show the folder permission prompt (not allowed inside the popup)."
-                    >
-                      Grant folder access…
-                    </button>
-                    <button id="obsidianClearVaultFolderBtn" class="monoLinkButton" type="button">
-                      Disconnect folder
-                    </button>
+                  <div class="obsidianVaultActions" aria-label="Vault folder actions">
+                    <div class="obsidianVaultActions__primary">
+                      <button
+                        id="obsidianChooseVaultFolderBtn"
+                        class="monoLinkButton obsidianVaultActionButton obsidianVaultActionButton--primary"
+                        type="button"
+                      >
+                        Choose Vault Folder…
+                      </button>
+                    </div>
+                    <div class="obsidianVaultActions__secondary">
+                      <button
+                        id="obsidianGrantVaultAccessBtn"
+                        class="monoLinkButton obsidianVaultActionButton"
+                        type="button"
+                        title="Opens a tab where Chromium can show the folder permission prompt (not allowed inside the popup)."
+                        hidden
+                      >
+                        Grant Access…
+                      </button>
+                      <button
+                        id="obsidianClearVaultFolderBtn"
+                        class="monoLinkButton obsidianVaultActionButton obsidianVaultActionButton--danger"
+                        type="button"
+                        hidden
+                      >
+                        Disconnect
+                      </button>
+                    </div>
                   </div>
-                  <div class="aiSettingsActions">
-                    <button id="saveObsidianSettingsBtn" class="monoLinkButton" type="submit">Save</button>
+                  <div class="aiSettingsActions obsidianSettingsActions">
+                    <button id="saveObsidianSettingsBtn" class="monoLinkButton obsidianSettingsSaveButton" type="submit">
+                      Save Obsidian Settings
+                    </button>
                     <button
                       id="clearObsidianPathCacheBtn"
-                      class="monoLinkButton"
+                      class="monoLinkButton obsidianAdvancedActionButton"
                       type="button"
                       title="Clear which paths have already been created. Use if the first open failed or you deleted the file in Obsidian and need to create it again."
+                      hidden
                     >
-                      Reset first-open cache
+                      Reset First-Open Cache
                     </button>
                   </div>
                 </form>

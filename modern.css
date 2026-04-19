@@ -353,9 +353,9 @@ button,
 }
 
 .headerLinks,
-.createButtons,
-.createButtonsLeft,
-.createButtonsRight {
+.createActionsRow,
+.createModuleActions,
+.createDueQuickActions {
   gap: var(--modern-space-2);
 }
 
@@ -938,7 +938,8 @@ button,
 
 .list {
   gap: var(--modern-space-2);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex: 1;
   min-height: 0;
   padding-right: 4px;

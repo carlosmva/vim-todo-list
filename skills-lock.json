@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "nothing-design": {
+      "source": "dominikmartn/nothing-design-skill",
+      "sourceType": "github",
+      "computedHash": "0e42024ec376cad3f0eaf3c4351a13c71177865bc1cab99776da32b0ccb3bf2c"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
+    }
+  }
+}

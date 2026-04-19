@@ -5,31 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Link Obsidian vault folder</title>
     <link rel="stylesheet" href="popup.css" />
-    <style>
-      body {
-        margin: 0;
-        padding: 16px;
-        max-width: 40rem;
-        min-height: 100vh;
-        box-sizing: border-box;
-      }
-      .pickVaultTitle {
-        font-size: 1rem;
-        font-weight: 600;
-        margin: 0 0 10px;
-      }
-    </style>
+    <link rel="stylesheet" href="modern.css" />
+    <link rel="stylesheet" href="nothing.css" />
+    <link rel="stylesheet" href="vault-access.css" />
   </head>
-  <body class="bx--body">
-    <h1 class="pickVaultTitle">Choose your Obsidian vault folder</h1>
-    <p class="obsidianIntro">
-      Select the same root folder that Obsidian uses for this vault. The extension popup cannot open the system folder
-      picker in some environments, so this full page is used instead.
-    </p>
-    <div id="pickVaultMessage" class="manageTabsMessage" aria-live="polite"></div>
-    <p>
-      <button type="button" id="pickVaultBtn" class="monoLinkButton">Choose folder…</button>
-    </p>
+  <body class="bx--body vaultAccessPage">
+    <main class="vaultAccessShell" aria-labelledby="pickVaultTitle">
+      <header class="vaultAccessHeader">
+        <p class="vaultAccessKicker">Obsidian Sync</p>
+        <h1 id="pickVaultTitle" class="vaultAccessTitle">Choose Your Vault Folder</h1>
+        <p class="vaultAccessIntro">
+          Select the same root folder that Obsidian uses for this vault. The extension popup cannot open the system
+          folder picker in some environments, so this full page is used instead.
+        </p>
+      </header>
+      <section class="vaultAccessPanel" aria-label="Vault folder picker">
+        <div id="pickVaultMessage" class="vaultAccessMessage" aria-live="polite"></div>
+        <div class="vaultAccessActionRow">
+          <button type="button" id="pickVaultBtn" class="monoLinkButton vaultAccessButton">
+            Choose Folder…
+          </button>
+        </div>
+      </section>
+    </main>
     <script src="obsidian-vault-idb.js"></script>
     <script src="pick-vault.js"></script>
   </body>

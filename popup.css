@@ -94,6 +94,11 @@ body {
   outline-offset: 2px;
 }
 
+.headerThemeSelect[data-armed="true"] {
+  border-color: var(--modern-border-strong, var(--cds-border-strong, currentColor));
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
+}
+
 .headerIconButton {
   appearance: none;
   background: none;
@@ -373,8 +378,10 @@ body {
 }
 
 .instructionsTitle {
+  margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
+  text-wrap: balance;
 }
 
 .aiSettingsTitle {
@@ -514,8 +521,84 @@ body {
   opacity: 0.9;
 }
 
-.obsidianFsActions {
+.obsidianVaultActions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.obsidianVaultActions__primary,
+.obsidianVaultActions__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.obsidianVaultActions .obsidianVaultActionButton,
+.obsidianSettingsActions .obsidianSettingsSaveButton,
+.obsidianSettingsActions .obsidianAdvancedActionButton {
+  min-width: 0;
+}
+
+.obsidianVaultActionButton {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: 4px;
+  text-align: center;
+}
+
+.obsidianVaultActions .obsidianVaultActionButton:hover:not(:disabled),
+.obsidianVaultActions .obsidianVaultActionButton:focus-visible:not(:disabled),
+.obsidianSettingsActions .obsidianSettingsSaveButton:hover:not(:disabled),
+.obsidianSettingsActions .obsidianSettingsSaveButton:focus-visible:not(:disabled),
+.obsidianSettingsActions .obsidianAdvancedActionButton:hover:not(:disabled),
+.obsidianSettingsActions .obsidianAdvancedActionButton:focus-visible:not(:disabled) {
+  border-color: var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
+  text-decoration: none;
+}
+
+.obsidianVaultActionButton--primary {
+  border-color: var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+}
+
+.obsidianVaultActionButton--danger:hover:not(:disabled),
+.obsidianVaultActionButton--danger:focus-visible:not(:disabled) {
+  border-color: var(--cds-support-error, #da1e28);
+  color: var(--cds-support-error, #da1e28);
+}
+
+.obsidianSettingsActions {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+}
+
+.obsidianSettingsSaveButton {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  border-radius: 4px;
+}
+
+.obsidianAdvancedActionButton {
+  min-height: 32px;
+  padding: 5px 10px;
+  opacity: 0.86;
+}
+
+.obsidianVaultActionButton[hidden] {
+  display: none !important;
+}
+
+.obsidianAdvancedActionButton[hidden] {
+  display: none !important;
 }
 
 /* Obsidian vault compare chip (per card) */
@@ -800,19 +883,118 @@ body {
 .instructionsContent {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
   border: 1px solid var(--cds-border-subtle);
   background: var(--cds-layer);
 }
 
-.instructionsContent h3 {
+.instructionsLead {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  outline: 2px solid transparent;
+  outline-offset: 4px;
+}
+
+.instructionsLead__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.instructionsLead__body {
+  margin: 0;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  font-size: 0.86rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.instructionsGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  min-width: 0;
+}
+
+.instructionsSection {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: 6px;
+  background: var(--modern-surface-1, transparent);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.instructionsLead:focus-visible,
+.instructionsSection:focus-visible {
+  border-color: var(--modern-border-strong, var(--cds-border-strong, currentColor));
+  box-shadow: 0 0 0 2px var(--modern-focus-ring, var(--cds-focus, currentColor));
+}
+
+.instructionsSection h3 {
   margin: 0 0 8px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-wrap: balance;
 }
 
 .instructionsContent ul {
   margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.instructionsContent li {
+  margin-bottom: 6px;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.instructionsKeyList {
+  display: grid;
+  gap: 6px;
+}
+
+.instructionsKeyRow {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+}
+
+@media (max-width: 720px) {
+  .instructionsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .instructionsKeyRow {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
+
+.instructionsKeyRow:last-child {
+  border-bottom: 0;
+}
+
+.instructionsKeyRow__keys {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.instructionsKeyRow__desc {
+  min-width: 0;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  overflow-wrap: anywhere;
 }
 
 .instructionsContent kbd {
@@ -822,7 +1004,7 @@ body {
   line-height: 1.2;
   padding: 1px 6px;
   border: 1px solid currentColor;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   white-space: nowrap;
 }
@@ -837,7 +1019,7 @@ body {
   grid-template-columns: 1fr;
   gap: 8px;
   margin-bottom: 8px;
-  align-items: end;
+  align-items: stretch;
 }
 
 .noteAutocomplete {
@@ -912,14 +1094,6 @@ body {
   gap: 8px;
 }
 
-.createButtons {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-}
-
 .settingsDataActions {
   display: flex;
   flex-direction: column;
@@ -927,12 +1101,12 @@ body {
   gap: 10px;
 }
 
-.createButtonsLeft,
-.createButtonsRight {
+.createModuleActions {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .cardFilterRow {
@@ -1519,25 +1693,98 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   outline-offset: 1px;
 }
 
-/* Create form: note + due date in same row (80% / 20%) */
-.createNoteRow {
-  display: flex;
+/* Create form: fields, quick dates, and actions stay in visual rows. */
+.createFieldsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.32fr);
   gap: 8px;
-  align-items: stretch;
-}
-
-.createNoteTextCell {
-  flex: 4 1 0;
+  align-items: start;
   min-width: 0;
 }
 
-.createDueDateCell {
-  flex: 1 0 0;
+.createField {
+  display: grid;
+  gap: 4px;
   min-width: 0;
 }
 
-.createDueDateCell input {
+.createFieldLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  text-wrap: balance;
+}
+
+.createField input,
+.createField--due input {
   width: 100%;
+  min-width: 0;
+}
+
+.createDueQuickRow {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.createDueQuickActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(100%, 19rem);
+}
+
+.createDueQuickButton {
+  min-width: 0;
+  min-height: 20px;
+  padding: 1px 5px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.createActionsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.createSubmitCell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.createSubmitCell .monoLinkButton {
+  min-height: 24px;
+}
+
+@media (max-width: 560px) {
+  .createFieldsRow {
+    grid-template-columns: 1fr;
+  }
+
+  .createDueQuickRow {
+    justify-content: flex-start;
+  }
+
+  .createActionsRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .createSubmitCell {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
 }
 
 /* Priority styling (color-code note text)
