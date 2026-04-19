@@ -1268,10 +1268,13 @@ function formatPriorityLabel(p) {
   return v.charAt(0).toUpperCase() + v.slice(1);
 }
 
-function queryDashboardStats(db) {
+function queryDashboardStats(db, boardFilter = "") {
+  const selectedBoard = String(boardFilter || "").trim();
   const stats = {
     pending: {}, // { boardName: { low, normal, high } }
     complete: {},
+    pendingActivity: {},
+    completeActivity: {},
     boards: [],
     oldestPending: null,
     newestCreated: null,
@@ -1279,11 +1282,19 @@ function queryDashboardStats(db) {
   };
 
   try {
+    const boardsRes = db.exec("SELECT name FROM boards ORDER BY sort_order ASC, created_at ASC, name ASC");
+    if (boardsRes.length) {
+      stats.boards = (boardsRes[0].values || []).map((row) => String(row[0] || "").trim()).filter(Boolean);
+    }
+
     const gridRes = db.exec(
       `SELECT board, priority, status, COUNT(*) AS cnt
        FROM notes
        WHERE board IS NOT NULL AND board <> ''
+         AND (? = '' OR board = ?)
        GROUP BY board, priority, status`
+      ,
+      [selectedBoard, selectedBoard]
     );
     if (gridRes.length) {
       const boardsSet = new Set();
@@ -1298,33 +1309,68 @@ function queryDashboardStats(db) {
         if (!target[board]) target[board] = { low: 0, normal: 0, high: 0 };
         target[board][priority] = cnt;
       }
-      stats.boards = [...boardsSet].sort();
+      if (!stats.boards.length) stats.boards = [...boardsSet].sort();
     }
 
     const oldestRes = db.exec(
-      "SELECT created_at FROM notes WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+      "SELECT created_at FROM notes WHERE status = 'pending' AND (? = '' OR board = ?) ORDER BY created_at ASC LIMIT 1",
+      [selectedBoard, selectedBoard]
     );
     if (oldestRes.length && oldestRes[0].values?.[0]?.[0] != null) {
       stats.oldestPending = Number(oldestRes[0].values[0][0]);
     }
 
     const newestRes = db.exec(
-      "SELECT created_at FROM notes ORDER BY created_at DESC LIMIT 1"
+      "SELECT created_at FROM notes WHERE (? = '' OR board = ?) ORDER BY created_at DESC LIMIT 1",
+      [selectedBoard, selectedBoard]
     );
     if (newestRes.length && newestRes[0].values?.[0]?.[0] != null) {
       stats.newestCreated = Number(newestRes[0].values[0][0]);
     }
 
     const completedRes = db.exec(
-      "SELECT completed_at FROM notes WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 1"
+      "SELECT completed_at FROM notes WHERE completed_at IS NOT NULL AND (? = '' OR board = ?) ORDER BY completed_at DESC LIMIT 1",
+      [selectedBoard, selectedBoard]
     );
     if (completedRes.length && completedRes[0].values?.[0]?.[0] != null) {
       stats.recentlyCompleted = Number(completedRes[0].values[0][0]);
+    }
+
+    const activityRes = db.exec(
+      `SELECT status, due_at
+       FROM notes
+       WHERE due_at IS NOT NULL
+         AND (? = '' OR board = ?)`
+      ,
+      [selectedBoard, selectedBoard]
+    );
+    if (activityRes.length) {
+      for (const row of activityRes[0].values || []) {
+        const status = String(row[0] || "").toLowerCase();
+        const dueAt = Number(row[1]);
+        if (status === "pending" && Number.isFinite(dueAt)) {
+          const key = localDateKey(dueAt);
+          stats.pendingActivity[key] = (stats.pendingActivity[key] || 0) + 1;
+        }
+        if (status === "complete" && Number.isFinite(dueAt)) {
+          const key = localDateKey(dueAt);
+          stats.completeActivity[key] = (stats.completeActivity[key] || 0) + 1;
+        }
+      }
     }
   } catch {
     // ignore
   }
   return stats;
+}
+
+function localDateKey(ts) {
+  if (!Number.isFinite(Number(ts))) return "";
+  const d = new Date(Number(ts));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 
@@ -2449,8 +2495,9 @@ async function main() {
   const saveAiSettingsBtnEl = document.getElementById("saveAiSettingsBtn");
   const saveObsidianSettingsBtnEl = document.getElementById("saveObsidianSettingsBtn");
 
-  let aiSettingsSavedSnapshot = { url: "", model: "", words: "" };
-  let obsidianSettingsSavedSnapshot = { vault: "", folder: "", sync: false };
+	  let aiSettingsSavedSnapshot = { url: "", model: "", words: "" };
+	  let obsidianSettingsSavedSnapshot = { vault: "", folder: "", sync: false };
+	  let dashboardSelectedBoard = "";
 
   function readAiSettingsFormSnapshot() {
     return {
@@ -3099,55 +3146,228 @@ async function main() {
 	    `;
 	  }
 
-  function renderDashboard() {
-    if (!(dashboardContent instanceof HTMLElement)) return;
-    const s = queryDashboardStats(db);
-    const pendingRows = s.boards
-      .map((board) => {
-        const row = s.pending[board] || { low: 0, normal: 0, high: 0 };
-        return `<tr><td>${escapeHtml(board)}</td><td class="dashboardNum">${row.low}</td><td class="dashboardNum">${row.normal}</td><td class="dashboardNum">${row.high}</td></tr>`;
-      })
-      .join("");
-    const completeRows = s.boards
-      .map((board) => {
-        const row = s.complete[board] || { low: 0, normal: 0, high: 0 };
-        return `<tr><td>${escapeHtml(board)}</td><td class="dashboardNum">${row.low}</td><td class="dashboardNum">${row.normal}</td><td class="dashboardNum">${row.high}</td></tr>`;
-      })
-      .join("");
-    const tableHtml = (rows) =>
-      rows
-        ? `<table class="dashboardTable"><thead><tr><th>Tab</th><th style="text-align: center;width:150px;">Low</th><th style="text-align: center; width:150px">Normal</th><th style="text-align: center; width:100px">High</th></tr></thead><tbody>${rows}</tbody></table>`
-        : `<p>No notes yet.</p>`;
+		  function renderDashboardHeatmap(title, counts, tone) {
+	    const dayMs = 24 * 60 * 60 * 1000;
+	    const today = new Date();
+	    today.setHours(0, 0, 0, 0);
+	    const start = new Date(today);
+	    start.setDate(today.getDate() - 25 * 7);
+	    start.setDate(start.getDate() - start.getDay());
+	    const max = Math.max(1, ...Object.values(counts || {}).map((v) => Number(v) || 0));
+	    const weekCount = 51;
+	    const todayWeek = Math.floor((today.getTime() - start.getTime()) / (7 * dayMs));
+	    const todayLabel = today.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+	    const monthLabels = Array.from({ length: weekCount }, () => "");
+	    const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+	    const cells = [];
+	    let previousMonth = -1;
+	
+	    for (let week = 0; week < weekCount; week += 1) {
+	      const weekStart = new Date(start.getTime() + week * 7 * dayMs);
+	      if (weekStart.getMonth() !== previousMonth) {
+	        monthLabels[week] = weekStart.toLocaleString(undefined, { month: "short" });
+	        previousMonth = weekStart.getMonth();
+	      }
+	      for (let day = 0; day < 7; day += 1) {
+	        const date = new Date(weekStart.getTime() + day * dayMs);
+	        const key = localDateKey(date.getTime());
+	        const count = Number(counts?.[key] || 0);
+	        const level = count <= 0 ? 0 : Math.min(4, Math.ceil((count / max) * 4));
+	        const formatted = date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+	        cells.push(
+	          `<span class="dashboardHeatmapCell dashboardHeatmapCell--${tone} dashboardHeatmapCell--level${level}" title="${count} ${escapeHtml(title.toLowerCase())} due ${escapeHtml(formatted)}" aria-label="${count} ${escapeHtml(title.toLowerCase())} due ${escapeHtml(formatted)}"></span>`
+	        );
+	      }
+	    }
 
-    dashboardContent.innerHTML = `
-      <h3 style="font-weight: 600;">Pending</h3>
-      <hr>
-      ${tableHtml(pendingRows)}
+	    return `
+	      <article class="dashboardHeatmap" aria-label="${escapeHtml(title)} activity heatmap">
+	        <div class="dashboardHeatmapHeader">
+	          <h4 class="dashboardHeatmapTitle">${escapeHtml(title)}</h4>
+	          <div class="dashboardHeatmapLegend" aria-label="Activity intensity">
+	            <span>Less</span>
+	            <span class="dashboardHeatmapCell dashboardHeatmapCell--${tone} dashboardHeatmapCell--level0" aria-hidden="true"></span>
+	            <span class="dashboardHeatmapCell dashboardHeatmapCell--${tone} dashboardHeatmapCell--level1" aria-hidden="true"></span>
+	            <span class="dashboardHeatmapCell dashboardHeatmapCell--${tone} dashboardHeatmapCell--level2" aria-hidden="true"></span>
+	            <span class="dashboardHeatmapCell dashboardHeatmapCell--${tone} dashboardHeatmapCell--level3" aria-hidden="true"></span>
+	            <span class="dashboardHeatmapCell dashboardHeatmapCell--${tone} dashboardHeatmapCell--level4" aria-hidden="true"></span>
+	            <span>More</span>
+	          </div>
+	        </div>
+	        <div class="dashboardHeatmapMonths" aria-hidden="true">${monthLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}</div>
+	        <div class="dashboardHeatmapBody">
+	          <div class="dashboardHeatmapDays" aria-hidden="true">${dayLabels.map((label) => `<span>${label}</span>`).join("")}</div>
+	          <div class="dashboardHeatmapGridWrap" style="--dashboard-today-week:${todayWeek}" aria-label="Today marker: ${escapeHtml(todayLabel)}">
+	            <span class="dashboardHeatmapTodayMarker" aria-hidden="true"></span>
+	            <span class="dashboardHeatmapTodayLabel" aria-hidden="true">Today</span>
+	            <div class="dashboardHeatmapGrid" role="img" aria-label="${escapeHtml(title)} daily due-date activity from 25 weeks before today through 25 weeks after today">${cells.join("")}</div>
+	          </div>
+	        </div>
+	      </article>
+		    `;
+		  }
 
-      <h3 style="font-weight: 600;">Complete</h3>
-      <hr>
-      ${tableHtml(completeRows)}
+		  function dashboardFilterItems(boardNames) {
+		    const used = new Set(["", "0"]);
+		    const fallback = "123456789abcdefghijklmnopqrstuvwxyz".split("");
+		    const pickKey = (name, index) => {
+		      const chars = String(name || "")
+		        .toLowerCase()
+		        .replace(/[^a-z0-9]/g, "")
+		        .split("");
+		      for (const ch of chars) {
+		        if (!used.has(ch)) {
+		          used.add(ch);
+		          return ch;
+		        }
+		      }
+		      for (const ch of fallback) {
+		        if (!used.has(ch)) {
+		          used.add(ch);
+		          return ch;
+		        }
+		      }
+		      return String(index + 1);
+		    };
+		    return [
+		      { board: "", label: "All Tabs", key: "0" },
+		      ...boardNames.map((board, index) => ({
+		        board,
+		        label: board,
+		        key: pickKey(board, index),
+		      })),
+		    ];
+		  }
 
-      <h3 style="font-weight: 600;">Timing</h3>
-      <hr>
-      <ul>
-        <li><strong>Oldest pending</strong>: ${s.oldestPending ? `${formatRelative(s.oldestPending)} (${formatDate(s.oldestPending)})` : "—"}</li>
-        <li><strong>Newest created</strong>: ${s.newestCreated ? `${formatRelative(s.newestCreated)} (${formatDate(s.newestCreated)})` : "—"}</li>
-        <li><strong>Last completed</strong>: ${s.recentlyCompleted ? `${formatRelative(s.recentlyCompleted)} (${formatDate(s.recentlyCompleted)})` : "—"}</li>
-      </ul>
+		  function renderDashboardFilterCard(items) {
+		    return `
+		      <section class="dashboardSection dashboardFilterCard" aria-labelledby="dashboardFilterTitle">
+		        <div class="dashboardSectionHeader">
+		          <h3 id="dashboardFilterTitle" class="dashboardSectionTitle">Tab Filter</h3>
+		          <span class="dashboardSectionMeta">Arrows or shown key</span>
+		        </div>
+		        <div class="dashboardFilterList" role="toolbar" aria-label="Filter dashboard by tab">
+		          ${items
+		            .map((item, index) => {
+		              const selected = item.board === dashboardSelectedBoard;
+		              const label = escapeHtml(item.label);
+		              const key = escapeHtml(String(item.key || "").toUpperCase());
+		              return `<button type="button" class="dashboardFilterButton" data-dashboard-filter-index="${index}" data-dashboard-filter-key="${escapeHtmlAttribute(item.key)}" data-dashboard-filter-board="${escapeHtmlAttribute(item.board)}" data-dashboard-filter-selected="${selected ? "true" : "false"}" aria-pressed="${selected ? "true" : "false"}"><span class="dashboardFilterButton__key">${key}</span><span class="dashboardFilterButton__label">${label}</span></button>`;
+		            })
+		            .join("")}
+		        </div>
+		      </section>
+		    `;
+		  }
 
-      <h3 style="font-weight: 600;">Charts</h3>
-      <hr>
-      <div class="dashboardCharts">
-        <div id="dashboardChartPending" class="dashboardChart" aria-label="Pending by tab and priority"></div>
-        <div id="dashboardChartComplete" class="dashboardChart" aria-label="Complete by tab and priority"></div>
-      </div>
-    `;
+		  function wireDashboardFilters() {
+		    if (!(dashboardContent instanceof HTMLElement)) return;
+		    const list = dashboardContent.querySelector(".dashboardFilterList");
+		    if (!(list instanceof HTMLElement)) return;
+		    const buttons = [...list.querySelectorAll(".dashboardFilterButton")].filter(
+		      (button) => button instanceof HTMLButtonElement
+		    );
+		    const selectButton = (button, focusAfter = true) => {
+		      if (!(button instanceof HTMLButtonElement)) return;
+		      dashboardSelectedBoard = button.dataset.dashboardFilterBoard || "";
+		      renderDashboard();
+		      if (focusAfter) {
+		        requestAnimationFrame(() => {
+		          const next = dashboardContent.querySelector('.dashboardFilterButton[data-dashboard-filter-selected="true"]');
+		          if (next instanceof HTMLElement) safeFocus(next);
+		        });
+		      }
+		    };
+		    for (const button of buttons) {
+		      button.addEventListener("click", () => selectButton(button, true));
+		    }
+		    list.addEventListener("keydown", (e) => {
+		      const active = document.activeElement;
+		      const index = active instanceof HTMLButtonElement ? buttons.indexOf(active) : -1;
+		      const key = String(e.key || "").toLowerCase();
+		      if (key === "arrowright" || key === "arrowdown" || key === "arrowleft" || key === "arrowup") {
+		        e.preventDefault();
+		        const delta = key === "arrowright" || key === "arrowdown" ? 1 : -1;
+		        const nextIndex = index >= 0 ? (index + delta + buttons.length) % buttons.length : 0;
+		        safeFocus(buttons[nextIndex]);
+		        return;
+		      }
+		      if (key === "home" || key === "end") {
+		        e.preventDefault();
+		        safeFocus(buttons[key === "home" ? 0 : buttons.length - 1]);
+		        return;
+		      }
+		    });
+		  }
 
-    if (typeof d3 !== "undefined") {
-      renderDashboardCharts(s);
-    }
-  }
+		  function activateDashboardFilterKey(key, focusAfter = true) {
+		    if (!(dashboardView instanceof HTMLElement) || dashboardView.hidden) return false;
+		    if (!(dashboardContent instanceof HTMLElement)) return false;
+		    const normalized = String(key || "").toLowerCase();
+		    if (normalized.length !== 1) return false;
+		    const buttons = [...dashboardContent.querySelectorAll(".dashboardFilterButton")].filter(
+		      (button) => button instanceof HTMLButtonElement
+		    );
+		    const matched = buttons.find(
+		      (button) => (button.dataset.dashboardFilterKey || "").toLowerCase() === normalized
+		    );
+		    if (!(matched instanceof HTMLButtonElement)) return false;
+		    dashboardSelectedBoard = matched.dataset.dashboardFilterBoard || "";
+		    renderDashboard();
+		    if (focusAfter) {
+		      requestAnimationFrame(() => {
+		        if (!(dashboardContent instanceof HTMLElement)) return;
+		        const next = dashboardContent.querySelector('.dashboardFilterButton[data-dashboard-filter-selected="true"]');
+		        if (next instanceof HTMLElement) safeFocus(next);
+		      });
+		    }
+		    return true;
+		  }
+
+		  function renderDashboard() {
+		    if (!(dashboardContent instanceof HTMLElement)) return;
+		    let s = queryDashboardStats(db, dashboardSelectedBoard);
+		    if (dashboardSelectedBoard && !s.boards.includes(dashboardSelectedBoard)) {
+		      dashboardSelectedBoard = "";
+		      s = queryDashboardStats(db, dashboardSelectedBoard);
+		    }
+		    const filterItems = dashboardFilterItems(s.boards);
+		    const totalForGrid = (grid) =>
+		      Object.values(grid || {}).reduce((sum, row) => sum + row.low + row.normal + row.high, 0);
+		    const totalPending = totalForGrid(s.pending);
+		    const totalComplete = totalForGrid(s.complete);
+		    const scopeLabel = dashboardSelectedBoard ? dashboardSelectedBoard : "All";
+		    dashboardContent.innerHTML = `
+	      <section class="dashboardHero" aria-label="Dashboard summary">
+	        <div class="dashboardMetric">
+	          <span class="dashboardMetric__value">${totalPending}</span>
+	          <span class="dashboardMetric__label">Pending</span>
+	        </div>
+	        <div class="dashboardMetric">
+	          <span class="dashboardMetric__value">${totalComplete}</span>
+	          <span class="dashboardMetric__label">Complete</span>
+		        </div>
+		        <div class="dashboardMetric">
+		          <span class="dashboardMetric__value dashboardMetric__value--text" title="${escapeHtmlAttribute(scopeLabel)}">${escapeHtml(scopeLabel)}</span>
+		          <span class="dashboardMetric__label">Scope</span>
+		        </div>
+	      </section>
+
+	      <section class="dashboardSection" aria-labelledby="dashboardActivityTitle">
+	        <div class="dashboardSectionHeader">
+	          <h3 id="dashboardActivityTitle" class="dashboardSectionTitle">Activity</h3>
+	          <span class="dashboardSectionMeta">25 weeks before and after today</span>
+	        </div>
+	        <div class="dashboardHeatmapPair">
+	          ${renderDashboardHeatmap("Pending Due", s.pendingActivity, "pending")}
+	          ${renderDashboardHeatmap("Completed Due", s.completeActivity, "complete")}
+	        </div>
+	      </section>
+
+		      ${renderDashboardFilterCard(filterItems)}
+		    `;
+		    wireDashboardFilters();
+		  }
 
   function renderCalendar() {
     if (!(calendarContent instanceof HTMLElement)) return;
@@ -3324,133 +3544,17 @@ async function main() {
     }
   }
 
-  function renderDashboardCharts(s) {
-    const keys = ["low", "normal", "high"];
-    const colors = priorityColorsForTheme();
-    const labels = { low: "L", normal: "N", high: "H" };
-    const ariaLabels = { low: "Low", normal: "Normal", high: "High" };
-    const margin = { top: 36, right: 12, bottom: 32, left: 36 };
-    const chartWidth = 280;
-    const chartHeight = 180;
+	  function escapeHtml(str) {
+	    const div = document.createElement("div");
+	    div.textContent = str;
+	    return div.innerHTML;
+	  }
 
-    const renderChart = (containerId, grid, title) => {
-      const el = document.getElementById(containerId);
-      if (!el) return;
-      if (!s.boards.length) {
-        el.innerHTML = "<p class=\"dashboardChartEmpty\">No data</p>";
-        return;
-      }
-      el.innerHTML = "";
+	  function escapeHtmlAttribute(str) {
+	    return escapeHtml(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+	  }
 
-      const data = s.boards.map((tab) => {
-        const row = grid[tab] || { low: 0, normal: 0, high: 0 };
-        return { tab, low: row.low, normal: row.normal, high: row.high };
-      });
-
-      const totalMax = Math.ceil(d3.max(data, (d) => d.low + d.normal + d.high) || 1);
-      const width = chartWidth - margin.left - margin.right;
-      const height = chartHeight - margin.top - margin.bottom;
-
-      const svg = d3
-        .select(el)
-        .append("svg")
-        .attr("width", chartWidth)
-        .attr("height", chartHeight)
-        .attr("viewBox", `0 0 ${chartWidth} ${chartHeight}`)
-        .attr("preserveAspectRatio", "xMidYMid meet");
-
-      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-      const headerY = 14;
-      svg
-        .append("text")
-        .attr("x", margin.left)
-        .attr("y", headerY)
-        .attr("text-anchor", "start")
-        .attr("class", "dashboardChartTitle")
-        .text(title);
-
-      const legendItemWidth = 28;
-      const legendRightPadding = 22;
-      const legend = svg
-        .append("g")
-        .attr("class", "dashboardChartLegend")
-        .attr("role", "list")
-        .attr("aria-label", "Priority legend: Low, Normal, High")
-        .attr("transform", `translate(${chartWidth - margin.right - legendRightPadding}, ${headerY})`);
-      keys.forEach((key, i) => {
-        const item = legend
-          .append("g")
-          .attr("role", "listitem")
-          .attr("aria-label", `${ariaLabels[key]} priority`)
-          .attr("transform", `translate(${-legendItemWidth * (keys.length - 1 - i)}, -5)`);
-        const rect = item
-          .append("rect")
-          .attr("width", 10)
-          .attr("height", 10)
-          .attr("x", 0)
-          .attr("fill", colors[key]);
-        rect.append("title").text(ariaLabels[key]);
-        item
-          .append("text")
-          .attr("x", 14)
-          .attr("y", 9)
-          .attr("font-size", "11px")
-          .attr("aria-hidden", "true")
-          .text(labels[key]);
-      });
-
-      const x = d3
-        .scaleBand()
-        .domain(s.boards)
-        .range([0, width])
-        .padding(0.2);
-
-      const y = d3.scaleLinear().domain([0, totalMax]).range([height, 0]);
-
-      const stack = d3.stack().keys(keys)(data);
-
-      g.append("g")
-        .attr("transform", `translate(0,${height})`)
-        .call(d3.axisBottom(x).tickSizeOuter(0))
-        .selectAll("text")
-        .attr("transform", "rotate(-18)")
-        .style("text-anchor", "end");
-
-      const yTickStep = totalMax <= 5 ? 1 : Math.ceil(totalMax / 5);
-      const yTickValues = [];
-      for (let v = 0; v <= totalMax; v += yTickStep) yTickValues.push(v);
-      if (yTickValues[yTickValues.length - 1] !== totalMax) yTickValues.push(totalMax);
-      g.append("g")
-        .call(d3.axisLeft(y).tickValues(yTickValues).tickFormat(d3.format("d")).tickSizeOuter(0));
-
-      const series = g
-        .selectAll(".series")
-        .data(stack)
-        .join("g")
-        .attr("fill", (d) => colors[d.key] || "#999");
-
-      series
-        .selectAll("rect")
-        .data((d) => d)
-        .join("rect")
-        .attr("x", (d) => x(d.data.tab))
-        .attr("y", (d) => y(d[1]))
-        .attr("height", (d) => y(d[0]) - y(d[1]))
-        .attr("width", x.bandwidth());
-    };
-
-    renderChart("dashboardChartPending", s.pending, "Pending");
-    renderChart("dashboardChartComplete", s.complete, "Complete");
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  function setManageTabsMessage(text) {
+	  function setManageTabsMessage(text) {
     if (manageTabsMessage instanceof HTMLElement) manageTabsMessage.textContent = text || "";
   }
 
@@ -7100,9 +7204,9 @@ async function main() {
     },
     true
   );
-  document.addEventListener(
-    "keydown",
-    (e) => {
+	  document.addEventListener(
+	    "keydown",
+	    (e) => {
       if (!guidedTourActive) return;
       const key = (e.key || "").toLowerCase();
       const nav = getNavKeys(keyLayout);
@@ -7131,10 +7235,24 @@ async function main() {
         }
       }
     },
-    true
-  );
+	    true
+	  );
+	  document.addEventListener(
+	    "keydown",
+	    (e) => {
+	      if (!(dashboardView instanceof HTMLElement) || dashboardView.hidden) return;
+	      if (e.ctrlKey || e.metaKey || e.altKey) return;
+	      if (e.target instanceof Element && isEditableElement(e.target)) return;
+	      if (activateDashboardFilterKey(e.key, true)) {
+	        e.preventDefault();
+	        e.stopPropagation();
+	        e.stopImmediatePropagation();
+	      }
+	    },
+	    true
+	  );
 
-  if (dbGetAppSettingString(APP_SETTING_TOUR_SEEN) !== "1") {
+	  if (dbGetAppSettingString(APP_SETTING_TOUR_SEEN) !== "1") {
     setTimeout(() => {
       if (!guidedTourActive) startGuidedTour({ markSeen: true });
     }, 80);
