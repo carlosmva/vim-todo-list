@@ -22,6 +22,20 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
   - Configure via **AI** in the header (endpoint URL, model name)
   - Works alongside local completions (DB, custom words, dictionary)
   - Press `Tab` to accept a suggestion; use arrow keys to cycle through options
+- **Obsidian (optional)**: link the extension to a vault folder, sync Markdown with your notes, open notes in Obsidian, and resolve conflicts when vault files and cards disagree (see below)
+
+## Obsidian integration
+
+Configure everything under **Settings** (gear) → **Obsidian**.
+
+- **Vault name** — Must match the vault name shown in Obsidian (lower-left). **Notes folder** is optional (path under the vault root where `.md` files are stored).
+- **Choose vault folder** — Uses Chromium’s **File System Access API** so the extension can read and write Markdown under your real vault directory. Granting access turns on **Sync mode** (read/write vault files, not `obsidian://` alone).
+- **Sync mode** — Keeps the app’s note data and vault `.md` files in sync: writes the built Markdown to disk, compares normalized content and timestamps before merging, and flushes any open rich-text editor draft to SQLite before comparing with the file.
+- **Per-card Obsidian** — Each card has an **Obsidian** control to create or open the mapped note. Files follow a predictable path (board folder, title slug, optional id suffix when titles collide). The first successful create can use `obsidian://new`; after that, opens use **`obsidian://open` only** so Obsidian does not spawn numbered duplicate notes when updating.
+- **Conflict resolution** — If the vault file and the extension disagree and the merge is ambiguous, a **Resolve conflict** modal shows side-by-side previews (**This card** vs **Vault file on disk**). You choose which side to keep or cancel; nothing is overwritten silently.
+- **Sync badges** — When Obsidian is configured, cards can show a small status (e.g. in sync, diverged, or warning) so you can see vault vs app state at a glance.
+- **Clear first-open cache** — In Obsidian settings, clears remembered “path already created” state. Use if creation failed or you deleted the file in Obsidian and need create semantics again on the next open.
+- **Opening Obsidian** — `obsidian://` URLs are opened in a way that works when the popup runs inside strict embedders (e.g. new tab via the extension API instead of relying on frame navigation alone).
 
 ## Install (unpacked)
 
