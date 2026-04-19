@@ -207,6 +207,113 @@ body {
   box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.42);
 }
 
+/* Voluntary support prompt: bottom sheet, non-blocking (no full-screen blocker). */
+.supportPrompt {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.supportPrompt[hidden] {
+  display: none !important;
+}
+
+.supportPrompt__panel {
+  pointer-events: auto;
+  width: min(100% - 20px, 400px);
+  max-width: 100%;
+  margin: 0 10px 10px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  border-radius: 8px;
+  background: var(--modern-surface-1, var(--cds-layer, #f4f4f4));
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+  box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.14);
+  transform: translateY(120%);
+  opacity: 0;
+  transition:
+    transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.24s ease;
+}
+
+.supportPrompt--visible .supportPrompt__panel {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.supportPrompt__title {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.supportPrompt__body {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  overflow-wrap: anywhere;
+}
+
+.supportPrompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.supportPrompt__primary {
+  appearance: none;
+  border: 1px solid var(--modern-border-strong, #0f62fe);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--modern-text, #fff);
+  background: #0f62fe;
+}
+
+.supportPrompt__primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.supportPrompt__primary:focus-visible {
+  outline: 2px solid var(--modern-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
+.supportPrompt__dismiss {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.supportPrompt__dismiss:hover {
+  color: var(--modern-text, #161616);
+}
+
+.supportPrompt__dismiss:focus-visible {
+  outline: 2px solid var(--modern-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
 /* Monospaced link-style action controls (buttons semantically, links visually) */
 .monoLinkButton {
   appearance: none;

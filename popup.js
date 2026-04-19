@@ -12170,11 +12170,19 @@ async function main() {
       return;
     }
 
-    if (action === "complete") setStatus(db, activeBoard, id, "complete");
+    let completedTaskThisClick = false;
+    if (action === "complete") {
+      setStatus(db, activeBoard, id, "complete");
+      completedTaskThisClick = true;
+    }
     if (action === "pending") setStatus(db, activeBoard, id, "pending");
 
     await persist();
     await refresh();
+
+    if (completedTaskThisClick && window.VimTodoSupportPrompt && typeof window.VimTodoSupportPrompt.scheduleAfterTaskComplete === "function") {
+      void window.VimTodoSupportPrompt.scheduleAfterTaskComplete();
+    }
   });
 
   // Prevent toolbar buttons from stealing the text selection.

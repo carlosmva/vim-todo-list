@@ -872,6 +872,26 @@ button,
   color: var(--modern-text-subtle);
 }
 
+.aboutSupport {
+  margin: 1rem 0 0;
+  max-width: 60ch;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.aboutSupportLink {
+  color: var(--modern-link, #0f62fe);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.aboutSupportLink:hover {
+  color: var(--modern-link-hover, #0043ce);
+  text-decoration: underline;
+}
+
 .list {
   gap: var(--modern-space-2);
   overflow-x: hidden;

@@ -271,6 +271,15 @@
               </li>
             </ul>
             <p class="aboutFooter">💡 Built independently. Focused on practical tools that actually get used.</p>
+            <p class="aboutSupport">
+              <a
+                class="aboutSupportLink"
+                href="https://buymeacoffee.com/carlosx"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Enjoying the extension? Consider supporting development ☕</a
+              >
+            </p>
           </div>
         </div>
 
@@ -676,10 +685,32 @@
       </div>
     </div>
 
+    <div
+      id="supportPrompt"
+      class="supportPrompt"
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="supportPromptTitle"
+      aria-describedby="supportPromptBody"
+    >
+      <div class="supportPrompt__panel">
+        <h3 id="supportPromptTitle" class="supportPrompt__title">Enjoying the extension?</h3>
+        <p id="supportPromptBody" class="supportPrompt__body"></p>
+        <div class="supportPrompt__actions">
+          <button id="supportPromptSupport" type="button" class="supportPrompt__primary">Support ☕</button>
+          <button id="supportPromptLater" type="button" class="monoLinkButton">Maybe later</button>
+        </div>
+        <button id="supportPromptNever" type="button" class="supportPrompt__dismiss">Don’t show again</button>
+      </div>
+    </div>
+
     <!-- sql.js (SQLite WASM) and D3 will be copied into vendor/ -->
     <script src="vendor/sql-wasm.js"></script>
     <script src="vendor/d3.min.js"></script>
     <script src="obsidian-vault-idb.js"></script>
+    <script src="support-prompt.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
