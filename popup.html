@@ -6,7 +6,7 @@
     <title>Vim Todo List</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Walter+Turncoat&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <!-- Nothing design system: Doto (display), Space Grotesk (UI), Space Mono (labels / data) -->
     <link
       href="https://fonts.googleapis.com/css2?family=Doto:wght@400..700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap"
@@ -27,6 +27,32 @@
             <select id="themeSelect" class="headerThemeSelect" aria-label="Theme"></select>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
             <a id="aboutLink" class="headerLink" href="#" aria-label="About">About</a>
+            <button id="tourBtn" class="headerIconButton" type="button" aria-label="Start guided tour" title="Guided tour">
+              <svg
+                class="headerIconButtonSvg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 21s7-5.2 7-11A7 7 0 0 0 5 10c0 5.8 7 11 7 11Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
             <button id="settingsBtn" class="headerIconButton" type="button" aria-label="Settings" title="Settings">
               <svg
                 class="headerIconButtonSvg"
@@ -89,7 +115,7 @@
               </div>
             </div>
 
-            <div class="createDueQuickRow">
+            <div class="createDueQuickRow" hidden aria-hidden="true">
               <div class="createDueQuickActions" aria-label="Quick due dates">
                 <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="today">
                   Today
@@ -192,11 +218,59 @@
             <p class="aboutAppName">vim-todo-list</p>
             <p class="aboutBy">by</p>
             <p class="aboutCompany">
-              <a href="https://northeasternsoftware.com/" target="_blank" rel="noopener noreferrer">Northeastern Software Services LLC</a>
+              <a href="https://northeasternsoftware.com/" target="_blank" rel="noopener noreferrer" translate="no"
+                >Northeastern Software Services LLC</a
+              >
             </p>
             <p class="aboutRepo">
               <a href="https://github.com/carlosmva/vim-todo-list" target="_blank" rel="noopener noreferrer">GitHub</a>
             </p>
+            <p class="aboutSummary">
+              This extension is part of a growing set of tools designed to help you capture, structure, and act on information
+              faster.
+            </p>
+            <h3 class="aboutSectionTitle">Explore More</h3>
+            <ul class="aboutProducts">
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  🚀
+                  <a href="https://ezsolve.io/" target="_blank" rel="noopener noreferrer" translate="no">EzSolve</a>
+                </p>
+                <p class="aboutProductBody">From notes → to root causes → to action. Bring structure and accountability to problem solving.</p>
+              </li>
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  💪
+                  <a
+                    href="https://apps.apple.com/us/app/gymcade-workout-tracker/id6744276387"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    translate="no"
+                    >GymCade</a
+                  >
+                </p>
+                <p class="aboutProductBody">Turn your workouts into a game. Stay consistent, level up, and track progress visually.</p>
+              </li>
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  🥗
+                  <a href="https://apps.apple.com/us/app/ondiet-ai/id6759893218" target="_blank" rel="noopener noreferrer" translate="no"
+                    >OnDiet AI</a
+                  >
+                </p>
+                <p class="aboutProductBody">Upload a diet plan → get instant shopping lists and meal prep steps.</p>
+              </li>
+              <li class="aboutProduct">
+                <p class="aboutProductName">
+                  🌍
+                  <a href="https://apps.apple.com/us/app/hourloom/id6761745195" target="_blank" rel="noopener noreferrer" translate="no"
+                    >Hourloom</a
+                  >
+                </p>
+                <p class="aboutProductBody">Track multiple time zones with clean, customizable clock layouts.</p>
+              </li>
+            </ul>
+            <p class="aboutFooter">💡 Built independently. Focused on practical tools that actually get used.</p>
           </div>
         </div>
 
@@ -531,6 +605,28 @@
         </div>
 
       </div>
+    </div>
+
+    <div id="guidedTour" class="guidedTour" hidden aria-hidden="true">
+      <div class="guidedTour__backdrop"></div>
+      <section
+        class="guidedTour__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="guidedTourTitle"
+        aria-describedby="guidedTourBody"
+      >
+        <div class="guidedTour__eyebrow" id="guidedTourProgress">Tour</div>
+        <h2 class="guidedTour__title" id="guidedTourTitle">Welcome</h2>
+        <p class="guidedTour__body" id="guidedTourBody"></p>
+        <div class="guidedTour__actions">
+          <button id="guidedTourSkip" class="monoLinkButton" type="button">Skip</button>
+          <div class="guidedTour__stepActions">
+            <button id="guidedTourBack" class="monoLinkButton" type="button">Back</button>
+            <button id="guidedTourNext" class="monoLinkButton" type="button">Next</button>
+          </div>
+        </div>
+      </section>
     </div>
 
     <div id="obsidianConflictModal" class="obsidianConflictModal" hidden aria-hidden="true">

@@ -16,7 +16,6 @@ const THEME_ORDER = [
   "solarized-dark",
   "emacs",
   "command-line",
-  "chalkboard",
   "nothing",
   "nothing-light",
 ];
@@ -2376,6 +2375,7 @@ async function main() {
   const instructionsLink = document.getElementById("instructionsLink");
   const aboutLink = document.getElementById("aboutLink");
   const settingsBtn = document.getElementById("settingsBtn");
+  const tourBtn = document.getElementById("tourBtn");
   const themeSelect = document.getElementById("themeSelect");
   const closeInstructionsBtn = document.getElementById("closeInstructionsBtn");
   const closeAboutBtn = document.getElementById("closeAboutBtn");
@@ -2412,6 +2412,13 @@ async function main() {
   const addTabForm = document.getElementById("addTabForm");
   const addTabName = document.getElementById("addTabName");
   const noteAutocomplete = document.getElementById("noteAutocomplete");
+  const guidedTour = document.getElementById("guidedTour");
+  const guidedTourProgress = document.getElementById("guidedTourProgress");
+  const guidedTourTitle = document.getElementById("guidedTourTitle");
+  const guidedTourBody = document.getElementById("guidedTourBody");
+  const guidedTourBack = document.getElementById("guidedTourBack");
+  const guidedTourNext = document.getElementById("guidedTourNext");
+  const guidedTourSkip = document.getElementById("guidedTourSkip");
 
   const textareaMinHeights = new WeakMap();
 
@@ -2548,6 +2555,156 @@ async function main() {
     setSettingsSection(sec);
   }
 
+  const TOUR_STEPS = [
+    {
+      view: "notes",
+      target: "#createForm",
+      title: "Create tasks",
+      body: "Start in the main window. Type a task, optionally set a due date, use quick dates, then Add Task.",
+    },
+    {
+      view: "notes",
+      target: "#notesBoard",
+      title: "Work the board",
+      body: "Cards live in Pending and Complete. The app is keyboard-first: move by visual direction, then press Enter on focused controls.",
+    },
+    {
+      view: "settings",
+      section: "boards",
+      target: "#settingsView",
+      title: "Open Settings",
+      body: "Settings are split into sections. The tour will switch through each section so you know where the main controls live.",
+    },
+    {
+      view: "settings",
+      section: "boards",
+      target: "#settingsPanelBoards",
+      title: "Boards",
+      body: "Add, rename, remove, and reorder boards. These are the tabs above your Pending and Complete columns.",
+    },
+    {
+      view: "settings",
+      section: "data",
+      target: "#settingsPanelData",
+      title: "Data",
+      body: "Import and export your local database or CSV when you want a backup or a portable copy.",
+    },
+    {
+      view: "settings",
+      section: "ai",
+      target: "#settingsPanelAi",
+      title: "AI",
+      body: "Connect Ollama and tune completion vocabulary for the new-task autocomplete flow.",
+    },
+    {
+      view: "settings",
+      section: "obsidian",
+      target: "#settingsPanelObsidian",
+      title: "Obsidian",
+      body: "Link your vault folder and configure sync so cards can compare and update Markdown files.",
+    },
+    {
+      view: "settings",
+      section: "keyboard",
+      target: "#settingsPanelKeyboard",
+      title: "Keyboard",
+      body: "Choose the physical key layout used by navigation docs and bindings.",
+    },
+  ];
+
+  let guidedTourIndex = 0;
+  let guidedTourActive = false;
+  let guidedTourLastFocus = null;
+  let guidedTourTarget = null;
+
+  function clearGuidedTourTarget() {
+    if (guidedTourTarget instanceof HTMLElement) {
+      guidedTourTarget.classList.remove("guidedTourTarget");
+    }
+    guidedTourTarget = null;
+  }
+
+  function prepareGuidedTourStep(step) {
+    if (!step) return;
+    if (step.view === "settings") {
+      showSettingsView(step.section || "boards");
+    } else {
+      showNotesView();
+    }
+  }
+
+  function renderGuidedTourStep() {
+    if (!guidedTourActive) return;
+    const step = TOUR_STEPS[guidedTourIndex];
+    if (!step) return;
+    prepareGuidedTourStep(step);
+    clearGuidedTourTarget();
+
+    if (guidedTour instanceof HTMLElement) {
+      guidedTour.hidden = false;
+      guidedTour.setAttribute("aria-hidden", "false");
+    }
+    if (guidedTourProgress instanceof HTMLElement) {
+      guidedTourProgress.textContent = `Step ${guidedTourIndex + 1} of ${TOUR_STEPS.length}`;
+    }
+    if (guidedTourTitle instanceof HTMLElement) guidedTourTitle.textContent = step.title;
+    if (guidedTourBody instanceof HTMLElement) guidedTourBody.textContent = step.body;
+    if (guidedTourBack instanceof HTMLButtonElement) guidedTourBack.disabled = guidedTourIndex === 0;
+    if (guidedTourNext instanceof HTMLButtonElement) {
+      guidedTourNext.textContent = guidedTourIndex === TOUR_STEPS.length - 1 ? "Done" : "Next";
+    }
+
+    requestAnimationFrame(() => {
+      const target = step.target ? document.querySelector(step.target) : null;
+      if (target instanceof HTMLElement && isElementInVisibleView(target)) {
+        guidedTourTarget = target;
+        guidedTourTarget.classList.add("guidedTourTarget");
+        try {
+          guidedTourTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+        } catch {
+          // ignore
+        }
+      }
+      if (guidedTourNext instanceof HTMLElement) safeFocus(guidedTourNext);
+    });
+  }
+
+  function setGuidedTourSeen() {
+    dbSetAppSettingString(APP_SETTING_TOUR_SEEN, "1");
+    void persist().catch(() => {
+      // ignore
+    });
+  }
+
+  function closeGuidedTour({ restoreFocus = true } = {}) {
+    guidedTourActive = false;
+    clearGuidedTourTarget();
+    if (guidedTour instanceof HTMLElement) {
+      guidedTour.hidden = true;
+      guidedTour.setAttribute("aria-hidden", "true");
+    }
+    // Tour steps may end in Settings; always bring the app back to the main notes screen.
+    showNotesView();
+
+    let restored = false;
+    if (restoreFocus && guidedTourLastFocus instanceof HTMLElement && isElementInVisibleView(guidedTourLastFocus)) {
+      restored = safeFocus(guidedTourLastFocus);
+    }
+    if (!restored) {
+      const noteText = document.getElementById("noteText");
+      if (noteText instanceof HTMLElement) safeFocus(noteText);
+    }
+    guidedTourLastFocus = null;
+  }
+
+  function startGuidedTour({ markSeen = false } = {}) {
+    guidedTourActive = true;
+    guidedTourIndex = 0;
+    guidedTourLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (markSeen) setGuidedTourSeen();
+    renderGuidedTourStep();
+  }
+
   const THEME_LABELS = {
     light: "Light",
     dark: "Dark",
@@ -2555,7 +2712,6 @@ async function main() {
     "solarized-dark": "Solarized Dark",
     emacs: "Emacs",
     "command-line": "Command Line",
-    chalkboard: "Chalkboard",
     nothing: "Nothing",
     "nothing-light": "Nothing Light",
   };
@@ -3306,6 +3462,7 @@ async function main() {
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
   const APP_SETTING_THEME = "app.theme";
+  const APP_SETTING_TOUR_SEEN = "app.guidedTourSeen";
   const APP_SETTING_OBSIDIAN_VAULT_NAME = "obsidian.vaultName";
   const APP_SETTING_OBSIDIAN_NOTES_FOLDER = "obsidian.notesFolder";
   const APP_SETTING_OBSIDIAN_SYNC_MODE = "obsidian.syncMode";
@@ -6473,6 +6630,84 @@ async function main() {
       if (closeAboutBtn instanceof HTMLElement) closeAboutBtn.focus();
     });
   }
+  if (tourBtn instanceof HTMLElement) {
+    tourBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      startGuidedTour();
+    });
+  }
+  if (guidedTourBack instanceof HTMLButtonElement) {
+    guidedTourBack.addEventListener("click", () => {
+      if (!guidedTourActive) return;
+      guidedTourIndex = Math.max(0, guidedTourIndex - 1);
+      renderGuidedTourStep();
+    });
+  }
+  if (guidedTourNext instanceof HTMLButtonElement) {
+    guidedTourNext.addEventListener("click", () => {
+      if (!guidedTourActive) return;
+      if (guidedTourIndex >= TOUR_STEPS.length - 1) {
+        closeGuidedTour({ restoreFocus: true });
+        return;
+      }
+      guidedTourIndex += 1;
+      renderGuidedTourStep();
+    });
+  }
+  if (guidedTourSkip instanceof HTMLButtonElement) {
+    guidedTourSkip.addEventListener("click", () => {
+      closeGuidedTour({ restoreFocus: true });
+    });
+  }
+  if (guidedTour instanceof HTMLElement) {
+    guidedTour.addEventListener("keydown", (e) => {
+      if (!guidedTourActive) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeGuidedTour({ restoreFocus: true });
+      }
+    });
+  }
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (!guidedTourActive) return;
+      const key = (e.key || "").toLowerCase();
+      const nav = getNavKeys(keyLayout);
+      if (key === "escape" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        closeGuidedTour({ restoreFocus: true });
+        return;
+      }
+      if (modKeyOnly(e)) {
+        if (key === nav.right || key === nav.down) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (guidedTourNext instanceof HTMLButtonElement) guidedTourNext.click();
+          return;
+        }
+        if (key === nav.left || key === nav.up) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (guidedTourBack instanceof HTMLButtonElement && !guidedTourBack.disabled) {
+            guidedTourBack.click();
+          }
+        }
+      }
+    },
+    true
+  );
+
+  if (dbGetAppSettingString(APP_SETTING_TOUR_SEEN) !== "1") {
+    setTimeout(() => {
+      if (!guidedTourActive) startGuidedTour({ markSeen: true });
+    }, 80);
+  }
 
   function populateAiSettingsStaticHints() {
     const extId = chrome.runtime?.id || "";
@@ -6616,8 +6851,19 @@ async function main() {
     dueInput.dispatchEvent(new Event("input", { bubbles: true }));
     dueInput.dispatchEvent(new Event("change", { bubbles: true }));
     safeFocus(dueInput);
+    setCreateDueQuickVisible(false);
     return true;
   }
+  setCreateDueQuickVisible(false);
+  document.addEventListener(
+    "focusin",
+    () => {
+      const active = document.activeElement;
+      if (active instanceof Element && active.closest("#createForm .createDueQuickActions") !== null) return;
+      setCreateDueQuickVisible(false);
+    },
+    true
+  );
   document.querySelectorAll("[data-due-quick]").forEach((btn) => {
     if (!(btn instanceof HTMLButtonElement)) return;
     btn.addEventListener("click", (e) => {
@@ -7840,6 +8086,19 @@ async function main() {
       .filter((el) => el instanceof HTMLElement && isElementInVisibleView(el));
   }
 
+  function setCreateDueQuickVisible(visible) {
+    const row = document.querySelector("#createForm .createDueQuickRow");
+    if (!(row instanceof HTMLElement)) return;
+    const show = visible === true;
+    row.hidden = !show;
+    row.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function focusFirstCreateDueQuickButton() {
+    const first = document.querySelector('#createForm [data-due-quick="today"]');
+    return first instanceof HTMLElement ? safeFocus(first) : false;
+  }
+
   function moveCreateFormFocusByVisualDirection(key, nav) {
     const active = document.activeElement;
     if (!(active instanceof HTMLElement)) return false;
@@ -7860,8 +8119,8 @@ async function main() {
 
     const noteDueDate = document.getElementById("noteDueDate");
     if (active === noteDueDate && (direction === "right" || direction === "down")) {
-      const todayBtn = document.querySelector('#createForm [data-due-quick="today"]');
-      if (todayBtn instanceof HTMLElement) return safeFocus(todayBtn);
+      setCreateDueQuickVisible(true);
+      return focusFirstCreateDueQuickButton();
     }
 
     const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
@@ -9173,7 +9432,15 @@ async function main() {
           const noteDueDate = document.getElementById("noteDueDate");
           const dashboardBtn = document.getElementById("dashboardBtn");
           const firstDueQuick = document.querySelector("#createForm [data-due-quick]");
-          if (activeEl2 === noteDueDate && firstDueQuick instanceof HTMLElement && safeFocus(firstDueQuick)) return;
+          if (activeEl2 === noteDueDate) {
+            setCreateDueQuickVisible(true);
+            if (
+              (firstDueQuick instanceof HTMLElement && safeFocus(firstDueQuick)) ||
+              focusFirstCreateDueQuickButton()
+            ) {
+              return;
+            }
+          }
           if (activeEl2 === noteText && dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) return;
         }
 
