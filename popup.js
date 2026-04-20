@@ -9,6 +9,7 @@ const THEME_KEY = "theme_v1";
 const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
 const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
+const DEFAULT_HEADER_TITLE = "Vim To-Do List";
 const THEME_ORDER = [
   "light",
   "dark",
@@ -2481,6 +2482,7 @@ async function main() {
   const settingsPanelObsidian = document.getElementById("settingsPanelObsidian");
   const settingsPanelKeyboard = document.getElementById("settingsPanelKeyboard");
   const settingsThemeSelect = document.getElementById("settingsThemeSelect");
+  const settingsHeaderTitleInput = document.getElementById("settingsHeaderTitleInput");
   const popupSizeInputs = Array.from(document.querySelectorAll('input[name="popupSizeChoice"]'));
   const obsidianVaultNameInput = document.getElementById("obsidianVaultName");
   const obsidianNotesFolderInput = document.getElementById("obsidianNotesFolder");
@@ -3774,6 +3776,7 @@ async function main() {
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
   const APP_SETTING_THEME = "app.theme";
+  const APP_SETTING_HEADER_TITLE = "app.headerTitle";
   const APP_SETTING_POPUP_SIZE = "app.popupSize";
   const APP_SETTING_TOUR_SEEN = "app.guidedTourSeen";
   const APP_SETTING_OBSIDIAN_VAULT_NAME = "obsidian.vaultName";
@@ -3905,6 +3908,32 @@ async function main() {
   let popupSize = dbGetAppSettingString(APP_SETTING_POPUP_SIZE) || "m";
   if (!POPUP_SIZE_ORDER.includes(popupSize)) popupSize = "m";
   applyPopupSize(popupSize);
+
+  let appHeaderTitleRaw = dbGetAppSettingString(APP_SETTING_HEADER_TITLE) || "";
+
+  function normalizeHeaderTitleInput(value) {
+    return String(value || "")
+      .replace(/[\r\n\x00-\x1F\x7F]/g, "")
+      .trim()
+      .slice(0, 80);
+  }
+
+  function titleTextForDisplay(storedRaw) {
+    const t = normalizeHeaderTitleInput(storedRaw);
+    return t || DEFAULT_HEADER_TITLE;
+  }
+
+  function applyHeaderTitle(storedRaw) {
+    const headerTitleEl = document.getElementById("headerTitle");
+    if (headerTitleEl instanceof HTMLElement) {
+      headerTitleEl.textContent = titleTextForDisplay(storedRaw);
+    }
+    if (settingsHeaderTitleInput instanceof HTMLInputElement) {
+      settingsHeaderTitleInput.value = normalizeHeaderTitleInput(storedRaw);
+    }
+  }
+
+  applyHeaderTitle(appHeaderTitleRaw);
 
   // Shared caches for autocomplete (new note + notes editor).
   let ollamaModel = aiEndpointModel || null;
@@ -4117,6 +4146,23 @@ async function main() {
     }
   }
 
+  async function commitHeaderTitleValue() {
+    if (!(settingsHeaderTitleInput instanceof HTMLInputElement)) return;
+    const next = normalizeHeaderTitleInput(settingsHeaderTitleInput.value);
+    if (next === normalizeHeaderTitleInput(appHeaderTitleRaw)) {
+      settingsHeaderTitleInput.value = next;
+      return;
+    }
+    appHeaderTitleRaw = next;
+    applyHeaderTitle(appHeaderTitleRaw);
+    try {
+      dbSetAppSettingString(APP_SETTING_HEADER_TITLE, appHeaderTitleRaw);
+      await persist();
+    } catch {
+      // ignore
+    }
+  }
+
   if (themeSelect instanceof HTMLSelectElement) {
     setThemeSelectArmed(false);
     themeSelect.addEventListener("change", async () => {
@@ -4235,6 +4281,27 @@ async function main() {
       await commitPopupSizeValue(input.value);
     });
   });
+
+  {
+    const appearanceSettingsForm = document.getElementById("appearanceSettingsForm");
+    if (appearanceSettingsForm instanceof HTMLFormElement) {
+      appearanceSettingsForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+      });
+    }
+  }
+
+  if (settingsHeaderTitleInput instanceof HTMLInputElement) {
+    settingsHeaderTitleInput.addEventListener("input", () => {
+      const headerTitleEl = document.getElementById("headerTitle");
+      if (headerTitleEl instanceof HTMLElement) {
+        headerTitleEl.textContent = titleTextForDisplay(settingsHeaderTitleInput.value);
+      }
+    });
+    settingsHeaderTitleInput.addEventListener("blur", () => {
+      void commitHeaderTitleValue();
+    });
+  }
 
   function wireKeyLayoutSettingsRadios() {
     const qw = document.getElementById("keyLayoutQwerty");
@@ -9193,11 +9260,13 @@ async function main() {
       }
       if (appearancePanelVisible) {
         const appearanceTheme = document.getElementById("settingsThemeSelect");
+        const headerTitleField = document.getElementById("settingsHeaderTitleInput");
         const sizeSmall = document.getElementById("popupSizeSmall");
         const sizeMedium = document.getElementById("popupSizeMedium");
         const sizeLarge = document.getElementById("popupSizeLarge");
         const sizeFull = document.getElementById("popupSizeFull");
         if (appearanceTheme instanceof HTMLElement) targets.push(appearanceTheme);
+        if (headerTitleField instanceof HTMLElement) targets.push(headerTitleField);
         if (sizeSmall instanceof HTMLElement) targets.push(sizeSmall);
         if (sizeMedium instanceof HTMLElement) targets.push(sizeMedium);
         if (sizeLarge instanceof HTMLElement) targets.push(sizeLarge);
@@ -11630,6 +11699,9 @@ async function main() {
           gObsidianVaultName = dbGetAppSettingString(APP_SETTING_OBSIDIAN_VAULT_NAME) || "";
           gObsidianNotesFolder = dbGetAppSettingString(APP_SETTING_OBSIDIAN_NOTES_FOLDER) || "";
           gObsidianSyncMode = dbGetAppSettingString(APP_SETTING_OBSIDIAN_SYNC_MODE) === "1";
+
+          appHeaderTitleRaw = dbGetAppSettingString(APP_SETTING_HEADER_TITLE) || "";
+          applyHeaderTitle(appHeaderTitleRaw);
 
           clearObsidianCreatedPathCache();
 

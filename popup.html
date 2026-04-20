@@ -22,7 +22,7 @@
     <div class="app" role="application" aria-label="Notes Kanban">
       <header class="header" aria-label="Header">
         <div class="headerRow">
-          <div class="headerTitle">Vim To-Do List</div>
+          <div id="headerTitle" class="headerTitle">Vim To-Do List</div>
           <div class="headerLinks" aria-label="Header links">
             <select id="themeSelect" class="headerThemeSelect" aria-label="Theme"></select>
             <a id="instructionsLink" class="headerLink" href="#" aria-label="Instructions">Instructions</a>
@@ -451,6 +451,21 @@
                     <label for="settingsThemeSelect">Theme</label>
                     <select id="settingsThemeSelect" class="bx--text-input appearanceThemeSelect"></select>
                   </div>
+                  <div class="aiSettingsRow">
+                    <label for="settingsHeaderTitleInput">Header title</label>
+                    <input
+                      id="settingsHeaderTitleInput"
+                      class="bx--text-input"
+                      type="text"
+                      maxlength="80"
+                      placeholder="Vim To-Do List"
+                      autocomplete="off"
+                      aria-describedby="settingsHeaderTitleHint"
+                    />
+                  </div>
+                  <p id="settingsHeaderTitleHint" class="obsidianIntro settingsBoardsHint">
+                    Replaces the top bar title. Leave blank for the default.
+                  </p>
                   <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Popup size">
                     <legend class="keyLayoutLegend">Popup size</legend>
                     <div class="keyLayoutRadios appearanceSizeRadios">
@@ -474,7 +489,8 @@
                   </fieldset>
                 </form>
                 <p class="aiSettingsHint">
-                  Theme can still be changed from the top bar. Popup size is applied immediately and saved for the next open.
+                  Theme can still be changed from the top bar. Header title is saved when you leave the field. Popup size is
+                  applied immediately and saved for the next open.
                 </p>
               </div>
               <div
