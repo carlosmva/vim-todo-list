@@ -268,6 +268,10 @@ function normalizeObsidianMarkdown(s) {
     .replace(/^\uFEFF/, "")
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+$/gm, "")
+    // Canonical blank lines before the vim-todo footer (Obsidian often adds/removes one here).
+    .replace(/\n+---\s*\n(\*Board:\s*)/g, "\n\n---\n$1")
+    // Collapse 3+ consecutive newlines to a single paragraph break (avoids spurious "diverged" / conflict UI).
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
