@@ -150,12 +150,10 @@ html[data-theme="nothing"] body.bx--body {
   row-gap: 8px;
 }
 
-/* Doto: display / dot-matrix — keep ≥ ~24px in this compact popup */
+/* Doto: display / dot-matrix (size/line-height come from --header-title-* in popup.css) */
 [data-theme="nothing"] .headerTitle {
   font-family: "Doto", "Space Mono", ui-monospace, monospace;
   font-weight: 500;
-  font-size: clamp(1.5rem, 4.2vw, 2.25rem);
-  line-height: 1.05;
   letter-spacing: -0.03em;
   color: var(--nd-text-display);
   opacity: 1;
@@ -167,8 +165,6 @@ html[data-theme="nothing"] body.bx--body {
 [data-theme="nothing-light"] .headerTitle {
   font-family: "Doto", "Space Mono", ui-monospace, monospace;
   font-weight: 500;
-  font-size: clamp(1.5rem, 4.2vw, 2.25rem);
-  line-height: 1.05;
   letter-spacing: -0.03em;
   color: var(--nd-text-display);
   opacity: 1;

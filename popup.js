@@ -21,6 +21,30 @@ const THEME_ORDER = [
   "nothing-light",
 ];
 const POPUP_SIZE_ORDER = ["s", "m", "l", "full"];
+/** Value "" means follow each theme’s header title styling. */
+const HEADER_TITLE_FONT_ORDER = ["", "kelvinized", "montserrat", "space-grotesk", "doto", "space-mono"];
+const HEADER_TITLE_FONT_LABELS = {
+  "": "Theme default",
+  kelvinized: "Kelvinized",
+  montserrat: "Montserrat",
+  "space-grotesk": "Space Grotesk",
+  doto: "Doto",
+  "space-mono": "Space Mono"
+};
+const HEADER_TITLE_FONT_FAMILIES = {
+  kelvinized: '"Kelvinized Normal", system-ui, sans-serif',
+  montserrat: '"Montserrat", system-ui, sans-serif',
+  "space-grotesk": '"Space Grotesk", system-ui, sans-serif',
+  doto: '"Doto", "Space Grotesk", system-ui, sans-serif',
+  "space-mono": '"Space Mono", ui-monospace, monospace'
+};
+
+function normalizeHeaderTitleFontKey(stored) {
+  const s = String(stored || "").trim();
+  if (!s) return "";
+  if (Object.prototype.hasOwnProperty.call(HEADER_TITLE_FONT_FAMILIES, s)) return s;
+  return "";
+}
 
 /** Set when DB loads; used by renderNotes for “Open in Obsidian”. */
 let gObsidianVaultName = "";
@@ -1468,14 +1492,16 @@ function queryNotes(db, board) {
 }
 
 function getNextPendingSortOrder(db, board) {
+  // Notes list pending rows by sort_order ASC; use one less than the current minimum so
+  // new cards appear at the top (older rows from before this behavior may use 0, 1, 2, …).
   const res = db.exec(
-    "SELECT COALESCE(MAX(sort_order), -1) AS m FROM notes WHERE board = ? AND status = 'pending'",
+    "SELECT COALESCE(MIN(sort_order), 1) AS m FROM notes WHERE board = ? AND status = 'pending'",
     [board]
   );
   if (!res.length) return 0;
-  const maxVal = res[0].values?.[0]?.[0];
-  const n = Number(maxVal);
-  return Number.isFinite(n) ? n + 1 : 0;
+  const minVal = res[0].values?.[0]?.[0];
+  const n = Number(minVal);
+  return Number.isFinite(n) ? n - 1 : 0;
 }
 
 function queryNotesByDueRange(db, startTs, endTs) {
@@ -2483,6 +2509,7 @@ async function main() {
   const settingsPanelKeyboard = document.getElementById("settingsPanelKeyboard");
   const settingsThemeSelect = document.getElementById("settingsThemeSelect");
   const settingsHeaderTitleInput = document.getElementById("settingsHeaderTitleInput");
+  const settingsHeaderTitleFontSelect = document.getElementById("settingsHeaderTitleFontSelect");
   const popupSizeInputs = Array.from(document.querySelectorAll('input[name="popupSizeChoice"]'));
   const obsidianVaultNameInput = document.getElementById("obsidianVaultName");
   const obsidianNotesFolderInput = document.getElementById("obsidianNotesFolder");
@@ -2978,6 +3005,17 @@ async function main() {
   function populateThemeSelect() {
     populateOneThemeSelect(themeSelect);
     populateOneThemeSelect(settingsThemeSelect);
+  }
+
+  function populateHeaderTitleFontSelect() {
+    if (!(settingsHeaderTitleFontSelect instanceof HTMLSelectElement)) return;
+    settingsHeaderTitleFontSelect.innerHTML = "";
+    for (const key of HEADER_TITLE_FONT_ORDER) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = HEADER_TITLE_FONT_LABELS[key] || (key || "Theme default");
+      settingsHeaderTitleFontSelect.appendChild(opt);
+    }
   }
 
 	  function applyTheme(t) {
@@ -3777,6 +3815,7 @@ async function main() {
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
   const APP_SETTING_THEME = "app.theme";
   const APP_SETTING_HEADER_TITLE = "app.headerTitle";
+  const APP_SETTING_HEADER_TITLE_FONT = "app.headerTitleFont";
   const APP_SETTING_POPUP_SIZE = "app.popupSize";
   const APP_SETTING_TOUR_SEEN = "app.guidedTourSeen";
   const APP_SETTING_OBSIDIAN_VAULT_NAME = "obsidian.vaultName";
@@ -3903,6 +3942,7 @@ async function main() {
   }
 
   populateThemeSelect();
+  populateHeaderTitleFontSelect();
   applyTheme(theme);
 
   let popupSize = dbGetAppSettingString(APP_SETTING_POPUP_SIZE) || "m";
@@ -3910,6 +3950,11 @@ async function main() {
   applyPopupSize(popupSize);
 
   let appHeaderTitleRaw = dbGetAppSettingString(APP_SETTING_HEADER_TITLE) || "";
+  let appHeaderTitleFontKey = normalizeHeaderTitleFontKey(
+    dbGetAppSettingString(APP_SETTING_HEADER_TITLE_FONT) || ""
+  );
+  let settingsHeaderTitleFontSelectArmed = false;
+  let settingsHeaderTitleFontSelectChangeAllowed = false;
 
   function normalizeHeaderTitleInput(value) {
     return String(value || "")
@@ -3933,7 +3978,21 @@ async function main() {
     }
   }
 
+  function applyHeaderTitleFontKey(key) {
+    const resolved = normalizeHeaderTitleFontKey(key);
+    const headerTitleEl = document.getElementById("headerTitle");
+    if (headerTitleEl instanceof HTMLElement) {
+      if (!resolved) headerTitleEl.style.removeProperty("font-family");
+      else headerTitleEl.style.setProperty("font-family", HEADER_TITLE_FONT_FAMILIES[resolved]);
+    }
+    if (settingsHeaderTitleFontSelect instanceof HTMLSelectElement) {
+      settingsHeaderTitleFontSelect.value = resolved;
+    }
+    setSettingsHeaderTitleFontSelectArmed(settingsHeaderTitleFontSelectArmed);
+  }
+
   applyHeaderTitle(appHeaderTitleRaw);
+  applyHeaderTitleFontKey(appHeaderTitleFontKey);
 
   // Shared caches for autocomplete (new note + notes editor).
   let ollamaModel = aiEndpointModel || null;
@@ -4120,6 +4179,23 @@ async function main() {
     );
   }
 
+  function setSettingsHeaderTitleFontSelectArmed(armed) {
+    settingsHeaderTitleFontSelectArmed = !!armed;
+    if (!(settingsHeaderTitleFontSelect instanceof HTMLSelectElement)) return;
+    settingsHeaderTitleFontSelect.dataset.armed = settingsHeaderTitleFontSelectArmed ? "true" : "false";
+    const key = normalizeHeaderTitleFontKey(settingsHeaderTitleFontSelect.value);
+    const label = HEADER_TITLE_FONT_LABELS[key] || "Header font";
+    settingsHeaderTitleFontSelect.title = settingsHeaderTitleFontSelectArmed
+      ? `Header title font: ${label}. Use navigation up/down to change. Press Escape to exit.`
+      : `Header title font: ${label}. Click to open options, or press Enter to change with keyboard.`;
+    settingsHeaderTitleFontSelect.setAttribute(
+      "aria-label",
+      settingsHeaderTitleFontSelectArmed
+        ? `Header font change mode. Current: ${label}. Use navigation up and down to change. Press Escape to exit.`
+        : `Header title font: ${label}. Click to open options, or press Enter to change with keyboard. Press Escape to exit font change mode.`
+    );
+  }
+
   async function commitThemeSelectValue(value) {
     if (!THEME_ORDER.includes(value)) return;
     theme = value;
@@ -4157,6 +4233,20 @@ async function main() {
     applyHeaderTitle(appHeaderTitleRaw);
     try {
       dbSetAppSettingString(APP_SETTING_HEADER_TITLE, appHeaderTitleRaw);
+      await persist();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function commitHeaderTitleFontValue() {
+    if (!(settingsHeaderTitleFontSelect instanceof HTMLSelectElement)) return;
+    const next = normalizeHeaderTitleFontKey(settingsHeaderTitleFontSelect.value);
+    if (next === appHeaderTitleFontKey) return;
+    appHeaderTitleFontKey = next;
+    applyHeaderTitleFontKey(appHeaderTitleFontKey);
+    try {
+      dbSetAppSettingString(APP_SETTING_HEADER_TITLE_FONT, appHeaderTitleFontKey);
       await persist();
     } catch {
       // ignore
@@ -4300,6 +4390,61 @@ async function main() {
     });
     settingsHeaderTitleInput.addEventListener("blur", () => {
       void commitHeaderTitleValue();
+    });
+  }
+
+  if (settingsHeaderTitleFontSelect instanceof HTMLSelectElement) {
+    setSettingsHeaderTitleFontSelectArmed(false);
+    settingsHeaderTitleFontSelect.addEventListener("change", async () => {
+      if (!settingsHeaderTitleFontSelectChangeAllowed) {
+        settingsHeaderTitleFontSelect.value = appHeaderTitleFontKey;
+        setSettingsHeaderTitleFontSelectArmed(settingsHeaderTitleFontSelectArmed);
+        return;
+      }
+      await commitHeaderTitleFontValue();
+      settingsHeaderTitleFontSelectChangeAllowed = false;
+    });
+
+    settingsHeaderTitleFontSelect.addEventListener("pointerdown", () => {
+      settingsHeaderTitleFontSelectChangeAllowed = true;
+      setSettingsHeaderTitleFontSelectArmed(false);
+    });
+
+    settingsHeaderTitleFontSelect.addEventListener("blur", () => {
+      settingsHeaderTitleFontSelectChangeAllowed = false;
+      setSettingsHeaderTitleFontSelectArmed(false);
+    });
+
+    settingsHeaderTitleFontSelect.addEventListener("keydown", (e) => {
+      const raw = e.key;
+      const code = e.code || "";
+      const isEnter = raw === "Enter" || code === "Enter" || raw === " ";
+      const isEscape = raw === "Escape" || code === "Escape";
+      const isNativeSelectNav =
+        raw === "ArrowUp" ||
+        raw === "ArrowDown" ||
+        raw === "ArrowLeft" ||
+        raw === "ArrowRight" ||
+        raw === "Home" ||
+        raw === "End" ||
+        raw === "PageUp" ||
+        raw === "PageDown";
+
+      if (isEnter) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSettingsHeaderTitleFontSelectArmed(true);
+        return;
+      }
+      if (isEscape) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSettingsHeaderTitleFontSelectArmed(false);
+        return;
+      }
+      if (isNativeSelectNav || raw.length === 1) {
+        e.preventDefault();
+      }
     });
   }
 
@@ -9261,12 +9406,14 @@ async function main() {
       if (appearancePanelVisible) {
         const appearanceTheme = document.getElementById("settingsThemeSelect");
         const headerTitleField = document.getElementById("settingsHeaderTitleInput");
+        const headerTitleFont = document.getElementById("settingsHeaderTitleFontSelect");
         const sizeSmall = document.getElementById("popupSizeSmall");
         const sizeMedium = document.getElementById("popupSizeMedium");
         const sizeLarge = document.getElementById("popupSizeLarge");
         const sizeFull = document.getElementById("popupSizeFull");
         if (appearanceTheme instanceof HTMLElement) targets.push(appearanceTheme);
         if (headerTitleField instanceof HTMLElement) targets.push(headerTitleField);
+        if (headerTitleFont instanceof HTMLElement) targets.push(headerTitleFont);
         if (sizeSmall instanceof HTMLElement) targets.push(sizeSmall);
         if (sizeMedium instanceof HTMLElement) targets.push(sizeMedium);
         if (sizeLarge instanceof HTMLElement) targets.push(sizeLarge);
@@ -9349,12 +9496,20 @@ async function main() {
     return safeFocus(targets[nextIdx]);
   }
 
-  /** Theme selects only change after Enter arms them; Alt+Up/Down then cycles options (wraps). */
+  /** Settings/theme selects only change after Enter arms them; Alt+Up/Down then cycles options (wraps). */
   function cycleThemeSelectControl(select, delta) {
     if (!(select instanceof HTMLSelectElement)) return;
-    const n = THEME_ORDER.length;
+    let order;
+    if (select === themeSelect || select === settingsThemeSelect) {
+      order = THEME_ORDER;
+    } else if (select === settingsHeaderTitleFontSelect) {
+      order = HEADER_TITLE_FONT_ORDER;
+    } else {
+      return;
+    }
+    const n = order.length;
     if (!n) return;
-    let idx = THEME_ORDER.indexOf(select.value);
+    let idx = order.indexOf(select.value);
     if (idx < 0) idx = 0;
     idx = (idx + delta + n) % n;
     if (select === themeSelect) {
@@ -9363,13 +9518,17 @@ async function main() {
     } else if (select === settingsThemeSelect) {
       if (!settingsThemeSelectArmed) return;
       settingsThemeSelectChangeAllowed = true;
+    } else if (select === settingsHeaderTitleFontSelect) {
+      if (!settingsHeaderTitleFontSelectArmed) return;
+      settingsHeaderTitleFontSelectChangeAllowed = true;
     } else {
       return;
     }
-    select.value = THEME_ORDER[idx];
+    select.value = order[idx];
     select.dispatchEvent(new Event("change", { bubbles: true }));
     if (select === themeSelect) themeSelectChangeAllowed = false;
-    else settingsThemeSelectChangeAllowed = false;
+    else if (select === settingsThemeSelect) settingsThemeSelectChangeAllowed = false;
+    else settingsHeaderTitleFontSelectChangeAllowed = false;
   }
 
   function tryScrollBeforeSectionMove(delta) {
@@ -9558,6 +9717,17 @@ async function main() {
           e.stopPropagation();
           e.stopImmediatePropagation();
           setSettingsThemeSelectArmed(false);
+          return;
+        }
+        if (
+          activeEl === settingsHeaderTitleFontSelect &&
+          settingsHeaderTitleFontSelect instanceof HTMLSelectElement &&
+          settingsHeaderTitleFontSelectArmed
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          setSettingsHeaderTitleFontSelectArmed(false);
           return;
         }
         const calendarViewEl = document.getElementById("calendarView");
@@ -10082,6 +10252,19 @@ async function main() {
           cycleThemeSelectControl(settingsThemeSelect, +1);
           return;
         }
+        if (
+          activeEl2 === settingsHeaderTitleFontSelect &&
+          settingsHeaderTitleFontSelect instanceof HTMLSelectElement &&
+          settingsHeaderTitleFontSelectArmed
+        ) {
+          try {
+            e.stopImmediatePropagation();
+          } catch {
+            // ignore
+          }
+          cycleThemeSelectControl(settingsHeaderTitleFontSelect, +1);
+          return;
+        }
 
         {
           const instructionsView = document.getElementById("instructionsView");
@@ -10533,6 +10716,19 @@ async function main() {
             // ignore
           }
           cycleThemeSelectControl(settingsThemeSelect, -1);
+          return;
+        }
+        if (
+          activeEl2 === settingsHeaderTitleFontSelect &&
+          settingsHeaderTitleFontSelect instanceof HTMLSelectElement &&
+          settingsHeaderTitleFontSelectArmed
+        ) {
+          try {
+            e.stopImmediatePropagation();
+          } catch {
+            // ignore
+          }
+          cycleThemeSelectControl(settingsHeaderTitleFontSelect, -1);
           return;
         }
 
@@ -11702,6 +11898,10 @@ async function main() {
 
           appHeaderTitleRaw = dbGetAppSettingString(APP_SETTING_HEADER_TITLE) || "";
           applyHeaderTitle(appHeaderTitleRaw);
+          appHeaderTitleFontKey = normalizeHeaderTitleFontKey(
+            dbGetAppSettingString(APP_SETTING_HEADER_TITLE_FONT) || ""
+          );
+          applyHeaderTitleFontKey(appHeaderTitleFontKey);
 
           clearObsidianCreatedPathCache();
 

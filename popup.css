@@ -1,5 +1,8 @@
 html,
 body {
+  /* Top bar title: single size/line height so themes only change color/weight/font, not scale */
+  --header-title-font-size: 0.9rem;
+  --header-title-line-height: 1.2;
   --popup-width: 800px;
   --popup-height: 600px;
   margin: 0;
@@ -883,7 +886,8 @@ html[data-popup-size="full"] body {
 }
 
 .headerTitle {
-  font-size: 0.85rem;
+  font-size: var(--header-title-font-size);
+  line-height: var(--header-title-line-height);
   font-weight: 600;
 }
 
@@ -1029,6 +1033,11 @@ html[data-popup-size="full"] body {
 
 .appearanceThemeSelect {
   max-width: 18rem;
+}
+
+.appearanceThemeSelect[data-armed="true"] {
+  border-color: var(--modern-border-strong, var(--cds-border-strong, currentColor));
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
 }
 
 .appearanceSizeRadios {
