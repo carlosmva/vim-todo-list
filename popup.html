@@ -705,11 +705,28 @@
                 <div class="instructionsHeader settingsSubHeader">
                   <div class="instructionsTitle">Keyboard</div>
                 </div>
-                <p class="obsidianIntro">
-                  In-app navigation (for example <kbd>Alt</kbd>+<kbd>H</kbd> vs <kbd>Alt</kbd>+<kbd>D</kbd> for Instructions)
-                  uses physical key labels. Pick the layout that matches your keyboard so the docs and shortcuts stay
-                  consistent.
+                <p class="obsidianIntro" id="settingsKeyboardIntro">
+                  Choose your platform and key layout. Instructions and in-app navigation use
+                  <kbd>Alt</kbd>+letter on Windows / Linux, or <kbd>Ctrl</kbd>+letter on Mac (Control, not Command).
                 </p>
+                <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Navigation modifier (platform)">
+                  <legend class="keyLayoutLegend">Platform</legend>
+                  <div class="keyLayoutRadios">
+                    <label class="keyLayoutRadioLabel">
+                      <input
+                        type="radio"
+                        name="keyboardNavPlatformChoice"
+                        id="keyboardNavPlatformWinlinux"
+                        value="winlinux"
+                      />
+                      Windows / Linux
+                    </label>
+                    <label class="keyLayoutRadioLabel">
+                      <input type="radio" name="keyboardNavPlatformChoice" id="keyboardNavPlatformMac" value="mac" />
+                      Mac
+                    </label>
+                  </div>
+                </fieldset>
                 <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Keyboard layout">
                   <legend class="keyLayoutLegend">Layout</legend>
                   <div class="keyLayoutRadios">

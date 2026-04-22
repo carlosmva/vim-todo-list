@@ -5,6 +5,7 @@
 const STORAGE_KEY = "sqliteDb_v1";
 const ACTIVE_BOARD_KEY = "activeBoard_v1";
 const KEY_LAYOUT_KEY = "keyLayout_v1";
+const KEYBOARD_NAV_PLATFORM_KEY = "keyboardNavPlatform_v1";
 const THEME_KEY = "theme_v1";
 const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
 const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
@@ -554,18 +555,28 @@ const isMac =
   (/Mac|iPod|iPhone|iPad/.test(navigator.platform) ||
     (navigator.userAgentData && navigator.userAgentData.platform === "macOS"));
 
+/** "mac" = Control+letter navigation; "winlinux" = Alt+letter. Chosen in Settings > Keyboard. */
+let gKeyboardNavPlatform = isMac ? "mac" : "winlinux";
+
+function useNavMacModifier() {
+  if (gKeyboardNavPlatform === "mac") return true;
+  if (gKeyboardNavPlatform === "winlinux") return false;
+  return isMac;
+}
+
 function modKeyLabel() {
-  return isMac ? "Ctrl" : "Alt";
+  return useNavMacModifier() ? "Ctrl" : "Alt";
 }
 
 function modKeyActive(e) {
   if (!e) return false;
-  return isMac ? !!e.ctrlKey : !!e.altKey;
+  return useNavMacModifier() ? !!e.ctrlKey : !!e.altKey;
 }
 
 function modKeyOnly(e) {
   if (!e) return false;
-  return modKeyActive(e) && (isMac ? !e.metaKey && !e.altKey : !e.ctrlKey && !e.metaKey);
+  if (!modKeyActive(e)) return false;
+  return useNavMacModifier() ? !e.metaKey && !e.altKey : !e.ctrlKey && !e.metaKey;
 }
 
 const openNoteEditorIds = new Set();
@@ -805,6 +816,18 @@ async function loadKeyLayout() {
 
 async function saveKeyLayout(layout) {
   await chrome.storage.local.set({ [KEY_LAYOUT_KEY]: layout });
+}
+
+async function loadKeyboardNavPlatform() {
+  const result = await chrome.storage.local.get([KEYBOARD_NAV_PLATFORM_KEY]);
+  const value = result[KEYBOARD_NAV_PLATFORM_KEY];
+  if (value === "mac" || value === "winlinux") return value;
+  return isMac ? "mac" : "winlinux";
+}
+
+async function saveKeyboardNavPlatform(platform) {
+  if (platform !== "mac" && platform !== "winlinux") return;
+  await chrome.storage.local.set({ [KEYBOARD_NAV_PLATFORM_KEY]: platform });
 }
 
 async function loadThemeFromStorage() {
@@ -2814,7 +2837,7 @@ async function main() {
       section: "keyboard",
       target: "#settingsPanelKeyboard",
       title: "Keyboard",
-      body: "Choose the physical key layout used by navigation docs and bindings.",
+      body: "Choose Windows / Linux (Alt+letters) or Mac (Ctrl+letters, not Command), and QWERTY or Dvorak, so the tour and docs match the keys you press.",
     },
   ];
 
@@ -3053,7 +3076,7 @@ async function main() {
 
   function getNotesCheckboxKey(layout) {
     const l = layout === "dvorak" ? "dvorak" : "qwerty";
-    // QWERTY: Alt+H, DVORAK: Alt+D
+    // QWERTY: mod+H, DVORAK: mod+D (see Settings > Keyboard: Alt vs Ctrl)
     return l === "dvorak" ? "d" : "h";
   }
 
@@ -3081,6 +3104,9 @@ async function main() {
     const keycap = (text) => `<kbd>${String(text || "")}</kbd>`;
     const combo = (...keys) => keys.map((k) => keycap(k)).join(`<span class="keycapSep">+</span>`);
     const mod = modKeyLabel();
+    const platformNote = useNavMacModifier()
+      ? "On the <b>Mac</b> profile, use <b>Control (⌃)</b> with the keys below — not Command (⌘)."
+      : "On the <b>Windows / Linux</b> profile, use <b>Alt</b> with the keys below (Option also registers as Alt on many Mac keyboards).";
     const keyRow = (keys, desc) => `
       <div class="instructionsKeyRow">
         <div class="instructionsKeyRow__keys">${keys}</div>
@@ -3096,7 +3122,7 @@ async function main() {
       <div class="instructionsLead" tabindex="0" aria-label="Keyboard-first workflow">
         <h3 class="instructionsLead__title">Keyboard-first workflow</h3>
         <p class="instructionsLead__body">
-          Current layout: <b>${layoutLabel}</b>. Use ${keycap(mod)} with the shown navigation keys. Press ${keycap("Esc")} to leave overlay views; focused buttons activate with ${keycap("Enter")}. This view follows the same navigation bindings.
+          Current layout: <b>${layoutLabel}</b>. ${platformNote} Use ${keycap(mod)} with the shown navigation keys. Press ${keycap("Esc")} to leave overlay views; focused buttons activate with ${keycap("Enter")}. This view follows the same navigation bindings. You can change the profile in <b>Settings &gt; Keyboard</b>.
         </p>
       </div>
 
@@ -3813,6 +3839,7 @@ async function main() {
   let keyLayout = (await loadKeyLayout()) || "qwerty";
   // Persist default if missing/invalid.
   if ((await loadKeyLayout()) === null) await saveKeyLayout(keyLayout);
+  gKeyboardNavPlatform = await loadKeyboardNavPlatform();
 
   const APP_SETTING_AI_ENDPOINT_BASE_URL = "ai.endpointBaseUrl";
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
@@ -4137,14 +4164,34 @@ async function main() {
     return { valid, invalid };
   }
 
-  function updateKeyLayoutSettingsUi() {
+  function updateKeyboardSettingsUi() {
     const qw = document.getElementById("keyLayoutQwerty");
     const dv = document.getElementById("keyLayoutDvorak");
+    const w = document.getElementById("keyboardNavPlatformWinlinux");
+    const m = document.getElementById("keyboardNavPlatformMac");
     if (qw instanceof HTMLInputElement) qw.checked = keyLayout === "qwerty";
     if (dv instanceof HTMLInputElement) dv.checked = keyLayout === "dvorak";
+    if (w instanceof HTMLInputElement) w.checked = gKeyboardNavPlatform === "winlinux";
+    if (m instanceof HTMLInputElement) m.checked = gKeyboardNavPlatform === "mac";
+    const intro = document.getElementById("settingsKeyboardIntro");
+    if (intro instanceof HTMLElement) {
+      intro.innerHTML =
+        "Pick your physical <b>layout</b> and which <b>platform&rsquo;s navigation modifier</b> the app should use. " +
+        "<b>Windows / Linux</b> = <kbd>Alt</kbd> + letter (including arrow-style navigation on <kbd>" +
+        getNavKeys(keyLayout).up +
+        "</kbd> / <kbd>" +
+        getNavKeys(keyLayout).down +
+        "</kbd> / <kbd>" +
+        getNavKeys(keyLayout).left +
+        "</kbd> / <kbd>" +
+        getNavKeys(keyLayout).right +
+        "</kbd>). " +
+        "<b>Mac</b> = <kbd>Ctrl</kbd> + the same letter keys (the <b>Control</b> key, not <b>Command</b>). " +
+        "The <b>Instructions</b> view and card shortcuts follow this choice.";
+    }
   }
 
-	  updateKeyLayoutSettingsUi();
+  updateKeyboardSettingsUi();
 
   let themeSelectArmed = false;
   let themeSelectChangeAllowed = false;
@@ -4455,25 +4502,40 @@ async function main() {
   function wireKeyLayoutSettingsRadios() {
     const qw = document.getElementById("keyLayoutQwerty");
     const dv = document.getElementById("keyLayoutDvorak");
-    const onChange = async () => {
+    const w = document.getElementById("keyboardNavPlatformWinlinux");
+    const m = document.getElementById("keyboardNavPlatformMac");
+    const onLayoutChange = async () => {
       const next =
         dv instanceof HTMLInputElement && dv.checked ? "dvorak" : "qwerty";
       if (keyLayout === next) return;
       keyLayout = next;
       await saveKeyLayout(keyLayout);
-      updateKeyLayoutSettingsUi();
+      updateKeyboardSettingsUi();
       const iv = document.getElementById("instructionsView");
       const visible = iv instanceof HTMLElement && !iv.hasAttribute("hidden");
       if (visible) renderInstructions();
     };
-    if (qw instanceof HTMLInputElement) qw.addEventListener("change", onChange);
-    if (dv instanceof HTMLInputElement) dv.addEventListener("change", onChange);
+    const onPlatformChange = async () => {
+      const next = m instanceof HTMLInputElement && m.checked ? "mac" : "winlinux";
+      if (gKeyboardNavPlatform === next) return;
+      gKeyboardNavPlatform = next;
+      await saveKeyboardNavPlatform(gKeyboardNavPlatform);
+      updateKeyboardSettingsUi();
+      const iv = document.getElementById("instructionsView");
+      if (iv instanceof HTMLElement && !iv.hasAttribute("hidden")) renderInstructions();
+    };
+    if (qw instanceof HTMLInputElement) qw.addEventListener("change", onLayoutChange);
+    if (dv instanceof HTMLInputElement) dv.addEventListener("change", onLayoutChange);
+    if (w instanceof HTMLInputElement) w.addEventListener("change", onPlatformChange);
+    if (m instanceof HTMLInputElement) m.addEventListener("change", onPlatformChange);
   }
 
   function wireSettingsEnterActivate() {
     const syncEl = document.getElementById("obsidianSyncMode");
     const qw = document.getElementById("keyLayoutQwerty");
     const dv = document.getElementById("keyLayoutDvorak");
+    const w = document.getElementById("keyboardNavPlatformWinlinux");
+    const m = document.getElementById("keyboardNavPlatformMac");
     const sizeInputs = Array.from(document.querySelectorAll('input[name="popupSizeChoice"]'));
 
     const onEnter = (e) => {
@@ -4486,7 +4548,7 @@ async function main() {
         syncEl.click();
         return;
       }
-      if ((t === qw || t === dv) && t.type === "radio") {
+      if ((t === qw || t === dv || t === w || t === m) && t.type === "radio") {
         e.preventDefault();
         t.click();
         return;
@@ -4508,7 +4570,7 @@ async function main() {
   wireKeyLayoutSettingsRadios();
   wireSettingsEnterActivate();
 
-  /** Swaps which board column (Pending vs Complete) is expanded; used by mouse, Enter/Space, and Alt+nav. */
+  /** Swaps which board column (Pending vs Complete) is expanded; used by mouse, Enter/Space, and mod+nav. */
   let setBoardColumnSplit = () => {};
 
   function wireBoardColumnSplit() {
@@ -7730,7 +7792,7 @@ async function main() {
         return true;
       case "settingsTabKeyboard":
         setSettingsSection("keyboard");
-        updateKeyLayoutSettingsUi();
+        updateKeyboardSettingsUi();
         return true;
       default:
         return false;
@@ -7796,9 +7858,13 @@ async function main() {
   if (settingsTabKeyboard instanceof HTMLElement) {
     settingsTabKeyboard.addEventListener("click", () => {
       setSettingsSection("keyboard");
-      updateKeyLayoutSettingsUi();
-      const qw = document.getElementById("keyLayoutQwerty");
-      if (qw instanceof HTMLElement) qw.focus();
+      updateKeyboardSettingsUi();
+      const pwin = document.getElementById("keyboardNavPlatformWinlinux");
+      if (pwin instanceof HTMLElement) pwin.focus();
+      else {
+        const qw = document.getElementById("keyLayoutQwerty");
+        if (qw instanceof HTMLElement) qw.focus();
+      }
     });
   }
   const dashboardBtn = document.getElementById("dashboardBtn");
@@ -9462,8 +9528,12 @@ async function main() {
 	        }
 	      }
       if (keyboardPanelVisible) {
+        const pwin = document.getElementById("keyboardNavPlatformWinlinux");
+        const pmac = document.getElementById("keyboardNavPlatformMac");
         const kq = document.getElementById("keyLayoutQwerty");
         const kd = document.getElementById("keyLayoutDvorak");
+        if (pwin instanceof HTMLElement) targets.push(pwin);
+        if (pmac instanceof HTMLElement) targets.push(pmac);
         if (kq instanceof HTMLElement) targets.push(kq);
         if (kd instanceof HTMLElement) targets.push(kd);
       }
@@ -9687,8 +9757,12 @@ async function main() {
   document.addEventListener(
     "keydown",
     (e) => {
-      const modKey = isMac ? "Control" : "Alt";
-      if (modKeyActive(e) && (e.key === modKey || e.key === "Alt" || e.key === "Meta") && (isMac ? !e.metaKey && !e.altKey : !e.ctrlKey && !e.metaKey)) {
+      const modKey = useNavMacModifier() ? "Control" : "Alt";
+      if (
+        modKeyActive(e) &&
+        (e.key === modKey || e.key === "Alt" || e.key === "Meta") &&
+        (useNavMacModifier() ? !e.metaKey && !e.altKey : !e.ctrlKey && !e.metaKey)
+      ) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -10212,7 +10286,7 @@ async function main() {
         }
       }
 
-      if (!modKeyActive(e) || (isMac ? (e.metaKey || e.altKey) : (e.ctrlKey || e.metaKey))) return;
+      if (!modKeyActive(e) || (useNavMacModifier() ? (e.metaKey || e.altKey) : (e.ctrlKey || e.metaKey))) return;
 
       const focusNewNoteKey = getFocusNewNoteKey(keyLayout);
       if (key === focusNewNoteKey) {
@@ -13046,7 +13120,7 @@ async function main() {
 
       // Allow Alt+Up/Alt+Down to continue navigating while focus is on a suggestion button.
       container.addEventListener("keydown", (e) => {
-        if (!modKeyActive(e) || (isMac ? (e.metaKey || e.altKey) : (e.ctrlKey || e.metaKey))) return;
+        if (!modKeyActive(e) || (useNavMacModifier() ? (e.metaKey || e.altKey) : (e.ctrlKey || e.metaKey))) return;
         const nav = getNavKeys(keyLayout);
         const key = (e.key || "").toLowerCase();
         if (key !== nav.down && key !== nav.up) return;

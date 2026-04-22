@@ -1006,11 +1006,33 @@ html[data-popup-size="full"] body {
   padding: 0;
 }
 
+#settingsPanelKeyboard .keyLayoutFieldset + .keyLayoutFieldset {
+  margin-top: 1.5rem;
+}
+
 .keyLayoutLegend {
   padding: 0;
   margin: 0 0 8px;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* Avoid the default fieldset/legend hairline under the "Layout" label (and Platform). */
+#settingsPanelKeyboard .keyLayoutLegend {
+  float: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#settingsPanelKeyboard .keyLayoutFieldset {
+  min-inline-size: 0;
+}
+
+#settingsPanelKeyboard .keyLayoutRadios {
+  clear: both;
+  border: 0;
+  box-shadow: none;
 }
 
 .keyLayoutRadios {
