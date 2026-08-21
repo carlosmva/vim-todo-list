@@ -1518,6 +1518,58 @@ function queryNotes(db, board) {
   }));
 }
 
+function queryAllNotes(db) {
+  const res = db.exec(
+    `
+      SELECT id, text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board, due_at
+      FROM notes
+      ORDER BY
+        CASE WHEN status = 'pending' THEN 0 ELSE 1 END,
+        board ASC,
+        sort_order ASC,
+        CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 1 END,
+        created_at DESC,
+        id DESC
+    `
+  );
+  if (!res.length) return [];
+
+  const { columns, values } = res[0];
+  const idx = Object.fromEntries(columns.map((c, i) => [c, i]));
+  return values.map((row) => ({
+    id: row[idx.id],
+    text: row[idx.text],
+    status: row[idx.status],
+    priority: normalizePriority(row[idx.priority]),
+    created_at: row[idx.created_at],
+    updated_at: row[idx.updated_at],
+    completed_at: row[idx.completed_at],
+    notes_html: row[idx.notes_html],
+    sort_order: row[idx.sort_order],
+    board: row[idx.board],
+    due_at: row[idx.due_at] != null ? row[idx.due_at] : null
+  }));
+}
+
+function queryPendingCountsByBoard(db) {
+  const counts = new Map();
+  const res = db.exec(
+    `
+      SELECT board, COUNT(*) AS pending_count
+      FROM notes
+      WHERE status = 'pending' AND board IS NOT NULL AND board <> ''
+      GROUP BY board
+    `
+  );
+  if (!res.length) return counts;
+  for (const [board, count] of res[0].values || []) {
+    const boardName = String(board || "").trim();
+    if (!boardName) continue;
+    counts.set(boardName, Number(count) || 0);
+  }
+  return counts;
+}
+
 function getNextPendingSortOrder(db, board) {
   // Notes list pending rows by sort_order ASC; use one less than the current minimum so
   // new cards appear at the top (older rows from before this behavior may use 0, 1, 2, …).
@@ -1693,8 +1745,13 @@ function noteMatchesFilter(note, query) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return true;
   const plainNotes = String(note?.notes_html || "").replace(/<[^>]*>/g, " ");
-  const haystack = `${note?.text || ""} ${plainNotes}`.toLowerCase();
+  const haystack = `${note?.text || ""} ${note?.board || ""} ${plainNotes}`.toLowerCase();
   return haystack.includes(q);
+}
+
+function getFilteredNotes(notes, query) {
+  const list = Array.isArray(notes) ? notes : [];
+  return list.filter((note) => noteMatchesFilter(note, query));
 }
 
 const CARD_ACTION_ICON_PATHS = {
@@ -1880,7 +1937,8 @@ function renderNotes(db, notes) {
 
   let pendingCount = 0;
   let completeCount = 0;
-  const visibleNotes = notes.filter((note) => noteMatchesFilter(note, cardFilterQuery));
+  const searchAcrossBoards = !!String(cardFilterQuery || "").trim();
+  const visibleNotes = getFilteredNotes(notes, cardFilterQuery);
 
   for (const note of visibleNotes) {
     const card = document.createElement("div");
@@ -1888,6 +1946,7 @@ function renderNotes(db, notes) {
     card.dataset.noteId = String(note.id);
     card.dataset.status = note.status;
     card.dataset.priority = normalizePriority(note.priority);
+    card.dataset.board = String(note.board || "");
 
     if (flippedNoteIds.has(note.id)) card.classList.add("is-flipped");
     const editorOpen = openNoteEditorIds.has(note.id);
@@ -1930,6 +1989,16 @@ function renderNotes(db, notes) {
       dueRow.appendChild(addDueBtn);
     }
     front.appendChild(dueRow);
+
+    if (searchAcrossBoards && note.board) {
+      const metaRow = document.createElement("div");
+      metaRow.className = "noteCardMetaRow";
+      const boardBadge = document.createElement("span");
+      boardBadge.className = "noteBoardBadge";
+      boardBadge.textContent = String(note.board);
+      metaRow.appendChild(boardBadge);
+      front.appendChild(metaRow);
+    }
 
     const syncBadgeInfo = getObsidianCardSyncBadge(note.id);
     if (syncBadgeInfo) {
@@ -2065,7 +2134,7 @@ function renderNotes(db, notes) {
 
     // Cards are draggable for reordering within their column, except when the
     // rich editor is open (click+drag should select text, not start DnD).
-    card.draggable = !editorOpen;
+    card.draggable = !editorOpen && !searchAcrossBoards;
 
     moveBtn.dataset.id = String(note.id);
 
@@ -2092,6 +2161,14 @@ function renderNotes(db, notes) {
     moveDownBtn.dataset.action = "moveDown";
     moveDownBtn.dataset.noteId = String(note.id);
     applyCardActionIcon(moveDownBtn, "moveDown", "Move down", { tooltip: "Move down" });
+    if (searchAcrossBoards) {
+      moveUpBtn.disabled = true;
+      moveDownBtn.disabled = true;
+      moveUpBtn.title = "Clear search to reorder tasks";
+      moveDownBtn.title = "Clear search to reorder tasks";
+      moveUpBtn.setAttribute("aria-label", "Clear search to reorder tasks");
+      moveDownBtn.setAttribute("aria-label", "Clear search to reorder tasks");
+    }
 
     footer.appendChild(flipBtn);
     footer.appendChild(priorityBtn);
@@ -2619,6 +2696,10 @@ async function main() {
 
   const cardFilterRow = document.getElementById("cardFilterRow");
   const cardFilterInput = document.getElementById("cardFilterInput");
+  const cardFilterMeta = document.getElementById("cardFilterMeta");
+  const addNoteModal = document.getElementById("addNoteModal");
+  const addNoteButton = document.getElementById("addNoteButton");
+  const closeAddNoteModal = document.getElementById("closeAddNoteModal");
   const manageTabsMessage = document.getElementById("manageTabsMessage");
   const tabsList = document.getElementById("tabsList");
   const addTabForm = document.getElementById("addTabForm");
@@ -2671,13 +2752,26 @@ async function main() {
 
   function setCardFilterVisible(visible) {
     if (!(cardFilterRow instanceof HTMLElement)) return;
-    cardFilterRow.hidden = !visible;
+    cardFilterRow.hidden = false;
+    cardFilterRow.classList.toggle("cardFilterRow--active", !!visible);
   }
 
   function updateCardFilterVisibility() {
     const hasQuery = !!String(cardFilterQuery || "").trim();
     const inputFocused = document.activeElement === cardFilterInput;
     setCardFilterVisible(hasQuery || inputFocused);
+  }
+
+  function updateCardFilterMeta(visibleNotes) {
+    if (!(cardFilterMeta instanceof HTMLElement)) return;
+    const hasQuery = !!String(cardFilterQuery || "").trim();
+    if (!hasQuery) {
+      cardFilterMeta.textContent = `Active board: ${activeBoard}. Type to search every board.`;
+      return;
+    }
+    const matches = Array.isArray(visibleNotes) ? visibleNotes : [];
+    const boardCount = new Set(matches.map((note) => String(note?.board || "").trim()).filter(Boolean)).size;
+    cardFilterMeta.textContent = `${matches.length} match${matches.length === 1 ? "" : "es"} across ${boardCount} board${boardCount === 1 ? "" : "s"}. Esc clears search.`;
   }
 
   function showNotesView() {
@@ -2780,9 +2874,9 @@ async function main() {
   const TOUR_STEPS = [
     {
       view: "notes",
-      target: "#createForm",
+      target: "#addNoteButton",
       title: "Create tasks",
-      body: "Start in the main window. Type a task, optionally set a due date, use quick dates, then Add Task.",
+      body: "Use the add button to open a focused task form for the current board.",
     },
     {
       view: "notes",
@@ -2993,8 +3087,7 @@ async function main() {
       restored = safeFocus(guidedTourLastFocus);
     }
     if (!restored) {
-      const noteText = document.getElementById("noteText");
-      if (noteText instanceof HTMLElement) safeFocus(noteText);
+      if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
     }
     guidedTourLastFocus = null;
   }
@@ -3134,7 +3227,7 @@ async function main() {
 	            ${keyRow(combo(mod, fmt(nav.up)), "Move up through the current area.")}
 	            ${keyRow(combo(mod, fmt(nav.left)), "Move left, previous control, or previous column.")}
 	            ${keyRow(combo(mod, fmt(nav.right)), "Move right, next control, or next column.")}
-	            ${keyRow(combo(mod, fmt(focusNewNoteKey)), "Focus the new note input.")}
+            ${keyRow(combo(mod, fmt(focusNewNoteKey)), "Open the new note form.")}
 	            ${keyRow(keycap("/"), "Focus the card filter for the current board.")}
 	            ${keyRow(keycap("F2"), "Rename the focused card, or rename a board in Settings > Boards.")}
 	          </div>
@@ -3798,6 +3891,7 @@ async function main() {
     const ul = document.getElementById("boardTabs");
     if (!(ul instanceof HTMLElement)) return;
     ul.textContent = "";
+    const pendingCountsByBoard = queryPendingCountsByBoard(db);
 
     // Keep Carbon tab layout: we have variable tab count, so use flex.
     ul.style.display = "flex";
@@ -3814,7 +3908,20 @@ async function main() {
       a.setAttribute("role", "tab");
       a.setAttribute("aria-selected", b === activeBoard ? "true" : "false");
       a.dataset.board = b;
-      a.textContent = b;
+      const pendingCount = pendingCountsByBoard.get(b) || 0;
+      a.setAttribute("aria-label", `${b}, ${pendingCount} pending task${pendingCount === 1 ? "" : "s"}`);
+
+      const label = document.createElement("span");
+      label.className = "tabLabel";
+      label.textContent = b;
+      a.appendChild(label);
+
+      const badge = document.createElement("span");
+      badge.className = "tabBadge";
+      badge.textContent = String(pendingCount);
+      badge.setAttribute("aria-hidden", "true");
+      a.appendChild(badge);
+
       li.appendChild(a);
       if (b === activeBoard) li.classList.add("bx--tabs__nav-item--selected");
       ul.appendChild(li);
@@ -5537,7 +5644,7 @@ async function main() {
     return { ok: true, clipboardOk };
   }
 
-  async function activateBoard(board, { persistSelection } = { persistSelection: true }) {
+  async function activateBoard(board, { persistSelection = true, focusBoardTab = false } = {}) {
     if (!board || !boards.includes(board)) return;
     if (board === activeBoard) return;
 
@@ -5560,6 +5667,14 @@ async function main() {
     setActiveTabUi(activeBoard);
     if (persistSelection) await saveActiveBoard(activeBoard);
     await refresh();
+    if (focusBoardTab) {
+      requestAnimationFrame(() => {
+        const tab = document.querySelector(
+          `#boardTabs [role='tab'][data-board="${CSS.escape(String(activeBoard))}"]`
+        );
+        if (tab instanceof HTMLElement) safeFocus(tab);
+      });
+    }
     if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
   }
 
@@ -5580,8 +5695,12 @@ async function main() {
   }
 
   async function refresh() {
-    const notes = queryNotes(db, activeBoard);
+    const notes = String(cardFilterQuery || "").trim() ? queryAllNotes(db) : queryNotes(db, activeBoard);
+    const visibleNotes = getFilteredNotes(notes, cardFilterQuery);
+    renderBoardTabs(boards, activeBoard);
     renderNotes(db, notes);
+    updateCardFilterMeta(visibleNotes);
+    updateCardFilterVisibility();
     wireNotesEditorAutocomplete();
     updateVimIndicatorsInDom();
   }
@@ -7474,12 +7593,85 @@ async function main() {
       cardFilterQuery = "";
       updateCardFilterVisibility();
       void refresh();
-      const noteText = document.getElementById("noteText");
-      if (noteText instanceof HTMLElement) safeFocus(noteText);
+      if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
     });
   }
 
-  // Initial focus: active board tab (keyboard bindings need a focused element).
+  function setAddNoteModalVisible(visible) {
+    if (!(addNoteModal instanceof HTMLElement)) return;
+    const show = visible === true;
+    addNoteModal.hidden = !show;
+    addNoteModal.setAttribute("aria-hidden", String(!show));
+    if (show) {
+      const noteText = document.getElementById("noteText");
+      if (noteText instanceof HTMLElement) safeFocus(noteText);
+    } else if (addNoteButton instanceof HTMLElement) {
+      safeFocus(addNoteButton);
+    }
+  }
+
+  if (addNoteButton instanceof HTMLButtonElement) {
+    addNoteButton.addEventListener("click", () => setAddNoteModalVisible(true));
+  }
+  if (closeAddNoteModal instanceof HTMLButtonElement) {
+    closeAddNoteModal.addEventListener("click", () => setAddNoteModalVisible(false));
+  }
+  if (addNoteModal instanceof HTMLElement) {
+    addNoteModal.addEventListener("click", (e) => {
+      if (e.target instanceof Element && e.target.closest("[data-add-note-close='true']")) setAddNoteModalVisible(false);
+    });
+  }
+
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!(addNoteModal instanceof HTMLElement) || addNoteModal.hidden) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setAddNoteModalVisible(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = addNoteModal.querySelector(".addNoteModalPanel");
+      if (!(panel instanceof HTMLElement)) return;
+      const focusables = [...panel.querySelectorAll("button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+        .filter((node) => node instanceof HTMLElement && isElementInVisibleView(node));
+      if (!focusables.length) return;
+      const currentIndex = focusables.indexOf(document.activeElement);
+      const nextIndex = e.shiftKey
+        ? currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1
+        : currentIndex >= focusables.length - 1 ? 0 : currentIndex + 1;
+      e.preventDefault();
+      safeFocus(focusables[nextIndex]);
+    },
+    true
+  );
+
+  // Keep the left header controls vertically paired with search, even when a
+  // control (such as the theme select) has its own key handling.
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      const nav = getNavKeys(keyLayout);
+      if (!modKeyOnly(e) || e.key !== nav.down) return;
+      const active = document.activeElement;
+      const isSearchHeaderControl =
+        active === document.getElementById("themeSelect") ||
+        active === document.getElementById("instructionsLink") ||
+        active === document.getElementById("aboutLink");
+      const notesVisible = notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
+      if (!isSearchHeaderControl || !notesVisible || !(cardFilterInput instanceof HTMLElement)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      safeFocus(cardFilterInput);
+    },
+    true
+  );
+
+  // Initial focus stays on the notes toolbar so the primary surface is immediately available.
   // Linux Chrome often defers popup focus; rAF + delayed retries + keydown/focus fallbacks match Windows behavior.
   function hasMeaningfulPopupFocus() {
     const active = document.activeElement;
@@ -7511,9 +7703,7 @@ async function main() {
       const notesViewEl = document.getElementById("notesView");
       if (!(notesViewEl instanceof HTMLElement) || notesViewEl.hasAttribute("hidden")) return;
 
-      const activeTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
-      const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-      const t = activeTab instanceof HTMLElement ? activeTab : firstTab;
+      const t = cardFilterInput;
       if (!(t instanceof HTMLElement)) return;
 
       try {
@@ -7730,7 +7920,26 @@ async function main() {
     const activeTab = document.querySelector("#boardTabs [role='tab'][aria-selected='true']");
     const firstTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
     const t = activeTab instanceof HTMLElement ? activeTab : firstTab;
-    if (t instanceof HTMLElement) safeFocus(t);
+    if (t instanceof HTMLElement && safeFocus(t)) return;
+    if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
+  }
+
+  function moveBoardTabFocus(delta) {
+    const currentIndex = boards.indexOf(activeBoard);
+    if (currentIndex < 0) return false;
+    const nextIndex = Math.min(boards.length - 1, Math.max(0, currentIndex + delta));
+    const nextBoard = boards[nextIndex];
+    if (!nextBoard) return false;
+
+    if (nextBoard === activeBoard) {
+      const currentTab = document.querySelector(
+        `#boardTabs [role='tab'][data-board="${CSS.escape(String(activeBoard))}"]`
+      );
+      return currentTab instanceof HTMLElement ? safeFocus(currentTab) : false;
+    }
+
+    void activateBoard(nextBoard, { persistSelection: true, focusBoardTab: true });
+    return true;
   }
 
   function openSettingsBoardsManagePanel() {
@@ -7921,22 +8130,19 @@ async function main() {
   if (closeInstructionsBtn instanceof HTMLElement) {
     closeInstructionsBtn.addEventListener("click", () => {
       showNotesView();
-      const input = document.getElementById("noteText");
-      if (input instanceof HTMLElement) input.focus();
+      if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
     });
   }
   if (closeAboutBtn instanceof HTMLElement) {
     closeAboutBtn.addEventListener("click", () => {
       showNotesView();
-      const input = document.getElementById("noteText");
-      if (input instanceof HTMLElement) input.focus();
+      if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
     });
   }
   if (closeSettingsBtn instanceof HTMLElement) {
     closeSettingsBtn.addEventListener("click", () => {
       showNotesView();
-      const input = document.getElementById("noteText");
-      if (input instanceof HTMLElement) input.focus();
+      if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
     });
   }
 
@@ -9200,8 +9406,7 @@ async function main() {
 
     const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
     if (active === createSubmitBtn && direction === "right") {
-      const firstBoardTab = document.querySelector("#boardTabs .bx--tabs__nav-link");
-      if (firstBoardTab instanceof HTMLElement) return safeFocus(firstBoardTab);
+      if (cardFilterInput instanceof HTMLElement) return safeFocus(cardFilterInput);
     }
 
     const currentRect = active.getBoundingClientRect();
@@ -9393,6 +9598,7 @@ async function main() {
     const settingsVisible = settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
 
     if (notesVisible) {
+      if (addNoteButton instanceof HTMLElement) targets.push(addNoteButton);
       const noteText = document.getElementById("noteText");
       const noteDueDate = document.getElementById("noteDueDate");
       const dashboardBtn = document.getElementById("dashboardBtn");
@@ -9840,8 +10046,7 @@ async function main() {
           e.stopPropagation();
           e.stopImmediatePropagation();
           showNotesView();
-          const noteText = document.getElementById("noteText");
-          if (noteText instanceof HTMLElement) safeFocus(noteText);
+          if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
           return;
         }
       }
@@ -10296,8 +10501,7 @@ async function main() {
         const notesVisible =
           notesView instanceof HTMLElement && !notesView.hasAttribute("hidden");
         if (notesVisible) {
-          const noteText = document.getElementById("noteText");
-          if (noteText instanceof HTMLElement) safeFocus(noteText);
+          setAddNoteModalVisible(true);
         }
         return;
       }
@@ -10616,8 +10820,15 @@ async function main() {
             settingsView instanceof HTMLElement && !settingsView.hasAttribute("hidden");
 
           if (notesVisible) {
-            const noteText = document.getElementById("noteText");
-            if (noteText instanceof HTMLElement) safeFocus(noteText);
+            const searchAlignedHeaderControl =
+              activeEl2 === document.getElementById("themeSelect") ||
+              activeEl2 === document.getElementById("instructionsLink") ||
+              activeEl2 === document.getElementById("aboutLink");
+            if (searchAlignedHeaderControl && cardFilterInput instanceof HTMLElement) {
+              safeFocus(cardFilterInput);
+            } else if (addNoteButton instanceof HTMLElement) {
+              safeFocus(addNoteButton);
+            }
             return;
           }
 
@@ -10692,6 +10903,11 @@ async function main() {
               activeEl2.closest(".createModuleActions") !== null));
 
         if (isCreateActionEl) {
+          if (addNoteModal instanceof HTMLElement && !addNoteModal.hidden) {
+            const noteText = document.getElementById("noteText");
+            if (noteText instanceof HTMLElement) safeFocus(noteText);
+            return;
+          }
           const cardFilterInput = document.getElementById("cardFilterInput");
           if (cardFilterInput instanceof HTMLElement && safeFocus(cardFilterInput)) return;
 
@@ -10733,8 +10949,7 @@ async function main() {
           const cards = getAllCardsInDomOrder();
           if (cards.length) focusCardPrimaryAction(cards[0]);
           else {
-            const noteText = document.getElementById("noteText");
-            if (noteText instanceof HTMLElement) safeFocus(noteText);
+            if (addNoteButton instanceof HTMLElement) safeFocus(addNoteButton);
           }
           return;
         }
@@ -10773,6 +10988,16 @@ async function main() {
         if (activeEl2 instanceof Element && (activeEl2.closest(".noteDueDateInput") || activeEl2.closest(".noteTextRenameInput") || activeEl2.closest(".manageTabsRenameInput"))) return;
         e.preventDefault();
         e.stopPropagation();
+
+        if (activeEl2 === cardFilterInput) {
+          const headerTargets = getHeaderNavTargets();
+          const firstHeaderTarget = headerTargets[0];
+          if (firstHeaderTarget instanceof HTMLElement && safeFocus(firstHeaderTarget)) return;
+        }
+        if (activeEl2 === addNoteButton) {
+          const settingsButton = document.getElementById("settingsBtn");
+          if (settingsButton instanceof HTMLElement && safeFocus(settingsButton)) return;
+        }
 
         if (activeEl2 === themeSelect && themeSelect instanceof HTMLSelectElement && themeSelectArmed) {
           try {
@@ -10991,22 +11216,7 @@ async function main() {
           if (inBoardTabs) {
             const cardFilterInput = document.getElementById("cardFilterInput");
             if (cardFilterInput instanceof HTMLElement && isElementInVisibleView(cardFilterInput) && safeFocus(cardFilterInput)) return;
-
-            const dashboardBtn = document.getElementById("dashboardBtn");
-            const calendarBtn = document.getElementById("calendarBtn");
-            const createSubmitBtn = document.querySelector("#createForm button[type='submit']");
-            if (
-              (dashboardBtn instanceof HTMLElement && safeFocus(dashboardBtn)) ||
-              (calendarBtn instanceof HTMLElement && safeFocus(calendarBtn)) ||
-              (createSubmitBtn instanceof HTMLElement && safeFocus(createSubmitBtn))
-            ) {
-              return;
-            }
-
-            const noteDueDate = document.getElementById("noteDueDate");
-            const noteText = document.getElementById("noteText");
-            if (noteDueDate instanceof HTMLElement && safeFocus(noteDueDate)) return;
-            if (noteText instanceof HTMLElement && safeFocus(noteText)) return;
+            if (addNoteButton instanceof HTMLElement && safeFocus(addNoteButton)) return;
             // Fallback: moveGlobalFocus finds the previous focusable in the global order.
             moveGlobalFocus(-1);
             return;
@@ -11216,6 +11426,27 @@ async function main() {
               return;
             }
           }
+        }
+
+        // The search field and add button share one visual toolbar row.
+        if (activeEl === cardFilterInput && key === nav.right && addNoteButton instanceof HTMLElement) {
+          safeFocus(addNoteButton);
+          return;
+        }
+        if (activeEl === addNoteButton && key === nav.left && cardFilterInput instanceof HTMLElement) {
+          safeFocus(cardFilterInput);
+          return;
+        }
+
+        // Board tabs are a single horizontal control. Keep selection and focus aligned
+        // while board rendering replaces the tab elements.
+        if (
+          (key === nav.left || key === nav.right) &&
+          activeEl instanceof Element &&
+          activeEl.closest("#boardTabs") !== null
+        ) {
+          moveBoardTabFocus(key === nav.right ? +1 : -1);
+          return;
         }
 
         // Settings: left = focus sidebar (selected tab); right = into panel or next field / Close.
@@ -12021,7 +12252,7 @@ async function main() {
         const tab = target.closest("[role='tab'][data-board]");
         if (!(tab instanceof HTMLElement)) return;
         const board = tab.getAttribute("data-board");
-        void activateBoard(board, { persistSelection: true });
+        void activateBoard(board, { persistSelection: true, focusBoardTab: true });
       });
 
       // Prevent navigation when clicking the anchor (optional; hover already switches)
@@ -13174,6 +13405,7 @@ async function main() {
     clearNewNoteAutocomplete();
     await persist();
     await refresh();
+    setAddNoteModalVisible(false);
   });
 
   document.body.addEventListener("click", async (e) => {
@@ -13433,6 +13665,7 @@ async function main() {
     }
 
     if (action === "moveUp" || action === "moveDown") {
+      if (String(cardFilterQuery || "").trim()) return;
       const noteId = Number(target.dataset.noteId);
       if (!Number.isFinite(noteId)) return;
       const card = target.closest(".noteCard[data-note-id]");
