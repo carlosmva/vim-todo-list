@@ -3,6 +3,7 @@
   "use strict";
 
 const STORAGE_KEY = "sqliteDb_v1";
+const CUSTOM_BACKGROUND_KEY = "customBackground_v1";
 const ACTIVE_BOARD_KEY = "activeBoard_v1";
 const KEY_LAYOUT_KEY = "keyLayout_v1";
 const KEYBOARD_NAV_PLATFORM_KEY = "keyboardNavPlatform_v1";
@@ -11,30 +12,65 @@ const AI_ENDPOINT_BASE_URL_KEY = "aiEndpointBaseUrl_v1";
 const AI_CUSTOM_WORDS_KEY = "aiCustomWords_v1";
 const DEFAULT_TAB_NAME = "To Do";
 const DEFAULT_HEADER_TITLE = "Vim To-Do List";
+const MAX_CUSTOM_BACKGROUND_INPUT_BYTES = 15 * 1024 * 1024;
+const MAX_CUSTOM_BACKGROUND_DIMENSION = 2560;
 const THEME_ORDER = [
   "light",
   "dark",
   "solarized-light",
   "solarized-dark",
   "emacs",
+  "emacs-dark",
   "command-line",
   "nothing",
   "nothing-light",
 ];
 const POPUP_SIZE_ORDER = ["s", "m", "l", "full"];
+const INTERFACE_FONT_ORDER = ["", "inter", "manrope", "dm-sans", "plus-jakarta", "sora", "montserrat", "red-hat"];
+const INTERFACE_FONT_LABELS = {
+  "": "Theme default",
+  inter: "Inter",
+  manrope: "Manrope",
+  "dm-sans": "DM Sans",
+  "plus-jakarta": "Plus Jakarta Sans",
+  sora: "Sora",
+  montserrat: "Montserrat",
+  "red-hat": "Red Hat Text"
+};
+const INTERFACE_FONT_FAMILIES = {
+  inter: '"Inter", system-ui, sans-serif',
+  manrope: '"Manrope", system-ui, sans-serif',
+  "dm-sans": '"DM Sans", system-ui, sans-serif',
+  "plus-jakarta": '"Plus Jakarta Sans", system-ui, sans-serif',
+  sora: '"Sora", system-ui, sans-serif',
+  montserrat: '"Montserrat", system-ui, sans-serif',
+  "red-hat": '"Red Hat Text", system-ui, sans-serif'
+};
 /** Value "" means follow each theme’s header title styling. */
-const HEADER_TITLE_FONT_ORDER = ["", "kelvinized", "montserrat", "space-grotesk", "doto", "space-mono"];
+const HEADER_TITLE_FONT_ORDER = ["", "kelvinized", "inter", "manrope", "dm-sans", "plus-jakarta", "sora", "montserrat", "red-hat", "space-grotesk", "doto", "space-mono"];
 const HEADER_TITLE_FONT_LABELS = {
   "": "Theme default",
   kelvinized: "Kelvinized",
+  inter: "Inter",
+  manrope: "Manrope",
+  "dm-sans": "DM Sans",
+  "plus-jakarta": "Plus Jakarta Sans",
+  sora: "Sora",
   montserrat: "Montserrat",
+  "red-hat": "Red Hat Display",
   "space-grotesk": "Space Grotesk",
   doto: "Doto",
   "space-mono": "Space Mono"
 };
 const HEADER_TITLE_FONT_FAMILIES = {
   kelvinized: '"Kelvinized Normal", system-ui, sans-serif',
+  inter: '"Inter", system-ui, sans-serif',
+  manrope: '"Manrope", system-ui, sans-serif',
+  "dm-sans": '"DM Sans", system-ui, sans-serif',
+  "plus-jakarta": '"Plus Jakarta Sans", system-ui, sans-serif',
+  sora: '"Sora", system-ui, sans-serif',
   montserrat: '"Montserrat", system-ui, sans-serif',
+  "red-hat": '"Red Hat Display", system-ui, sans-serif',
   "space-grotesk": '"Space Grotesk", system-ui, sans-serif',
   doto: '"Doto", "Space Grotesk", system-ui, sans-serif',
   "space-mono": '"Space Mono", ui-monospace, monospace'
@@ -44,6 +80,13 @@ function normalizeHeaderTitleFontKey(stored) {
   const s = String(stored || "").trim();
   if (!s) return "";
   if (Object.prototype.hasOwnProperty.call(HEADER_TITLE_FONT_FAMILIES, s)) return s;
+  return "";
+}
+
+function normalizeInterfaceFontKey(stored) {
+  const s = String(stored || "").trim();
+  if (!s) return "";
+  if (Object.prototype.hasOwnProperty.call(INTERFACE_FONT_FAMILIES, s)) return s;
   return "";
 }
 
@@ -933,6 +976,21 @@ async function saveAiCustomWords(customWords) {
 async function saveDbBytes(bytes) {
   const b64 = bytesToBase64(bytes);
   await chrome.storage.local.set({ [STORAGE_KEY]: b64 });
+}
+
+async function loadCustomBackground() {
+  const result = await chrome.storage.local.get([CUSTOM_BACKGROUND_KEY]);
+  const value = result[CUSTOM_BACKGROUND_KEY];
+  return typeof value === "string" ? value : "";
+}
+
+async function saveCustomBackground(dataUrl) {
+  const value = String(dataUrl || "");
+  if (!value) {
+    await chrome.storage.local.remove([CUSTOM_BACKGROUND_KEY]);
+    return;
+  }
+  await chrome.storage.local.set({ [CUSTOM_BACKGROUND_KEY]: value });
 }
 
 function ensureSchema(db, defaultBoard = DEFAULT_TAB_NAME) {
@@ -2612,8 +2670,12 @@ async function main() {
   const settingsPanelObsidian = document.getElementById("settingsPanelObsidian");
   const settingsPanelKeyboard = document.getElementById("settingsPanelKeyboard");
   const settingsThemeSelect = document.getElementById("settingsThemeSelect");
+  const settingsInterfaceFontSelect = document.getElementById("settingsInterfaceFontSelect");
   const settingsHeaderTitleInput = document.getElementById("settingsHeaderTitleInput");
   const settingsHeaderTitleFontSelect = document.getElementById("settingsHeaderTitleFontSelect");
+  const customBackgroundFile = document.getElementById("customBackgroundFile");
+  const clearCustomBackgroundBtn = document.getElementById("clearCustomBackgroundBtn");
+  const customBackgroundStatus = document.getElementById("customBackgroundStatus");
   const popupSizeInputs = Array.from(document.querySelectorAll('input[name="popupSizeChoice"]'));
   const obsidianVaultNameInput = document.getElementById("obsidianVaultName");
   const obsidianNotesFolderInput = document.getElementById("obsidianNotesFolder");
@@ -3106,6 +3168,7 @@ async function main() {
     "solarized-light": "Solarized",
     "solarized-dark": "Solarized Dark",
     emacs: "Emacs",
+    "emacs-dark": "Emacs Dark",
     "command-line": "Command Line",
     nothing: "Nothing",
     "nothing-light": "Nothing Light",
@@ -3138,6 +3201,17 @@ async function main() {
     }
   }
 
+  function populateInterfaceFontSelect() {
+    if (!(settingsInterfaceFontSelect instanceof HTMLSelectElement)) return;
+    settingsInterfaceFontSelect.innerHTML = "";
+    for (const key of INTERFACE_FONT_ORDER) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = INTERFACE_FONT_LABELS[key] || (key || "Theme default");
+      settingsInterfaceFontSelect.appendChild(opt);
+    }
+  }
+
 	  function applyTheme(t) {
 	    const value = THEME_ORDER.includes(t) ? t : "light";
 	    document.documentElement.setAttribute("data-theme", value);
@@ -3156,6 +3230,67 @@ async function main() {
         // ignore
       }
     }
+  }
+
+  function setCustomBackgroundStatus(message) {
+    if (customBackgroundStatus instanceof HTMLElement) customBackgroundStatus.textContent = String(message || "");
+  }
+
+  let customBackgroundAnalysisRequest = 0;
+
+  async function updateCustomBackgroundContrast(dataUrl) {
+    const app = document.querySelector(".app");
+    if (!(app instanceof HTMLElement)) return;
+    const requestId = ++customBackgroundAnalysisRequest;
+    const value = String(dataUrl || "");
+    if (!/^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(value)) {
+      app.classList.remove("app--customBackgroundLight", "app--customBackgroundDark");
+      return;
+    }
+
+    try {
+      const image = new Image();
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = reject;
+        image.src = value;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = 48;
+      canvas.height = 48;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Canvas unavailable");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let luminanceTotal = 0;
+      let pixelCount = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] < 64) continue;
+        luminanceTotal += (0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) / 255;
+        pixelCount += 1;
+      }
+      if (!pixelCount) throw new Error("No visible pixels");
+      if (requestId !== customBackgroundAnalysisRequest) return;
+      const isLight = luminanceTotal / pixelCount >= 0.55;
+      app.classList.toggle("app--customBackgroundLight", isLight);
+      app.classList.toggle("app--customBackgroundDark", !isLight);
+    } catch {
+      if (requestId === customBackgroundAnalysisRequest) {
+        app.classList.remove("app--customBackgroundLight", "app--customBackgroundDark");
+      }
+    }
+  }
+
+  function applyCustomBackground(dataUrl) {
+    const app = document.querySelector(".app");
+    if (!(app instanceof HTMLElement)) return;
+    const value = String(dataUrl || "");
+    const valid = /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(value);
+    app.classList.toggle("app--hasCustomBackground", valid);
+    if (valid) app.style.setProperty("--custom-background-image", `url("${value}")`);
+    else app.style.removeProperty("--custom-background-image");
+    void updateCustomBackgroundContrast(valid ? value : "");
+    if (clearCustomBackgroundBtn instanceof HTMLButtonElement) clearCustomBackgroundBtn.disabled = !valid;
   }
 
   function getNavKeys(layout) {
@@ -3952,6 +4087,7 @@ async function main() {
   const APP_SETTING_AI_ENDPOINT_MODEL = "ai.endpointModel";
   const APP_SETTING_AI_CUSTOM_WORDS_JSON = "ai.customWordsJson";
   const APP_SETTING_THEME = "app.theme";
+  const APP_SETTING_INTERFACE_FONT = "app.interfaceFont";
   const APP_SETTING_HEADER_TITLE = "app.headerTitle";
   const APP_SETTING_HEADER_TITLE_FONT = "app.headerTitleFont";
   const APP_SETTING_POPUP_SIZE = "app.popupSize";
@@ -4080,19 +4216,33 @@ async function main() {
   }
 
   populateThemeSelect();
+  populateInterfaceFontSelect();
   populateHeaderTitleFontSelect();
   applyTheme(theme);
+
+  let customBackgroundDataUrl = await loadCustomBackground();
+  if (!/^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(customBackgroundDataUrl)) customBackgroundDataUrl = "";
+  applyCustomBackground(customBackgroundDataUrl);
 
   let popupSize = dbGetAppSettingString(APP_SETTING_POPUP_SIZE) || "m";
   if (!POPUP_SIZE_ORDER.includes(popupSize)) popupSize = "m";
   applyPopupSize(popupSize);
 
   let appHeaderTitleRaw = dbGetAppSettingString(APP_SETTING_HEADER_TITLE) || "";
+  let appInterfaceFontKey = normalizeInterfaceFontKey(dbGetAppSettingString(APP_SETTING_INTERFACE_FONT) || "");
   let appHeaderTitleFontKey = normalizeHeaderTitleFontKey(
     dbGetAppSettingString(APP_SETTING_HEADER_TITLE_FONT) || ""
   );
   let settingsHeaderTitleFontSelectArmed = false;
   let settingsHeaderTitleFontSelectChangeAllowed = false;
+
+  function applyInterfaceFontKey(key) {
+    const resolved = normalizeInterfaceFontKey(key);
+    const root = document.documentElement;
+    if (resolved) root.style.setProperty("--modern-font-sans", INTERFACE_FONT_FAMILIES[resolved]);
+    else root.style.removeProperty("--modern-font-sans");
+    if (settingsInterfaceFontSelect instanceof HTMLSelectElement) settingsInterfaceFontSelect.value = resolved;
+  }
 
   function normalizeHeaderTitleInput(value) {
     return String(value || "")
@@ -4130,6 +4280,7 @@ async function main() {
   }
 
   applyHeaderTitle(appHeaderTitleRaw);
+  applyInterfaceFontKey(appInterfaceFontKey);
   applyHeaderTitleFontKey(appHeaderTitleFontKey);
 
   // Shared caches for autocomplete (new note + notes editor).
@@ -4411,6 +4562,20 @@ async function main() {
     }
   }
 
+  async function commitInterfaceFontValue() {
+    if (!(settingsInterfaceFontSelect instanceof HTMLSelectElement)) return;
+    const next = normalizeInterfaceFontKey(settingsInterfaceFontSelect.value);
+    if (next === appInterfaceFontKey) return;
+    appInterfaceFontKey = next;
+    applyInterfaceFontKey(appInterfaceFontKey);
+    try {
+      dbSetAppSettingString(APP_SETTING_INTERFACE_FONT, appInterfaceFontKey);
+      await persist();
+    } catch {
+      // ignore
+    }
+  }
+
   if (themeSelect instanceof HTMLSelectElement) {
     setThemeSelectArmed(false);
     themeSelect.addEventListener("change", async () => {
@@ -4522,6 +4687,59 @@ async function main() {
     });
   }
 
+  // Keep theme selectors keyboard-only until explicitly clicked. This capture
+  // guard runs before popup-wide navigation and prevents native select menus
+  // from opening on Enter or Space.
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      const activeThemeSelect =
+        document.activeElement === themeSelect
+          ? themeSelect
+          : document.activeElement === settingsThemeSelect
+            ? settingsThemeSelect
+            : null;
+      if (activeThemeSelect && modKeyOnly(e)) {
+        const nav = getNavKeys(keyLayout);
+        const key = String(e.key || "").toLowerCase();
+        const armed = activeThemeSelect === themeSelect ? themeSelectArmed : settingsThemeSelectArmed;
+        if (armed && (key === nav.up || key === nav.down)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          cycleThemeSelectControl(activeThemeSelect, key === nav.down ? +1 : -1);
+          return;
+        }
+      }
+      if (!activeThemeSelect || e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key;
+      const isEnter = key === "Enter" || key === " ";
+      const isNativeSelectNav =
+        key === "ArrowUp" ||
+        key === "ArrowDown" ||
+        key === "ArrowLeft" ||
+        key === "ArrowRight" ||
+        key === "Home" ||
+        key === "End" ||
+        key === "PageUp" ||
+        key === "PageDown";
+      if (isEnter) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (activeThemeSelect === themeSelect) setThemeSelectArmed(true);
+        else setSettingsThemeSelectArmed(true);
+      } else if (key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (activeThemeSelect === themeSelect) setThemeSelectArmed(false);
+        else setSettingsThemeSelectArmed(false);
+      } else if (isNativeSelectNav || key.length === 1) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+
   popupSizeInputs.forEach((input) => {
     if (!(input instanceof HTMLInputElement)) return;
     input.addEventListener("change", async () => {
@@ -4537,6 +4755,68 @@ async function main() {
         e.preventDefault();
       });
     }
+  }
+
+  function normalizeCustomBackgroundFile(file) {
+    return new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("This image format could not be opened."));
+      };
+      image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const largestSide = Math.max(image.naturalWidth, image.naturalHeight);
+        const scale = largestSide > MAX_CUSTOM_BACKGROUND_DIMENSION ? MAX_CUSTOM_BACKGROUND_DIMENSION / largestSide : 1;
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Unable to prepare this image."));
+          return;
+        }
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/webp", 0.86));
+      };
+      image.src = objectUrl;
+    });
+  }
+
+  if (customBackgroundFile instanceof HTMLInputElement) {
+    customBackgroundFile.addEventListener("change", async () => {
+      const file = customBackgroundFile.files?.[0];
+      if (!file) return;
+      if (file.size > MAX_CUSTOM_BACKGROUND_INPUT_BYTES) {
+        setCustomBackgroundStatus("Image must be 15 MiB or smaller.");
+        customBackgroundFile.value = "";
+        return;
+      }
+      try {
+        const dataUrl = await normalizeCustomBackgroundFile(file);
+        if (!/^data:image\/webp;base64,/i.test(dataUrl)) throw new Error("Unable to prepare this image.");
+        customBackgroundDataUrl = dataUrl;
+        applyCustomBackground(customBackgroundDataUrl);
+        await saveCustomBackground(customBackgroundDataUrl);
+        setCustomBackgroundStatus(`Using ${file.name}`);
+      } catch (err) {
+        setCustomBackgroundStatus(err instanceof Error ? err.message : "Unable to save background image.");
+      } finally {
+        customBackgroundFile.value = "";
+      }
+    });
+  }
+
+  if (clearCustomBackgroundBtn instanceof HTMLButtonElement) {
+    clearCustomBackgroundBtn.addEventListener("click", async () => {
+      customBackgroundDataUrl = "";
+      applyCustomBackground("");
+      await saveCustomBackground("");
+      setCustomBackgroundStatus("Custom background cleared.");
+    });
   }
 
   if (settingsHeaderTitleInput instanceof HTMLInputElement) {
@@ -4603,6 +4883,12 @@ async function main() {
       if (isNativeSelectNav || raw.length === 1) {
         e.preventDefault();
       }
+    });
+  }
+
+  if (settingsInterfaceFontSelect instanceof HTMLSelectElement) {
+    settingsInterfaceFontSelect.addEventListener("change", () => {
+      void commitInterfaceFontValue();
     });
   }
 
@@ -8592,6 +8878,51 @@ async function main() {
     return focusManageTabsRowAction(rows[nextIdx], action);
   }
 
+  function moveBoardsSettingsFocus(direction) {
+    if (!isBoardsManagePanelOpen()) return false;
+    const activeEl = document.activeElement;
+    if (!(activeEl instanceof Element) || activeEl.closest("#settingsPanelBoards") === null) return false;
+
+    const addTabName = document.getElementById("addTabName");
+    const addTabSubmit = document.querySelector("#addTabForm button[type='submit']");
+    const rows = getManageTabsRows();
+    const row = activeEl.closest(".manageTabsRow");
+
+    if (row instanceof HTMLElement) {
+      if (direction === "left") return moveFocusWithinManageTabsRow(-1);
+      if (direction === "right") return moveFocusWithinManageTabsRow(+1);
+      if (direction === "up") return moveFocusAcrossManageTabsRows(-1);
+      if (direction === "down") return moveFocusAcrossManageTabsRows(+1);
+      return false;
+    }
+
+    if (activeEl === addTabName || activeEl === addTabSubmit) {
+      if (direction === "up") {
+        if (activeEl === addTabSubmit) {
+          const closeBtn = document.getElementById("closeSettingsBtn");
+          if (closeBtn instanceof HTMLElement) return safeFocus(closeBtn);
+        }
+        return true;
+      }
+      if (direction === "left") {
+        if (activeEl === addTabSubmit && addTabName instanceof HTMLElement) return safeFocus(addTabName);
+        // Let the Settings shell handle left from the first panel control.
+        if (activeEl === addTabName) return false;
+        return true;
+      }
+      if (direction === "right") {
+        if (activeEl === addTabName && addTabSubmit instanceof HTMLElement) return safeFocus(addTabSubmit);
+        return true;
+      }
+      if (direction === "down") {
+        if (rows[0] instanceof HTMLElement) return focusManageTabsRowAction(rows[0], "remove");
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function renderManageTabs() {
     if (!(tabsList instanceof HTMLElement)) return;
     tabsList.textContent = "";
@@ -9681,6 +10012,9 @@ async function main() {
       }
       if (appearancePanelVisible) {
         const appearanceTheme = document.getElementById("settingsThemeSelect");
+        const interfaceFont = document.getElementById("settingsInterfaceFontSelect");
+        const backgroundFile = document.getElementById("customBackgroundFile");
+        const clearBackground = document.getElementById("clearCustomBackgroundBtn");
         const headerTitleField = document.getElementById("settingsHeaderTitleInput");
         const headerTitleFont = document.getElementById("settingsHeaderTitleFontSelect");
         const sizeSmall = document.getElementById("popupSizeSmall");
@@ -9688,6 +10022,9 @@ async function main() {
         const sizeLarge = document.getElementById("popupSizeLarge");
         const sizeFull = document.getElementById("popupSizeFull");
         if (appearanceTheme instanceof HTMLElement) targets.push(appearanceTheme);
+        if (interfaceFont instanceof HTMLElement) targets.push(interfaceFont);
+        if (backgroundFile instanceof HTMLElement) targets.push(backgroundFile);
+        if (clearBackground instanceof HTMLElement && !clearBackground.disabled) targets.push(clearBackground);
         if (headerTitleField instanceof HTMLElement) targets.push(headerTitleField);
         if (headerTitleFont instanceof HTMLElement) targets.push(headerTitleFont);
         if (sizeSmall instanceof HTMLElement) targets.push(sizeSmall);
@@ -10575,6 +10912,7 @@ async function main() {
         }
 
         if (moveCreateFormFocusByVisualDirection(key, nav)) return;
+        if (moveBoardsSettingsFocus("down")) return;
 
         // Settings: vertical = sidebar tabs or panel fields; not the same as global linear order.
         {
@@ -11062,6 +11400,7 @@ async function main() {
         }
 
         if (moveCreateFormFocusByVisualDirection(key, nav)) return;
+        if (moveBoardsSettingsFocus("up")) return;
 
         // Settings: vertical = previous tab, previous panel field, or sidebar from first field.
         {
@@ -11448,6 +11787,8 @@ async function main() {
           moveBoardTabFocus(key === nav.right ? +1 : -1);
           return;
         }
+
+        if (moveBoardsSettingsFocus(key === nav.left ? "left" : "right")) return;
 
         // Settings: left = focus sidebar (selected tab); right = into panel or next field / Close.
         {

@@ -56,6 +56,21 @@ html[data-popup-size="full"] body {
   padding: 6px 8px 4px;
 }
 
+.app.app--hasCustomBackground {
+  background-image: var(--custom-background-image) !important;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.app.app--hasCustomBackground.app--customBackgroundLight {
+  background-image: linear-gradient(rgba(247, 250, 255, 0.42), rgba(247, 250, 255, 0.42)), var(--custom-background-image) !important;
+}
+
+.app.app--hasCustomBackground.app--customBackgroundDark {
+  background-image: linear-gradient(rgba(8, 14, 24, 0.42), rgba(8, 14, 24, 0.42)), var(--custom-background-image) !important;
+}
+
 .headerRow {
   display: flex;
   align-items: center;
@@ -1930,6 +1945,19 @@ html[data-popup-size="full"] body {
   border: 1px solid var(--cds-border-subtle, rgba(0, 0, 0, 0.16));
   border-radius: 6px;
   background: var(--modern-surface-1, var(--cds-layer, rgba(255, 255, 255, 0.92)));
+}
+
+.appearanceBackgroundActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appearanceBackgroundStatus {
+  font-size: 0.75rem;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  overflow-wrap: anywhere;
 }
 
 .cardFilterRow--active {

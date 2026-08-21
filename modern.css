@@ -114,6 +114,29 @@
   --modern-link-hover: #0000aa;
 }
 
+/* Emacs Dark - classic dark frame with cyan links and a green active point. */
+[data-theme="emacs-dark"] {
+  --modern-font-sans: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --modern-bg: linear-gradient(160deg, #000000 0%, #080808 55%, #101010 100%);
+  --modern-surface-1: rgba(20, 20, 20, 0.93);
+  --modern-surface-2: #161616;
+  --modern-surface-muted: rgba(36, 36, 36, 0.94);
+  --modern-text: #f8f8f2;
+  --modern-text-subtle: #bcbcbc;
+  --modern-border: #4a4a4a;
+  --modern-border-strong: #737373;
+  --modern-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --modern-shadow-md: 0 8px 22px rgba(0, 0, 0, 0.68);
+  --modern-focus: #00ff7f;
+  --modern-link: #5fd7ff;
+  --modern-link-hover: #8be9fd;
+  --modern-muted-on-dark: #bcbcbc;
+  --cds-text-primary: #f8f8f2;
+  --cds-text-secondary: #bcbcbc;
+  --cds-text-placeholder: #bcbcbc;
+  --cds-link-primary: #5fd7ff;
+}
+
 /*
  * Native <select> menus are painted by the OS/browser and ignore most CSS on
  * <option>. Setting color-scheme on the root matches the platform menu to the
@@ -129,6 +152,7 @@ html[data-theme="nothing-light"] {
 html[data-theme="dark"],
 html[data-theme="solarized-dark"],
 html[data-theme="command-line"],
+html[data-theme="emacs-dark"],
 html[data-theme="nothing"] {
   color-scheme: dark;
 }
@@ -142,6 +166,45 @@ html[data-theme="nothing"] {
 [data-theme="solarized-dark"] .headerThemeSelect,
 [data-theme="command-line"] .headerThemeSelect {
   color-scheme: dark;
+}
+
+[data-theme="emacs-dark"] .headerThemeSelect,
+[data-theme="emacs-dark"] .headerThemeSelect option {
+  color-scheme: dark;
+  background-color: var(--modern-surface-2);
+  color: var(--modern-text);
+}
+
+[data-theme="emacs-dark"] .bx--text-input,
+[data-theme="emacs-dark"] input,
+[data-theme="emacs-dark"] textarea,
+[data-theme="emacs-dark"] .noteEditorArea,
+[data-theme="emacs-dark"] .noteTextRenameInput {
+  color: var(--modern-text);
+  background: var(--modern-surface-2) !important;
+  border-color: var(--modern-border-strong);
+}
+
+[data-theme="emacs-dark"] .bx--text-input::placeholder,
+[data-theme="emacs-dark"] input::placeholder,
+[data-theme="emacs-dark"] textarea::placeholder {
+  color: var(--modern-text-subtle);
+}
+
+[data-theme="emacs-dark"] .app,
+[data-theme="emacs-dark"] .header,
+[data-theme="emacs-dark"] .body,
+[data-theme="emacs-dark"] .col,
+[data-theme="emacs-dark"] .noteCard,
+[data-theme="emacs-dark"] .instructionsContent,
+[data-theme="emacs-dark"] .settingsPanel,
+[data-theme="emacs-dark"] .calendarContent {
+  color: var(--modern-text);
+}
+
+[data-theme="emacs-dark"] a,
+[data-theme="emacs-dark"] .headerLink {
+  color: var(--modern-link);
 }
 
 [data-theme="dark"] .headerThemeSelect option,
@@ -251,6 +314,66 @@ button,
     radial-gradient(170% 40% at 8% -20%, rgba(15, 98, 254, 0.12) 0%, rgba(15, 98, 254, 0) 62%),
     radial-gradient(160% 36% at 100% -10%, rgba(25, 128, 56, 0.1) 0%, rgba(25, 128, 56, 0) 58%);
   animation: appEnter var(--motion-slow) var(--motion-ease-standard);
+}
+
+/* Let custom images show through the workspace without sacrificing readable panels. */
+.app.app--hasCustomBackground .header,
+.app.app--hasCustomBackground .cardFilterRow,
+.app.app--hasCustomBackground .col,
+.app.app--hasCustomBackground .noteCard,
+.app.app--hasCustomBackground .instructionsContent,
+.app.app--hasCustomBackground .settingsPanel,
+.app.app--hasCustomBackground .calendarContent,
+.app.app--hasCustomBackground .calendarRightPane {
+  background-color: color-mix(in srgb, var(--modern-surface-1) 72%, transparent) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.app.app--hasCustomBackground .noteCard,
+.app.app--hasCustomBackground .cardFilterRow {
+  background-color: color-mix(in srgb, var(--modern-surface-2) 72%, transparent) !important;
+}
+
+/* The sampled image luminance selects foreground and panel colors together. */
+.app.app--customBackgroundLight {
+  --modern-text: #162032;
+  --modern-text-subtle: #34445d;
+  --modern-link: #004f8c;
+  --modern-link-hover: #003a68;
+  --modern-border: #7f8da0;
+  --modern-border-strong: #506078;
+}
+
+.app.app--customBackgroundDark {
+  --modern-text: #f8fbff;
+  --modern-text-subtle: #d3deec;
+  --modern-link: #8bd8ff;
+  --modern-link-hover: #c2ecff;
+  --modern-border: #8898ad;
+  --modern-border-strong: #b7c5d6;
+}
+
+.app.app--hasCustomBackground.app--customBackgroundLight .header,
+.app.app--hasCustomBackground.app--customBackgroundLight .cardFilterRow,
+.app.app--hasCustomBackground.app--customBackgroundLight .col,
+.app.app--hasCustomBackground.app--customBackgroundLight .noteCard,
+.app.app--hasCustomBackground.app--customBackgroundLight .instructionsContent,
+.app.app--hasCustomBackground.app--customBackgroundLight .settingsPanel,
+.app.app--hasCustomBackground.app--customBackgroundLight .calendarContent,
+.app.app--hasCustomBackground.app--customBackgroundLight .calendarRightPane {
+  background-color: rgba(255, 255, 255, 0.62) !important;
+}
+
+.app.app--hasCustomBackground.app--customBackgroundDark .header,
+.app.app--hasCustomBackground.app--customBackgroundDark .cardFilterRow,
+.app.app--hasCustomBackground.app--customBackgroundDark .col,
+.app.app--hasCustomBackground.app--customBackgroundDark .noteCard,
+.app.app--hasCustomBackground.app--customBackgroundDark .instructionsContent,
+.app.app--hasCustomBackground.app--customBackgroundDark .settingsPanel,
+.app.app--hasCustomBackground.app--customBackgroundDark .calendarContent,
+.app.app--hasCustomBackground.app--customBackgroundDark .calendarRightPane {
+  background-color: rgba(16, 24, 38, 0.62) !important;
 }
 
 .header {
@@ -671,6 +794,13 @@ button,
   --tab-text-active: #00ff41;
 }
 
+[data-theme="emacs-dark"] .tabs {
+  --tab-bg: #242424;
+  --tab-text: #d7d7d7;
+  --tab-bg-active: #3a3a3a;
+  --tab-text-active: #ffffff;
+}
+
 .tabs .bx--tabs__nav-link:focus,
 .tabs .bx--tabs__nav-link:focus-visible {
   outline: 2px solid var(--modern-focus);
@@ -767,6 +897,11 @@ button,
 
 [data-theme="emacs"] .colTitle {
   color: #333333;
+}
+
+[data-theme="emacs-dark"] .colTitle,
+[data-theme="emacs-dark"] .headerTitle {
+  color: #f8f8f2;
 }
 
 [data-theme="command-line"] .headerTitle {
@@ -1092,6 +1227,11 @@ button,
   color: var(--modern-text);
 }
 
+[data-theme="emacs-dark"] .attachmentPill {
+  background: #242424;
+  color: var(--modern-text);
+}
+
 .noteEditorArea {
   max-height: 220px;
   overflow: auto;
@@ -1167,6 +1307,18 @@ button,
 
 [data-theme="command-line"] .noteCard[data-priority="high"] .noteText {
   color: #ff6b6b !important;
+}
+
+[data-theme="emacs-dark"] .noteCard[data-priority="low"] .noteText {
+  color: #f8f8f2 !important;
+}
+
+[data-theme="emacs-dark"] .noteCard[data-priority="normal"] .noteText {
+  color: #5fd7ff !important;
+}
+
+[data-theme="emacs-dark"] .noteCard[data-priority="high"] .noteText {
+  color: #ff8c8c !important;
 }
 
 [data-theme="dark"] .instructionsContent kbd,
