@@ -340,79 +340,141 @@ function escapeHtmlForObsidian(s) {
     .replace(/"/g, "&quot;");
 }
 
+function isSafeMarkdownUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value || value.startsWith("#")) return true;
+  try {
+    const url = new URL(value, "https://markdown.local/");
+    return url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:";
+  } catch {
+    return false;
+  }
+}
+
+function markdownInlineToHtml(value) {
+  const source = String(value || "");
+  const tokens = [];
+  const token = (html) => {
+    const key = `\u0000MD${tokens.length}\u0000`;
+    tokens.push(html);
+    return key;
+  };
+  let html = source
+    .replace(/`([^`\n]+)`/g, (_, code) => token(`<code>${escapeHtmlForObsidian(code)}</code>`))
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, label, url) => {
+      if (!isSafeMarkdownUrl(url)) return escapeHtmlForObsidian(`![${label}](${url})`);
+      return token(`<a href="${escapeHtmlForObsidian(url)}" target="_blank" rel="noreferrer">${escapeHtmlForObsidian(label || url)}</a>`);
+    })
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
+      if (!isSafeMarkdownUrl(url)) return escapeHtmlForObsidian(`[${label}](${url})`);
+      return token(`<a href="${escapeHtmlForObsidian(url)}" target="_blank" rel="noreferrer">${escapeHtmlForObsidian(label)}</a>`);
+    })
+    .replace(/\[\[([^\]]+)\]\]/g, (_, target) => {
+      const label = String(target).split("|").pop().trim() || target;
+      return token(`<span class="obsidianWikiLink">${escapeHtmlForObsidian(label)}</span>`);
+    });
+
+  html = escapeHtmlForObsidian(html)
+    .replace(/~~(.+?)~~/g, "<s>$1</s>")
+    .replace(/==(.+?)==/g, "<mark>$1</mark>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(.+?)__/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    .replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+
+  return html.replace(/\u0000MD(\d+)\u0000/g, (_, index) => tokens[Number(index)] || "");
+}
+
 function markdownToSimpleHtml(markdown) {
-  const md = String(markdown || "").trim();
-  if (!md) return "";
-  const blocks = md.split(/\n\n+/);
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
   const out = [];
-  for (const block of blocks) {
-    const b = block.trim();
-    if (!b) continue;
-    if (b.startsWith("### ")) {
-      out.push(`<h3>${escapeHtmlForObsidian(b.slice(4))}</h3>`);
+  let i = 0;
+  const isBlockStart = (line) =>
+    /^```/.test(line) || /^(#{1,6})\s+/.test(line) || /^\s*>\s?/.test(line) ||
+    /^\s*(?:[-+*]|\d+\.)\s+/.test(line) || /^\s*(?:---+|\*\*\*+)\s*$/.test(line);
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) {
+      i += 1;
       continue;
     }
-    if (b.startsWith("## ")) {
-      out.push(`<h2>${escapeHtmlForObsidian(b.slice(3))}</h2>`);
+    if (/^```/.test(line)) {
+      const language = line.slice(3).trim();
+      const code = [];
+      i += 1;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      if (i < lines.length) i += 1;
+      out.push(`<pre><code${language ? ` data-language="${escapeHtmlForObsidian(language)}"` : ""}>${escapeHtmlForObsidian(code.join("\n"))}</code></pre>`);
       continue;
     }
-    if (b.startsWith("# ")) {
-      out.push(`<h1>${escapeHtmlForObsidian(b.slice(2))}</h1>`);
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      out.push(`<h${level}>${markdownInlineToHtml(heading[2])}</h${level}>`);
+      i += 1;
       continue;
     }
-    const withBold = escapeHtmlForObsidian(b).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    out.push(`<p>${withBold.replace(/\n/g, "<br>")}</p>`);
+    if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) {
+      out.push("<hr>");
+      i += 1;
+      continue;
+    }
+    if (/^\s*>\s?/.test(line)) {
+      const quote = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push(`<blockquote>${markdownToSimpleHtml(quote.join("\n"))}</blockquote>`);
+      continue;
+    }
+    const listMatch = line.match(/^\s*((?:[-+*])|(?:\d+\.))\s+(.+)$/);
+    if (listMatch) {
+      const ordered = /\d+\./.test(listMatch[1]);
+      const items = [];
+      while (i < lines.length) {
+        const item = lines[i].match(/^\s*((?:[-+*])|(?:\d+\.))\s+(.+)$/);
+        if (!item || /\d+\./.test(item[1]) !== ordered) break;
+        const task = item[2].match(/^\[([ xX])\]\s+(.+)$/);
+        const body = task ? `<input type="checkbox" disabled${task[1].toLowerCase() === "x" ? " checked" : ""}> ${markdownInlineToHtml(task[2])}` : markdownInlineToHtml(item[2]);
+        items.push(`<li${task ? ' class="noteMarkdownTask"' : ""}>${body}</li>`);
+        i += 1;
+      }
+      out.push(`<${ordered ? "ol" : "ul"}>${items.join("")}</${ordered ? "ol" : "ul"}>`);
+      continue;
+    }
+    const paragraph = [line];
+    i += 1;
+    while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) paragraph.push(lines[i++]);
+    out.push(`<p>${paragraph.map(markdownInlineToHtml).join("<br>")}</p>`);
   }
   return out.join("");
 }
 
-/** One line of Markdown: Obsidian `[[wikilinks]]`, inline **bold**, escaped HTML elsewhere. */
-function obsidianMarkdownLineToInlineHtml(line) {
-  const s = String(line);
-  const chunks = [];
-  const re = /(\[\[[^\]]+\]\])|(\*\*[^*]+\*\*)/g;
-  let last = 0;
-  let m;
-  while ((m = re.exec(s))) {
-    if (m.index > last) chunks.push(escapeHtmlForObsidian(s.slice(last, m.index)));
-    if (m[1]) {
-      chunks.push(`<span class="obsidianWikiLink">${escapeHtmlForObsidian(m[1])}</span>`);
-    } else if (m[2]) {
-      const inner = m[2].slice(2, -2);
-      chunks.push(`<strong>${escapeHtmlForObsidian(inner)}</strong>`);
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < s.length) chunks.push(escapeHtmlForObsidian(s.slice(last)));
-  return chunks.join("") || "";
-}
-
-/** Body Markdown (after title/due, before footer): paragraphs, `[[links]]`, **bold**, line breaks. */
+/** Obsidian Markdown body renderer, shared by vault import and note previews. */
 function obsidianMarkdownBodyToNotesHtml(bodyMd) {
-  const trimmed = String(bodyMd || "").trim();
-  if (!trimmed) return "";
-  const blocks = trimmed.split(/\n\n+/);
-  const out = [];
-  for (const block of blocks) {
-    const b = block.trim();
-    if (!b) continue;
-    if (b.startsWith("### ")) {
-      out.push(`<h3>${escapeHtmlForObsidian(b.slice(4))}</h3>`);
-      continue;
-    }
-    if (b.startsWith("## ")) {
-      out.push(`<h2>${escapeHtmlForObsidian(b.slice(3))}</h2>`);
-      continue;
-    }
-    if (b.startsWith("# ") && !b.startsWith("## ") && !b.startsWith("### ")) {
-      out.push(`<h1>${escapeHtmlForObsidian(b.slice(2))}</h1>`);
-      continue;
-    }
-    const lines = b.split(/\n/);
-    const inner = lines.map((ln) => obsidianMarkdownLineToInlineHtml(ln)).join("<br>");
-    out.push(`<p>${inner || "&nbsp;"}</p>`);
+  return markdownToSimpleHtml(bodyMd);
+}
+
+function renderPlainMarkdownNotesHtml(html) {
+  const source = String(html || "");
+  if (!source.trim()) return "";
+  const container = document.createElement("div");
+  container.innerHTML = source;
+  if (container.querySelector("a, strong, b, em, i, ul, ol, h1, h2, h3, h4, h5, h6, blockquote, pre, code")) {
+    return source;
   }
-  return out.join("");
+  const markdown = String(container.innerText || "").replace(/\u00a0/g, " ");
+  const hasMarkdownSyntax =
+    /(^|\n)\s*(?:#{1,6}\s+|[-+*]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+|>\s?|```)|\[\[[^\]]+\]\]|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|~~.+?~~|==.+?==/.test(
+      markdown
+    );
+  return hasMarkdownSyntax ? markdownToSimpleHtml(markdown) : source;
+}
+
+function renderMarkdownInNotesEditor(editor) {
+  if (!(editor instanceof HTMLElement)) return "";
+  const rendered = renderPlainMarkdownNotesHtml(editor.innerHTML);
+  if (rendered && rendered !== editor.innerHTML) editor.innerHTML = rendered;
+  return editor.innerHTML;
 }
 
 /** Export rich notes HTML to Markdown body (for vault .md), preserving wikilink spans and basic bold. */
@@ -2265,6 +2327,15 @@ function renderNotes(db, notes) {
     toolbar.appendChild(mkToolBtn("•", "insertUnorderedList"));
     toolbar.appendChild(mkToolBtn("1.", "insertOrderedList"));
     toolbar.appendChild(mkToolBtn("Link", "createLink"));
+    const markdownBtn = document.createElement("button");
+    markdownBtn.type = "button";
+    markdownBtn.textContent = "MD";
+    markdownBtn.className = "monoLinkButton";
+    markdownBtn.dataset.action = "renderMarkdown";
+    markdownBtn.dataset.noteId = String(note.id);
+    markdownBtn.title = "Render Markdown";
+    markdownBtn.setAttribute("aria-label", "Render Markdown as an Obsidian-style note");
+    toolbar.appendChild(markdownBtn);
 
     const editor = document.createElement("div");
     editor.className = "noteEditorArea";
@@ -2273,7 +2344,7 @@ function renderNotes(db, notes) {
     editor.setAttribute("aria-multiline", "true");
     editor.setAttribute("aria-label", "Rich notes editor");
     editor.dataset.noteId = String(note.id);
-    editor.innerHTML = typeof note.notes_html === "string" ? note.notes_html : "";
+    editor.innerHTML = renderPlainMarkdownNotesHtml(note.notes_html);
 
     const editorAutocomplete = document.createElement("div");
     editorAutocomplete.className = "noteAutocomplete noteEditorAutocomplete";
@@ -4025,42 +4096,61 @@ async function main() {
   function renderBoardTabs(boards, activeBoard) {
     const ul = document.getElementById("boardTabs");
     if (!(ul instanceof HTMLElement)) return;
-    ul.textContent = "";
     const pendingCountsByBoard = queryPendingCountsByBoard(db);
 
-    // Keep Carbon tab layout: we have variable tab count, so use flex.
-    ul.style.display = "flex";
-    ul.style.flexWrap = "wrap";
-
-    for (const b of boards) {
-      const li = document.createElement("li");
-      li.className = "bx--tabs__nav-item";
-      li.setAttribute("role", "presentation");
-
-      const a = document.createElement("a");
-      a.className = "bx--tabs__nav-link";
-      a.href = "#";
-      a.setAttribute("role", "tab");
-      a.setAttribute("aria-selected", b === activeBoard ? "true" : "false");
-      a.dataset.board = b;
-      const pendingCount = pendingCountsByBoard.get(b) || 0;
-      a.setAttribute("aria-label", `${b}, ${pendingCount} pending task${pendingCount === 1 ? "" : "s"}`);
-
-      const label = document.createElement("span");
-      label.className = "tabLabel";
-      label.textContent = b;
-      a.appendChild(label);
-
-      const badge = document.createElement("span");
-      badge.className = "tabBadge";
-      badge.textContent = String(pendingCount);
-      badge.setAttribute("aria-hidden", "true");
-      a.appendChild(badge);
-
-      li.appendChild(a);
-      if (b === activeBoard) li.classList.add("bx--tabs__nav-item--selected");
-      ul.appendChild(li);
+    // Reuse existing tabs so refreshing notes does not blur the tab a user selected.
+    const existingItemsByBoard = new Map();
+    for (const item of ul.querySelectorAll(":scope > .bx--tabs__nav-item")) {
+      const tab = item.querySelector("[role='tab'][data-board]");
+      if (tab instanceof HTMLAnchorElement && tab.dataset.board) {
+        existingItemsByBoard.set(tab.dataset.board, item);
+      }
     }
+
+    boards.forEach((b, index) => {
+      let li = existingItemsByBoard.get(b);
+      let a = li?.querySelector("[role='tab'][data-board]");
+      if (!(li instanceof HTMLLIElement) || !(a instanceof HTMLAnchorElement)) {
+        li = document.createElement("li");
+        li.className = "bx--tabs__nav-item";
+        li.setAttribute("role", "presentation");
+
+        a = document.createElement("a");
+        a.className = "bx--tabs__nav-link";
+        a.href = "#";
+        a.setAttribute("role", "tab");
+        a.dataset.board = b;
+
+        const label = document.createElement("span");
+        label.className = "tabLabel";
+        a.appendChild(label);
+
+        const badge = document.createElement("span");
+        badge.className = "tabBadge";
+        badge.setAttribute("aria-hidden", "true");
+        a.appendChild(badge);
+
+        li.appendChild(a);
+      }
+
+      const selected = b === activeBoard;
+      const pendingCount = pendingCountsByBoard.get(b) || 0;
+      a.setAttribute("aria-selected", selected ? "true" : "false");
+      // Keep Tab navigation on the selected tab; arrows move between boards.
+      a.tabIndex = selected ? 0 : -1;
+      a.setAttribute("aria-label", `${b}, ${pendingCount} pending task${pendingCount === 1 ? "" : "s"}`);
+      const label = a.querySelector(".tabLabel");
+      if (label) label.textContent = b;
+      const badge = a.querySelector(".tabBadge");
+      if (badge) badge.textContent = String(pendingCount);
+      li.classList.toggle("bx--tabs__nav-item--selected", selected);
+
+      // Do not move a correctly ordered item; moving a focused DOM node may still blur it.
+      if (ul.children[index] !== li) ul.insertBefore(li, ul.children[index] || null);
+      existingItemsByBoard.delete(b);
+    });
+
+    for (const item of existingItemsByBoard.values()) item.remove();
   }
 
   const existing = await loadDbBytes();
@@ -5932,7 +6022,10 @@ async function main() {
 
   async function activateBoard(board, { persistSelection = true, focusBoardTab = false } = {}) {
     if (!board || !boards.includes(board)) return;
-    if (board === activeBoard) return;
+    if (board === activeBoard) {
+      if (focusBoardTab) focusActiveBoardTab();
+      return;
+    }
 
     // Navigating to another board should close any open overlays (Notes editor / flipped links).
     // This keeps navigation predictable and avoids carrying open states across boards.
@@ -5953,15 +6046,21 @@ async function main() {
     setActiveTabUi(activeBoard);
     if (persistSelection) await saveActiveBoard(activeBoard);
     await refresh();
-    if (focusBoardTab) {
-      requestAnimationFrame(() => {
-        const tab = document.querySelector(
-          `#boardTabs [role='tab'][data-board="${CSS.escape(String(activeBoard))}"]`
-        );
-        if (tab instanceof HTMLElement) safeFocus(tab);
-      });
-    }
+    if (focusBoardTab) focusActiveBoardTab();
     if (String(gObsidianVaultName || "").trim()) void scanObsidianVaultVsDbNotes();
+  }
+
+  function focusActiveBoardTab() {
+    const tab = document.querySelector(
+      `#boardTabs [role='tab'][data-board="${CSS.escape(String(activeBoard))}"]`
+    );
+    if (!(tab instanceof HTMLElement)) return false;
+    try {
+      tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch {
+      // ignore
+    }
+    return safeFocus(tab);
   }
 
   function setActiveTabUi(board) {
@@ -5971,6 +6070,7 @@ async function main() {
       const itemBoard = tab.getAttribute("data-board");
       const selected = itemBoard === board;
       tab.setAttribute("aria-selected", selected ? "true" : "false");
+      tab.tabIndex = selected ? 0 : -1;
 
       // Carbon tabs use a selected class on the <li>
       const li = tab.closest(".bx--tabs__nav-item");
@@ -6419,7 +6519,7 @@ async function main() {
     );
     if (!(editor instanceof HTMLElement)) return;
     try {
-      setNotesHtml(db, noteId, editor.innerHTML);
+      setNotesHtml(db, noteId, renderMarkdownInNotesEditor(editor));
     } catch (err) {
       console.warn(err);
       return;
@@ -9817,6 +9917,26 @@ async function main() {
     );
   }
 
+  function focusSettingsPanelControl(target) {
+    if (!(target instanceof HTMLElement) || !safeFocus(target)) return false;
+    try {
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch {
+      // ignore
+    }
+    return true;
+  }
+
+  function movePopupSizeFocus(delta) {
+    const active = document.activeElement;
+    const inputs = popupSizeInputs.filter((input) => input instanceof HTMLInputElement && !input.disabled);
+    const index = active instanceof HTMLInputElement ? inputs.indexOf(active) : -1;
+    if (index < 0) return false;
+    const nextIndex = index + delta;
+    if (nextIndex < 0 || nextIndex >= inputs.length) return false;
+    return focusSettingsPanelControl(inputs[nextIndex]);
+  }
+
   function getSettingsSelectedTabEl() {
     const tabs = getSettingsSidebarTabs();
     return tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0] || null;
@@ -10941,7 +11061,7 @@ async function main() {
               return;
             }
             if (panelIndex >= 0 && panelIndex < panelFocusables.length - 1) {
-              safeFocus(panelFocusables[panelIndex + 1]);
+              focusSettingsPanelControl(panelFocusables[panelIndex + 1]);
               return;
             }
             if (
@@ -11434,7 +11554,7 @@ async function main() {
               return;
             }
             if (panelIndex > 0) {
-              safeFocus(panelFocusables[panelIndex - 1]);
+              focusSettingsPanelControl(panelFocusables[panelIndex - 1]);
               return;
             }
             if (panelIndex === 0) {
@@ -11789,6 +11909,7 @@ async function main() {
         }
 
         if (moveBoardsSettingsFocus(key === nav.left ? "left" : "right")) return;
+        if (movePopupSizeFocus(key === nav.left ? -1 : +1)) return;
 
         // Settings: left = focus sidebar (selected tab); right = into panel or next field / Close.
         {
@@ -11824,7 +11945,7 @@ async function main() {
                 return;
               }
               if (panelIndex >= 0 && panelIndex < panelFocusables.length - 1) {
-                safeFocus(panelFocusables[panelIndex + 1]);
+                focusSettingsPanelControl(panelFocusables[panelIndex + 1]);
                 return;
               }
               if (
@@ -12586,19 +12707,14 @@ async function main() {
   {
     const tabs = document.getElementById("boardTabs");
     if (tabs) {
-      // Keyboard: activate on focus
-      tabs.addEventListener("focusin", (e) => {
+      tabs.addEventListener("click", (e) => {
         const target = e.target;
         if (!(target instanceof Element)) return;
         const tab = target.closest("[role='tab'][data-board]");
+        e.preventDefault();
         if (!(tab instanceof HTMLElement)) return;
         const board = tab.getAttribute("data-board");
         void activateBoard(board, { persistSelection: true, focusBoardTab: true });
-      });
-
-      // Prevent navigation when clicking the anchor (optional; hover already switches)
-      tabs.addEventListener("click", (e) => {
-        e.preventDefault();
       });
     }
   }
@@ -13972,6 +14088,28 @@ async function main() {
       return;
     }
 
+    if (action === "renderMarkdown") {
+      const noteId = Number(target.dataset.noteId);
+      if (!Number.isFinite(noteId)) return;
+      const editor = document.querySelector(
+        `.noteEditorArea[data-note-id="${CSS.escape(String(noteId))}"]`
+      );
+      if (!(editor instanceof HTMLElement)) return;
+      const markdown = String(editor.innerText || "").replace(/\u00a0/g, " ");
+      const rendered = markdownToSimpleHtml(markdown);
+      if (!rendered) return;
+      editor.innerHTML = rendered;
+      try {
+        setNotesHtml(db, noteId, renderMarkdownInNotesEditor(editor));
+        await persist();
+      } catch (err) {
+        console.warn(err);
+        return;
+      }
+      safeFocus(editor);
+      return;
+    }
+
     if (action === "flip" || action === "unflip") {
       const noteId = Number(target.dataset.noteId);
       if (!Number.isFinite(noteId)) return;
@@ -14178,7 +14316,7 @@ async function main() {
       if (existing) clearTimeout(existing);
 
       const t = setTimeout(() => {
-        flushNotesEditorToDb(target, target.innerHTML);
+        flushNotesEditorToDb(target, renderMarkdownInNotesEditor(target));
       }, 350);
 
       notesEditorSaveTimers.set(noteId, t);
@@ -14193,7 +14331,7 @@ async function main() {
         const related = e.relatedTarget;
         const wrap = target.closest(".noteEditor");
         if (related instanceof Node && wrap instanceof HTMLElement && wrap.contains(related)) return;
-        flushNotesEditorToDb(target, target.innerHTML);
+        flushNotesEditorToDb(target, renderMarkdownInNotesEditor(target));
       },
       true
     );

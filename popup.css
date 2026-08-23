@@ -1100,6 +1100,11 @@ html[data-popup-size="full"] body {
   font-weight: 600;
 }
 
+.appearanceSizeRadioLabel:has(input:focus-visible) {
+  outline: 2px solid var(--modern-focus, var(--cds-focus, #0f62fe));
+  outline-offset: 2px;
+}
+
 .settingsPanel {
   flex: 1;
   min-height: 0;
@@ -1983,67 +1988,6 @@ html[data-popup-size="full"] body {
   display: none;
 }
 
-.tabs {
-  flex-wrap: wrap;
-  margin-bottom: 0;
-  min-height: 26px !important;
-  height: auto !important;
-  padding: 0 !important;
-  position: relative;
-  overflow: visible;
-}
-
-.tabs.bx--tabs,
-.tabs.bx--tabs--container {
-  min-height: 26px !important;
-  height: auto !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  position: relative;
-}
-
-/* Carbon tabs: make them compact and allow wrapping so they fit popup width */
-.tabs .bx--tabs__nav {
-  display: flex !important;
-  flex-wrap: wrap;
-  align-items: center;
-  min-height: 22px !important;
-  height: 22px !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border-bottom: 0 !important;
-  position: static !important;
-}
-
-.tabs .bx--tabs__nav-item {
-  height: 24px;
-  min-height: 24px;
-  margin: 0 !important;
-  padding: 0 !important;
-  width: auto;
-}
-
-.tabs .bx--tabs__nav-item::before,
-.tabs .bx--tabs__nav-item::after {
-  display: none !important;
-  height: 0 !important;
-}
-
-.tabs .bx--tabs__nav-link {
-  min-height: 22px !important;
-  height: 22px !important;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px !important;
-  margin: 0 !important;
-  font-size: 0.7rem;
-  line-height: 1 !important;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .tabs .tabLabel {
   min-width: 0;
   overflow: hidden;
@@ -2069,12 +2013,6 @@ html[data-popup-size="full"] body {
 .tabs .bx--tabs__nav-item--selected .tabBadge,
 .tabs .bx--tabs__nav-link[aria-selected="true"] .tabBadge {
   background: color-mix(in srgb, currentColor 24%, transparent);
-}
-
-.tabs .bx--tabs__nav-link::before,
-.tabs .bx--tabs__nav-link::after {
-  display: none !important;
-  height: 0 !important;
 }
 
 .board {
@@ -2876,6 +2814,63 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .noteEditorArea ol {
   padding-left: 18px;
   margin: 6px 0;
+}
+
+.noteEditorArea h1,
+.noteEditorArea h2,
+.noteEditorArea h3,
+.noteEditorArea h4,
+.noteEditorArea h5,
+.noteEditorArea h6 {
+  margin: 0.75em 0 0.35em;
+  line-height: 1.2;
+}
+
+.noteEditorArea h1 { font-size: 1.35em; }
+.noteEditorArea h2 { font-size: 1.2em; }
+.noteEditorArea h3 { font-size: 1.08em; }
+
+.noteEditorArea blockquote {
+  margin: 0.6em 0;
+  padding: 0.1em 0 0.1em 0.75em;
+  border-left: 3px solid var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+}
+
+.noteEditorArea pre {
+  overflow: auto;
+  margin: 0.6em 0;
+  padding: 0.65em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--modern-surface-muted, #edf2f8) 84%, transparent);
+}
+
+.noteEditorArea code {
+  padding: 0.08em 0.28em;
+  border-radius: 3px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  background: color-mix(in srgb, var(--modern-surface-muted, #edf2f8) 84%, transparent);
+}
+
+.noteEditorArea pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.noteEditorArea mark {
+  padding: 0 0.12em;
+  border-radius: 2px;
+  background: #fff0a6;
+  color: #1d1d1d;
+}
+
+.noteEditorArea .noteMarkdownTask {
+  list-style: none;
+  margin-left: -1.25em;
+}
+
+.noteEditorArea .noteMarkdownTask input {
+  margin-right: 0.45em;
 }
 
 .noteActions {
