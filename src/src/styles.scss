@@ -1,0 +1,141 @@
+/* Legacy popup.css + modern.css drive layout and themes. Keep Angular overrides minimal. */
+
+.monoLinkButton,
+.headerLink {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+}
+
+.viewNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 8px;
+  align-items: center;
+}
+
+.viewNav__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 4px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: inherit;
+}
+
+.viewNav__link--active {
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+}
+
+.settingsDataActions {
+  display: grid;
+  gap: 20px;
+  max-width: 42rem;
+}
+
+.settingsDataGroup {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.6fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding-block: 4px 20px;
+  border-block-end: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+}
+
+.settingsDataGroup:last-child {
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+.settingsDataGroup__intro h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.settingsDataGroup__intro p {
+  margin: 6px 0 0;
+  color: var(--modern-text-subtle, currentColor);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.settingsDataGroup__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settingsDataActions .dataActionButton {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 12px;
+  border: 1px solid var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
+  background: var(--modern-surface-2, var(--cds-layer-02, #fff));
+  text-decoration: none;
+}
+
+.settingsDataActions .dataActionButton:hover:not(:disabled) {
+  text-decoration: none;
+}
+
+.settingsBoardsList {
+  max-width: 42rem;
+  margin-block-start: 20px;
+}
+
+.settingsBoardsRow {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: 4px;
+  background: var(--modern-surface-2, var(--cds-layer-02, #fff));
+}
+
+.settingsBoardsActive {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--modern-accent-subtle, rgba(15, 98, 254, 0.14));
+  color: var(--modern-accent, var(--cds-link-primary, #0f62fe));
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.settingsBoardsRow .manageTabsActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settingsBoardsRow .monoLinkButton {
+  min-height: 28px;
+}
+
+.settingsBoardsEmpty {
+  margin: 0;
+  color: var(--modern-text-subtle, currentColor);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 500px) {
+  .settingsDataGroup {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .settingsDataActions .dataActionButton {
+    flex: 1 1 11rem;
+  }
+}

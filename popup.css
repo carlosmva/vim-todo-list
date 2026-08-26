@@ -17,8 +17,8 @@ body {
 
 html[data-popup-size="s"],
 html[data-popup-size="s"] body {
-  --popup-width: 680px;
-  --popup-height: 520px;
+  --popup-width: 560px;
+  --popup-height: 420px;
 }
 
 html[data-popup-size="m"],
@@ -29,8 +29,8 @@ html[data-popup-size="m"] body {
 
 html[data-popup-size="l"],
 html[data-popup-size="l"] body {
-  --popup-width: 1040px;
-  --popup-height: 720px;
+  --popup-width: 1200px;
+  --popup-height: 860px;
 }
 
 html[data-popup-size="full"],
@@ -583,7 +583,7 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmap {
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
   padding: 10px;
   border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
   border-radius: 6px;
@@ -595,7 +595,7 @@ html[data-popup-size="full"] body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-width: 640px;
+  min-width: 0;
   margin-bottom: 7px;
 }
 
@@ -615,10 +615,10 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmapMonths {
   display: grid;
-  grid-template-columns: repeat(51, 11px);
+  grid-template-columns: repeat(51, minmax(0, 1fr));
   gap: 3px;
-  min-width: 640px;
-  margin-left: 34px;
+  min-width: 0;
+  margin-inline-start: 34px;
   margin-bottom: 4px;
   font-size: 0.64rem;
   color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
@@ -633,7 +633,8 @@ html[data-popup-size="full"] body {
 .dashboardHeatmapBody {
   display: flex;
   gap: 7px;
-  min-width: 640px;
+  min-width: 0;
+  width: 100%;
 }
 
 .dashboardHeatmapDays {
@@ -650,21 +651,25 @@ html[data-popup-size="full"] body {
 .dashboardHeatmapGrid {
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, 11px);
-  grid-auto-columns: 11px;
+  grid-template-columns: repeat(51, minmax(0, 1fr));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   gap: 3px;
+  width: 100%;
+  aspect-ratio: 51 / 7;
 }
 
 .dashboardHeatmapGridWrap {
   position: relative;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .dashboardHeatmapTodayMarker {
   position: absolute;
   top: -17px;
   bottom: -2px;
-  left: calc(var(--dashboard-today-week, 25) * 14px - 2px);
-  width: 15px;
+  left: calc(var(--dashboard-today-offset, 50%) - 2px);
+  width: calc((100% - 150px) / 51 + 4px);
   border: 1px solid var(--modern-text, var(--cds-text-primary, #161616));
   border-radius: 4px;
   pointer-events: none;
@@ -672,7 +677,7 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmapTodayLabel {
   position: absolute;
-  left: calc(var(--dashboard-today-week, 25) * 14px + 7px);
+  left: var(--dashboard-today-offset, 50%);
   top: -31px;
   transform: translateX(-50%);
   padding: 1px 4px;
@@ -688,8 +693,8 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmapCell {
   display: block;
-  width: 11px;
-  height: 11px;
+  width: auto;
+  height: auto;
   border: 1px solid color-mix(in srgb, var(--modern-border, #e0e0e0) 80%, transparent);
   border-radius: 2px;
   background: var(--modern-surface-1, var(--cds-layer, #ffffff));

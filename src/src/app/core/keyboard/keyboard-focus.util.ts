@@ -1,0 +1,259 @@
+export function safeFocus(node: HTMLElement | null | undefined): boolean {
+  if (!(node instanceof HTMLElement)) return false;
+  if (node.hasAttribute('disabled') || node.getAttribute('aria-hidden') === 'true') return false;
+
+  const attempt = (): boolean => {
+    try {
+      node.focus({ preventScroll: true });
+      return document.activeElement === node;
+    } catch {
+      return false;
+    }
+  };
+
+  const active = document.activeElement;
+  if (active instanceof HTMLSelectElement && active !== node) {
+    active.blur();
+  }
+
+  if (attempt()) return true;
+  requestAnimationFrame(() => attempt());
+  return true;
+}
+
+export function isEditableElement(el: Element | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+    return true;
+  }
+  return el.isContentEditable;
+}
+
+export function isTypingTarget(el: Element | null): boolean {
+  return isEditableElement(el);
+}
+
+export function isVisible(el: HTMLElement): boolean {
+  if (!el.offsetParent && el.tagName !== 'BODY' && getComputedStyle(el).position !== 'fixed') {
+    if (el.closest('[hidden]')) return false;
+  }
+  const style = getComputedStyle(el);
+  return style.visibility !== 'hidden' && style.display !== 'none';
+}
+
+export function getCardFromElement(el: Element | null): HTMLElement | null {
+  if (!(el instanceof Element)) return null;
+  const card = el.closest('.noteCard[data-note-id]');
+  return card instanceof HTMLElement ? card : null;
+}
+
+export function getAllCardsInDomOrder(): HTMLElement[] {
+  const pending = document.getElementById('pendingList');
+  const complete = document.getElementById('completeList');
+  const pendingCards = pending
+    ? [...pending.querySelectorAll<HTMLElement>('.noteCard[data-note-id]')]
+    : [];
+  const completeCards = complete
+    ? [...complete.querySelectorAll<HTMLElement>('.noteCard[data-note-id]')]
+    : [];
+  return [...pendingCards, ...completeCards];
+}
+
+export function getCardActionButtons(card: HTMLElement): HTMLButtonElement[] {
+  const footer = card.querySelector('.noteActions');
+  if (!(footer instanceof HTMLElement)) return [];
+  return [...footer.querySelectorAll<HTMLButtonElement>('button')].filter((b) => !b.disabled);
+}
+
+export function focusCardPrimaryAction(card: HTMLElement): void {
+  const buttons = getCardActionButtons(card);
+  if (buttons[0]) safeFocus(buttons[0]);
+  ensureCardVisible(card);
+}
+
+export function ensureCardVisible(card: HTMLElement): void {
+  const list = card.closest('.list');
+  if (list instanceof HTMLElement) {
+    const cr = list.getBoundingClientRect();
+    const nr = card.getBoundingClientRect();
+    if (nr.bottom > cr.bottom) list.scrollTop += nr.bottom - cr.bottom + 8;
+    if (nr.top < cr.top) list.scrollTop -= cr.top - nr.top + 8;
+  }
+}
+
+export function moveCardFocus(delta: number): void {
+  const cards = getAllCardsInDomOrder();
+  if (!cards.length) return;
+  const active = document.activeElement;
+  const current = getCardFromElement(active);
+  const idx = current ? cards.indexOf(current) : delta > 0 ? -1 : cards.length;
+  const nextIdx = Math.min(cards.length - 1, Math.max(0, idx + delta));
+  focusCardPrimaryAction(cards[nextIdx]);
+}
+
+export function moveButtonFocusWithinCard(card: HTMLElement, delta: number): void {
+  const buttons = getCardActionButtons(card);
+  if (!buttons.length) return;
+  const idx = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  let next = idx;
+  if (next < 0) next = delta < 0 ? buttons.length - 1 : 0;
+  else next = Math.min(buttons.length - 1, Math.max(0, next + delta));
+  safeFocus(buttons[next]);
+  ensureCardVisible(card);
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function getGlobalNavTargets(root: ParentNode = document): HTMLElement[] {
+  const app = root instanceof Document ? root.querySelector('.app') : root;
+  if (!(app instanceof HTMLElement)) return [];
+  return [...app.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => isVisible(el) && !el.closest('[hidden]') && !el.closest('.addNoteModal[hidden]')
+  );
+}
+
+export function moveGlobalFocus(delta: number): boolean {
+  const targets = getGlobalNavTargets();
+  if (!targets.length) return false;
+  const active = document.activeElement as HTMLElement | null;
+  let idx = active ? targets.indexOf(active) : -1;
+  if (idx < 0) idx = delta < 0 ? targets.length : 0;
+  else idx = Math.min(targets.length - 1, Math.max(0, idx + delta));
+  return safeFocus(targets[idx]);
+}
+
+export function getBoardTabElements(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('#boardTabs [role="tab"]')].filter(isVisible);
+}
+
+export function isOnBoardTabs(el: Element | null): boolean {
+  if (!(el instanceof Element)) return false;
+  if (el.closest('#boardTabs')) return true;
+  return el.getAttribute('role') === 'tab' && !!el.closest('.tabs, .bx--tabs');
+}
+
+export function resolveBoardTabElement(el: Element | null): HTMLElement | null {
+  if (!(el instanceof Element)) return null;
+  const direct = el.closest<HTMLElement>('#boardTabs [role="tab"]');
+  if (direct) return direct;
+  if (isOnBoardTabs(el)) {
+    return (
+      document.querySelector<HTMLElement>('#boardTabs [role="tab"][aria-selected="true"]') ??
+      document.querySelector<HTMLElement>('#boardTabs [role="tab"]')
+    );
+  }
+  return null;
+}
+
+export function focusMainBoardSwitcherTab(): boolean {
+  const activeTab = document.querySelector<HTMLElement>('#boardTabs [role="tab"][aria-selected="true"]');
+  const firstTab = document.querySelector<HTMLElement>('#boardTabs [role="tab"]');
+  const target = activeTab ?? firstTab;
+  if (target && safeFocus(target)) return true;
+  const addBtn = document.getElementById('addNoteButton');
+  return addBtn instanceof HTMLElement ? safeFocus(addBtn) : false;
+}
+
+export function focusNotesSearchRow(): boolean {
+  const filter = document.getElementById('cardFilterInput');
+  if (filter instanceof HTMLElement && safeFocus(filter)) return true;
+  const addBtn = document.getElementById('addNoteButton');
+  return addBtn instanceof HTMLElement ? safeFocus(addBtn) : false;
+}
+
+export function getHeaderNavTargets(): HTMLElement[] {
+  return [
+    document.getElementById('themeSelect'),
+    document.getElementById('instructionsLink'),
+    document.getElementById('aboutLink'),
+    document.getElementById('settingsBtn'),
+    document.getElementById('closePopupBtn'),
+  ].filter((t): t is HTMLElement => t instanceof HTMLElement && isVisible(t));
+}
+
+export function isViewNavVisible(): boolean {
+  const nav = document.querySelector('.viewNav');
+  return nav instanceof HTMLElement && isVisible(nav);
+}
+
+export function getViewNavTargets(): HTMLElement[] {
+  const nav = document.querySelector('.viewNav');
+  if (!(nav instanceof HTMLElement) || !isVisible(nav)) return [];
+  return [...nav.querySelectorAll<HTMLElement>('.viewNav__link')].filter(isVisible);
+}
+
+export function getActiveViewNavLink(): HTMLElement | null {
+  const links = getViewNavTargets();
+  return links.find((l) => l.classList.contains('viewNav__link--active')) ?? links[0] ?? null;
+}
+
+/** Enter the main content area below the view nav (or directly from header when nav hidden). */
+export function focusViewContentEntry(path: string, fromHeaderEl: Element | null = null): boolean {
+  const route = (path.split('?')[0] || '/').replace(/\/$/, '') || '/';
+
+  if (route === '/') {
+    const filter = document.getElementById('cardFilterInput');
+    const addBtn = document.getElementById('addNoteButton');
+    const fromHeaderSettings =
+      fromHeaderEl instanceof HTMLElement &&
+      (fromHeaderEl.id === 'settingsBtn' || fromHeaderEl.id === 'closePopupBtn');
+    if (fromHeaderSettings && addBtn instanceof HTMLElement) return safeFocus(addBtn);
+    if (filter instanceof HTMLElement) return safeFocus(filter);
+    if (addBtn instanceof HTMLElement) return safeFocus(addBtn);
+    return false;
+  }
+
+  if (route === '/dashboard') {
+    const filterBtn = document.querySelector<HTMLElement>('.dashboardFilterButton');
+    if (filterBtn) return safeFocus(filterBtn);
+    const close = document.querySelector<HTMLElement>('[aria-label="Dashboard"] .instructionsHeader .monoLinkButton');
+    return close ? safeFocus(close) : false;
+  }
+
+  if (route === '/calendar') {
+    const day = document.querySelector<HTMLElement>('.calendarDayCell');
+    if (day) return safeFocus(day);
+    const close = document.querySelector<HTMLElement>('[aria-label="Calendar"] .instructionsHeader .monoLinkButton');
+    return close ? safeFocus(close) : false;
+  }
+
+  if (route === '/settings') {
+    const close = document.querySelector<HTMLElement>('[aria-label="Settings"] .instructionsHeader .monoLinkButton');
+    return close ? safeFocus(close) : false;
+  }
+
+  const close = document.querySelector<HTMLElement>(
+    '.instructionsHeader .monoLinkButton, .view .instructionsHeader a'
+  );
+  return close ? safeFocus(close) : false;
+}
+
+/** Moves calendar focus by its visual seven-column grid coordinates. */
+export function moveCalendarFocus(rowDelta: number, columnDelta: number): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.classList.contains('calendarDayCell')) return false;
+
+  const month = Number(active.dataset['calendarMonth']);
+  const row = Number(active.dataset['calendarRow']);
+  const column = Number(active.dataset['calendarColumn']);
+  if (![month, row, column].every(Number.isFinite)) return false;
+
+  let targetMonth = month;
+  const targetRow = row + rowDelta;
+  let targetColumn = column + columnDelta;
+
+  if (columnDelta === 1 && targetColumn >= 7) {
+    targetMonth++;
+    targetColumn = 0;
+  } else if (columnDelta === -1 && targetColumn < 0) {
+    targetMonth--;
+    targetColumn = 6;
+  }
+
+  const selector =
+    `.calendarDayCell[data-calendar-month="${targetMonth}"]` +
+    `[data-calendar-row="${targetRow}"][data-calendar-column="${targetColumn}"]`;
+  const target = document.querySelector<HTMLElement>(selector);
+  return target ? safeFocus(target) : false;
+}

@@ -1,0 +1,297 @@
+<div class="view" aria-label="Settings">
+  <div class="instructionsHeader">
+    <div class="instructionsTitle">Settings</div>
+    <a routerLink="/" class="monoLinkButton">Close</a>
+  </div>
+
+  <div class="settingsChrome">
+    <div class="settingsTablist" role="tablist" aria-label="Settings sections">
+      @for (tab of tabs; track tab.id) {
+        <button
+          type="button"
+          class="settingsTab"
+          role="tab"
+          [attr.aria-selected]="activeTab() === tab.id"
+          (click)="selectTab(tab.id)"
+        >
+          {{ tab.label }}
+        </button>
+      }
+    </div>
+
+    <div class="settingsPanels">
+      @if (activeTab() === 'boards') {
+        <div class="settingsPanel instructionsContent settingsPanelBoards" role="tabpanel">
+          <div class="instructionsHeader settingsSubHeader">
+            <div class="instructionsTitle">Boards</div>
+          </div>
+          <p class="obsidianIntro settingsBoardsHint">
+            Add boards for organizing notes. Switch boards from the strip above the columns in the main view.
+          </p>
+          <form class="manageTabsAdd" aria-label="Add board" (submit)="addBoard(); $event.preventDefault()">
+            <input
+              class="bx--text-input"
+              type="text"
+              placeholder="New board name…"
+              maxlength="30"
+              autocomplete="off"
+              [(ngModel)]="newBoardName"
+              name="newBoardName"
+              required
+            />
+            <button type="submit" class="monoLinkButton">Add</button>
+          </form>
+          <div class="manageTabsList settingsBoardsList" aria-label="Existing boards">
+            @for (board of boards(); track board) {
+              <div class="manageTabsRow settingsBoardsRow">
+                <span class="manageTabsName" [title]="board">{{ board }}</span>
+                <div class="manageTabsActions">
+                  @if (stateRef.activeBoard() === board) {
+                    <span class="settingsBoardsActive">Active</span>
+                  }
+                  <button
+                    type="button"
+                    class="monoLinkButton"
+                    [disabled]="$first"
+                    [attr.aria-label]="'Move ' + board + ' up'"
+                    (click)="moveBoard(board, 'up')"
+                  >Up</button>
+                  <button
+                    type="button"
+                    class="monoLinkButton"
+                    [disabled]="$last"
+                    [attr.aria-label]="'Move ' + board + ' down'"
+                    (click)="moveBoard(board, 'down')"
+                  >Down</button>
+                  <button
+                    type="button"
+                    class="monoLinkButton"
+                    [disabled]="boards().length <= 1"
+                    [attr.aria-label]="'Remove ' + board"
+                    (click)="removeBoard(board)"
+                  >Remove</button>
+                </div>
+              </div>
+            } @empty {
+              <p class="settingsBoardsEmpty">No boards yet. Add one above to get started.</p>
+            }
+          </div>
+        </div>
+      }
+
+      @if (activeTab() === 'appearance') {
+        <div class="settingsPanel instructionsContent" role="tabpanel">
+          <div class="instructionsHeader settingsSubHeader">
+            <div class="instructionsTitle">Appearance</div>
+          </div>
+          <form class="aiSettingsForm" aria-label="Appearance settings">
+            <div class="aiSettingsRow">
+              <label for="settingsTheme">Theme</label>
+              <select
+                id="settingsTheme"
+                class="headerThemeSelect appearanceThemeSelect"
+                [ngModel]="stateRef.theme()"
+                (ngModelChange)="onThemeChange($event)"
+                name="theme"
+              >
+                @for (theme of themeOptions; track theme) {
+                  <option [value]="theme">{{ theme }}</option>
+                }
+              </select>
+            </div>
+            <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Popup size">
+              <legend class="keyLayoutLegend">Popup size</legend>
+              <div class="keyLayoutRadios appearanceSizeRadios">
+                @for (opt of popupSizeOptions; track opt.id) {
+                  <label class="keyLayoutRadioLabel appearanceSizeRadioLabel">
+                    <input
+                      type="radio"
+                      name="popupSizeChoice"
+                      [value]="opt.id"
+                      [checked]="stateRef.popupSize() === opt.id"
+                      (change)="onPopupSizeChange(opt.id)"
+                    />
+                    {{ opt.label }}
+                  </label>
+                }
+              </div>
+            </fieldset>
+          </form>
+        </div>
+      }
+
+      @if (activeTab() === 'data') {
+        <div class="settingsPanel instructionsContent" role="tabpanel">
+          <div class="instructionsHeader settingsSubHeader">
+            <div class="instructionsTitle">Data</div>
+          </div>
+          <div class="settingsDataActions" aria-label="Data actions">
+            <section class="settingsDataGroup" aria-labelledby="dataExportHeading">
+              <div class="settingsDataGroup__intro">
+                <h3 id="dataExportHeading">Export</h3>
+                <p>Download a backup or a spreadsheet copy.</p>
+              </div>
+              <div class="settingsDataGroup__controls">
+                <button type="button" class="monoLinkButton dataActionButton" (click)="exportDb()">Export database</button>
+                <button type="button" class="monoLinkButton dataActionButton" (click)="exportCsv()">Export CSV</button>
+              </div>
+            </section>
+            <section class="settingsDataGroup" aria-labelledby="dataImportHeading">
+              <div class="settingsDataGroup__intro">
+                <h3 id="dataImportHeading">Import</h3>
+                <p>Replace local data from a database backup.</p>
+              </div>
+              <div class="settingsDataGroup__controls">
+                <button type="button" class="monoLinkButton dataActionButton" (click)="openImportPicker()">Import database</button>
+                <input id="importDbFile" type="file" accept=".sqlite,.db" hidden (change)="importDb($event)" />
+              </div>
+            </section>
+          </div>
+        </div>
+      }
+
+      @if (activeTab() === 'ai') {
+        <div class="settingsPanel instructionsContent" role="tabpanel">
+          <div class="instructionsHeader settingsSubHeader">
+            <div class="instructionsTitle aiSettingsTitle">AI</div>
+          </div>
+          <form class="aiSettingsForm" aria-label="AI settings">
+            <div class="aiSettingsRow">
+              <label for="aiUrl">Ollama endpoint</label>
+              <input
+                id="aiUrl"
+                class="bx--text-input"
+                type="url"
+                [ngModel]="aiUrl()"
+                (ngModelChange)="aiUrl.set($event)"
+                name="aiUrl"
+              />
+            </div>
+            <div class="aiSettingsRow">
+              <label for="aiModel">Model (optional)</label>
+              <input
+                id="aiModel"
+                class="bx--text-input"
+                [ngModel]="aiModel()"
+                (ngModelChange)="aiModel.set($event)"
+                name="aiModel"
+              />
+            </div>
+            <div class="aiSettingsRow">
+              <label for="aiWords">Custom words</label>
+              <textarea
+                id="aiWords"
+                class="bx--text-input"
+                rows="4"
+                [ngModel]="aiWords()"
+                (ngModelChange)="aiWords.set($event)"
+                name="aiWords"
+              ></textarea>
+            </div>
+            <div class="aiSettingsRow">
+              <button type="button" class="monoLinkButton" (click)="saveAi()">Save AI settings</button>
+            </div>
+            <p class="obsidianIntro">{{ aiStatus() }}</p>
+          </form>
+        </div>
+      }
+
+      @if (activeTab() === 'obsidian') {
+        <div class="settingsPanel instructionsContent" role="tabpanel">
+          <div class="instructionsHeader settingsSubHeader">
+            <div class="instructionsTitle">Obsidian</div>
+          </div>
+          <form class="aiSettingsForm" aria-label="Obsidian settings">
+            <div class="aiSettingsRow">
+              <label for="obsVault">Vault name</label>
+              <input
+                id="obsVault"
+                class="bx--text-input"
+                [ngModel]="obsVault()"
+                (ngModelChange)="obsVault.set($event)"
+                name="obsVault"
+              />
+            </div>
+            <div class="aiSettingsRow">
+              <label for="obsFolder">Notes folder</label>
+              <input
+                id="obsFolder"
+                class="bx--text-input"
+                [ngModel]="obsFolder()"
+                (ngModelChange)="obsFolder.set($event)"
+                name="obsFolder"
+              />
+            </div>
+            <div class="aiSettingsRow">
+              <label class="keyLayoutRadioLabel">
+                <input type="checkbox" [ngModel]="obsSync()" (ngModelChange)="obsSync.set($event)" name="obsSync" />
+                Sync mode
+              </label>
+            </div>
+            <div class="aiSettingsRow">
+              <button type="button" class="monoLinkButton" (click)="chooseVaultFolder()">Choose vault folder</button>
+              <button type="button" class="monoLinkButton" (click)="saveObsidian()">Save Obsidian settings</button>
+            </div>
+          </form>
+        </div>
+      }
+
+      @if (activeTab() === 'keyboard') {
+        <div class="settingsPanel instructionsContent" role="tabpanel">
+          <div class="instructionsHeader settingsSubHeader">
+            <div class="instructionsTitle">Keyboard</div>
+          </div>
+          <form class="aiSettingsForm" aria-label="Keyboard settings">
+            <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Key layout">
+              <legend class="keyLayoutLegend">Key layout</legend>
+              <div class="keyLayoutRadios">
+                @for (opt of layoutOptions; track opt.value) {
+                  <label class="keyLayoutRadioLabel">
+                    <input
+                      type="radio"
+                      name="keyLayoutChoice"
+                      [value]="opt.value"
+                      [checked]="stateRef.keyLayout() === opt.value"
+                      (change)="onLayoutChange(opt.value)"
+                    />
+                    {{ opt.label }}
+                  </label>
+                }
+              </div>
+            </fieldset>
+            <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Navigation modifier">
+              <legend class="keyLayoutLegend">Navigation modifier</legend>
+              <div class="keyLayoutRadios">
+                <label class="keyLayoutRadioLabel">
+                  <input
+                    type="radio"
+                    name="keyboardNavPlatform"
+                    value="winlinux"
+                    [checked]="stateRef.keyboardNavPlatform() === 'winlinux'"
+                    (change)="onNavPlatformChange('winlinux')"
+                  />
+                  Windows / Linux (Alt)
+                </label>
+                <label class="keyLayoutRadioLabel">
+                  <input
+                    type="radio"
+                    name="keyboardNavPlatform"
+                    value="mac"
+                    [checked]="stateRef.keyboardNavPlatform() === 'mac'"
+                    (change)="onNavPlatformChange('mac')"
+                  />
+                  Mac (Control)
+                </label>
+              </div>
+            </fieldset>
+            <p class="obsidianIntro settingsBoardsHint">
+              Use the modifier with I/J/K/L (QWERTY) or C/H/N/T (Dvorak) to move focus. Press / to search notes,
+              {{ modLabel() }}+P to add a note, {{ modLabel() }}+1–9 to switch boards, F2 to rename, :x to close
+              links or notes editor.
+            </p>
+          </form>
+        </div>
+      }
+    </div>
+  </div>
+</div>

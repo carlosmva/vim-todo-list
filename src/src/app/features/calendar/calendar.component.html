@@ -1,0 +1,55 @@
+<div class="view" aria-label="Calendar">
+  <div class="instructionsHeader">
+    <div class="instructionsTitle">Calendar</div>
+    <a routerLink="/" class="monoLinkButton">Close</a>
+  </div>
+  <div class="calendarLayout">
+    <div class="calendarContent">
+      @for (month of months(); track month.title; let monthIndex = $index) {
+        <div class="calendarMonth" [attr.data-calendar-month]="monthIndex">
+          <h3 class="calendarMonthTitle">{{ month.title }}</h3>
+          <div class="calendarWeekdays" aria-hidden="true">
+            @for (label of weekdayLabels; track label) {
+              <span class="calendarWeekday">{{ label }}</span>
+            }
+          </div>
+          <div class="calendarDays">
+            @for (cell of month.days; track $index; let cellIndex = $index) {
+              <div class="calendarCell" [class.calendarCell--empty]="cell === null">
+                @if (cell !== null) {
+                  <button
+                    type="button"
+                    class="calendarDayCell monoLinkButton"
+                    [class.calendarDayCell--selected]="selectedDay() === cell"
+                    [class.hasTasks]="tasksForDay(cell).length > 0"
+                    (click)="selectDay(cell)"
+                    (focus)="selectDay(cell)"
+                    (keydown.enter)="focusFirstTask(cell, $event)"
+                    [attr.data-calendar-month]="monthIndex"
+                    [attr.data-calendar-row]="calendarRow(cellIndex)"
+                    [attr.data-calendar-column]="calendarColumn(cellIndex)"
+                  >
+                    <span class="calendarCellDay">{{ dayNum(cell) }}</span>
+                    @if (tasksForDay(cell).length) {
+                      <span class="taskCount">{{ tasksForDay(cell).length }}</span>
+                    }
+                  </button>
+                }
+              </div>
+            } 
+          </div>
+        </div>
+      }
+    </div>
+    <aside class="calendarRightPane" aria-label="Tasks for selected day">
+      <div class="calendarDayLabel" aria-live="polite">{{ selectedLabel() }}</div>
+      <div class="calendarDayTasks">
+        @for (task of selectedTasks(); track task.id) {
+          <button type="button" class="monoLinkButton calendarTaskLink" (click)="goToNote(task)">
+            {{ task.text.slice(0, 60) }}
+          </button>
+        }
+      </div>
+    </aside>
+  </div>
+</div>

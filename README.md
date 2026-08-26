@@ -41,13 +41,25 @@ Configure everything under **Settings** (gear) → **Obsidian**.
 
 1. Install dependencies:
    - `npm install`
-2. Ensure the sql.js vendor files are present:
-   - `npm run vendor`
+   - `npm install --prefix src`
+2. Build the Angular extension UI and vendor assets:
+   - `npm run build:ext`
 3. Load the extension:
    - Open `chrome://extensions`
    - Enable **Developer mode**
    - Click **Load unpacked**
-   - Select this folder
+   - Select the **`dist/extension`** folder (not the repo root)
+
+For development with auto-rebuild:
+
+- `npm run watch:ext` — rebuilds Angular on file changes; reload the extension in Chrome after each build.
+
+## Architecture (v1.3+)
+
+- **Angular 22** + **VMware Clarity** (`@clr/angular`) popup UI under `src/` (MIT, no license key required)
+- **Compact JSON** storage envelope (`vtd_v2` in `chrome.storage.local`) with automatic migration from legacy `*_v1` keys
+- **sql.js** SQLite remains the canonical note store; Export DB / Import DB unchanged
+- Load unpacked builds from **`dist/extension/`** after `npm run build:ext`
 
 ## Usage
 

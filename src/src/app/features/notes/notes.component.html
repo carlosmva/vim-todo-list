@@ -1,0 +1,243 @@
+<div class="view" id="notesView" aria-label="Notes view">
+  @if (addDialogVisible()) {
+  <div id="addNoteModal" class="addNoteModal" role="presentation">
+    <div class="addNoteModalBackdrop" aria-hidden="true" (click)="closeAddDialog()"></div>
+    <section class="addNoteModalPanel" role="dialog" aria-modal="true" aria-labelledby="addNoteModalTitle">
+      <div class="addNoteModalHeader">
+        <h2 id="addNoteModalTitle">Add note</h2>
+        <button
+          type="button"
+          class="headerIconButton"
+          aria-label="Close add note dialog"
+          title="Close"
+          (click)="closeAddDialog()"
+        >
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <form id="createForm" class="create" aria-label="Create note" (submit)="submitNote(); $event.preventDefault()">
+        <div class="createFieldsRow">
+          <div class="bx--form-item createField createField--note">
+            <label class="createFieldLabel" for="noteText">Task</label>
+            <input
+              id="noteText"
+              class="bx--text-input"
+              type="text"
+              placeholder="New note…"
+              maxlength="300"
+              autocomplete="off"
+              [(ngModel)]="newNoteText"
+              name="noteText"
+              required
+            />
+          </div>
+          <div class="bx--form-item createField createField--due">
+            <label class="createFieldLabel" for="noteDueDate">Due</label>
+            <input
+              id="noteDueDate"
+              class="bx--text-input noteDueDateInput"
+              type="date"
+              autocomplete="off"
+              [(ngModel)]="newNoteDue"
+              name="noteDueDate"
+              (focus)="onDueDateFocus()"
+            />
+          </div>
+        </div>
+
+        <div class="createDueQuickRow" [hidden]="!dueQuickVisible()" [attr.aria-hidden]="!dueQuickVisible()">
+          <div class="createDueQuickActions" aria-label="Quick due dates">
+            <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="today" (click)="setDueQuick('today')">
+              Today
+            </button>
+            <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="1w" (click)="setDueQuick('1w')">
+              +1w
+            </button>
+            <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="2w" (click)="setDueQuick('2w')">
+              +2w
+            </button>
+            <button class="monoLinkButton createDueQuickButton" type="button" data-due-quick="1mo" (click)="setDueQuick('1mo')">
+              +1mo
+            </button>
+          </div>
+        </div>
+
+        <div class="createActionsRow" aria-label="Actions">
+          <div class="createSubmitCell">
+            <button type="submit" class="monoLinkButton">Add Task</button>
+          </div>
+        </div>
+      </form>
+    </section>
+  </div>
+  }
+
+  <section class="notesMain" aria-label="Notes">
+    <div class="notesToolbar">
+      <div class="cardFilterRow" aria-label="Search notes across boards">
+        <label class="cardFilterLabel" for="cardFilterInput">Search</label>
+        <input
+          id="cardFilterInput"
+          class="bx--text-input"
+          type="text"
+          placeholder="Find notes across boards (/)"
+          autocomplete="off"
+          maxlength="120"
+          [ngModel]="filterQuery()"
+          (ngModelChange)="filterQuery.set($event); refresh()"
+          (keydown)="onFilterKeydown($event)"
+        />
+        <div class="cardFilterMeta" aria-live="polite">
+          @if (filterQuery().trim()) {
+            Searching all boards.
+          } @else {
+            Active board only when empty. Type to search every board.
+          }
+        </div>
+      </div>
+      <button
+        id="addNoteButton"
+        type="button"
+        class="addNoteButton"
+        aria-haspopup="dialog"
+        title="Add note"
+        aria-label="Add note"
+        (click)="openAddDialog()"
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"></circle>
+          <path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+        </svg>
+      </button>
+    </div>
+
+    <nav class="bx--tabs bx--tabs--container tabs" aria-label="Boards">
+      <ul id="boardTabs" class="bx--tabs__nav" role="tablist" aria-label="Boards">
+        @for (board of boards(); track board) {
+          <li class="bx--tabs__nav-item" role="presentation" [class.bx--tabs__nav-item--selected]="state.activeBoard() === board">
+            <button
+              type="button"
+              class="bx--tabs__nav-link monoLinkButton"
+              role="tab"
+              [attr.data-board]="board"
+              [attr.aria-selected]="state.activeBoard() === board"
+              (click)="setBoard(board)"
+            >
+              {{ board }}
+            </button>
+          </li>
+        }
+      </ul>
+    </nav>
+
+    <main id="notesBoard" class="board board--split-pending" aria-label="Notes board" data-board-split="pending">
+      <section id="colPending" class="col bx--tile col--pending" aria-label="Pending column" data-column="pending">
+        <div class="colTitle">Pending ({{ pendingNotes().length }})</div>
+        <div id="pendingList" class="list" aria-label="Pending notes" (scroll)="onListScroll('pending', $event)">
+          @for (note of visiblePendingNotes(); track note.id) {
+            <article
+              class="bx--tile noteCard"
+              [attr.data-note-id]="note.id"
+              [class.is-flipped]="isFlipped(note.id)"
+              [class.is-notes-open]="editorOpen(note.id)"
+              [attr.data-priority]="note.priority"
+            >
+              <div class="noteCardInner">
+                @if (!isFlipped(note.id)) {
+                  <div class="noteFace">
+                    @if (note.due_at) {
+                      <div class="noteDueDateRow">Due: {{ formatDue(note.due_at) }}</div>
+                    }
+                    <div class="noteText" [attr.data-priority]="note.priority">{{ note.text }}</div>
+                    @if (editorOpen(note.id)) {
+                      <div class="noteEditor">
+                        <div
+                          class="noteEditorArea"
+                          contenteditable="true"
+                          role="textbox"
+                          aria-multiline="true"
+                          aria-label="Rich notes editor"
+                          [attr.data-note-id]="note.id"
+                        ></div>
+                        <div
+                          class="noteVimToast"
+                          [attr.data-note-id]="note.id"
+                          role="status"
+                          aria-live="polite"
+                          hidden
+                        ></div>
+                        <div
+                          class="noteVimStatus"
+                          [attr.data-note-id]="note.id"
+                          aria-label="Vim status"
+                        ></div>
+                      </div>
+                    } @else if (hasNotesPreview(note)) {
+                      <div class="noteNotesPreview" aria-label="Notes preview">
+                        <div class="noteNotesPreview__label">[ NOTES ]</div>
+                        <markdown
+                          class="noteNotesPreview__body"
+                          [data]="notesPreviewMarkdown(note)"
+                        ></markdown>
+                      </div>
+                    }
+                    <div class="noteActions">
+                      <button type="button" class="monoLinkButton" (click)="cyclePriority(note)">
+                        Priority: {{ formatPriority(note.priority) }}
+                      </button>
+                      <button type="button" class="monoLinkButton" (click)="toggleFlip(note.id)">Links</button>
+                      <button type="button" class="monoLinkButton" (click)="toggleEditor(note)">Notes</button>
+                      <button type="button" class="monoLinkButton" (click)="move(note, 'up')">↑</button>
+                      <button type="button" class="monoLinkButton" (click)="move(note, 'down')">↓</button>
+                      <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Complete</button>
+                      <button type="button" class="monoLinkButton" (click)="confirmDelete(note)">Delete</button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="noteFace noteBack">
+                    <div class="noteBackBody">
+                      <div class="linkList">
+                        @for (link of links(note); track link.id) {
+                          <div class="linkRow">
+                            <a [href]="link.url" target="_blank" rel="noreferrer">{{ link.description || link.url }}</a>
+                            <button type="button" class="monoLinkButton" (click)="deleteLink(link.id)">Remove</button>
+                          </div>
+                        }
+                      </div>
+                      <button type="button" class="monoLinkButton" (click)="toggleFlip(note.id)">Back</button>
+                    </div>
+                  </div>
+                }
+              </div>
+            </article>
+          }
+          @if (hasMorePending()) {
+            <div class="notesLoadMore" aria-live="polite">Scroll for more tasks</div>
+          }
+        </div>
+      </section>
+
+      <section id="colComplete" class="col bx--tile col--complete" aria-label="Complete column" data-column="complete">
+        <div class="colTitle">Complete ({{ completeNotes().length }})</div>
+        <div id="completeList" class="list" aria-label="Complete notes" (scroll)="onListScroll('complete', $event)">
+          @for (note of visibleCompleteNotes(); track note.id) {
+            <article class="bx--tile noteCard" [attr.data-note-id]="note.id" [attr.data-priority]="note.priority">
+              <div class="noteCardInner">
+                <div class="noteFace">
+                  <div class="noteText" [attr.data-priority]="note.priority">{{ note.text }}</div>
+                  <div class="noteActions">
+                    <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Pending</button>
+                    <button type="button" class="monoLinkButton" (click)="confirmDelete(note)">Delete</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          }
+          @if (hasMoreComplete()) {
+            <div class="notesLoadMore" aria-live="polite">Scroll for more tasks</div>
+          }
+        </div>
+      </section>
+    </main>
+  </section>
+</div>

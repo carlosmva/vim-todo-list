@@ -1,0 +1,107 @@
+<div class="view" aria-label="Dashboard">
+  <div class="instructionsHeader">
+    <div class="instructionsTitle">Dashboard</div>
+    <a routerLink="/" class="monoLinkButton">Close</a>
+  </div>
+  <div class="instructionsContent dashboardView" aria-label="Dashboard">
+    <section class="dashboardHero" aria-label="Dashboard summary">
+      <div class="dashboardMetric">
+        <span class="dashboardMetric__value">{{ totalPending() }}</span>
+        <span class="dashboardMetric__label">Pending</span>
+      </div>
+      <div class="dashboardMetric">
+        <span class="dashboardMetric__value">{{ totalComplete() }}</span>
+        <span class="dashboardMetric__label">Complete</span>
+      </div>
+      <div class="dashboardMetric">
+        <span class="dashboardMetric__value dashboardMetric__value--text" [title]="scopeLabel()">{{
+          scopeLabel()
+        }}</span>
+        <span class="dashboardMetric__label">Scope</span>
+      </div>
+    </section>
+
+    <section class="dashboardSection" aria-labelledby="dashboardActivityTitle">
+      <div class="dashboardSectionHeader">
+        <h3 id="dashboardActivityTitle" class="dashboardSectionTitle">Activity</h3>
+        <span class="dashboardSectionMeta">25 weeks before and after today</span>
+      </div>
+      <div class="dashboardHeatmapPair">
+        @let pendingMap = pendingHeatmap();
+        <article class="dashboardHeatmap" aria-label="Pending due activity heatmap">
+          <div class="dashboardHeatmapHeader">
+            <h4 class="dashboardHeatmapTitle">Pending due</h4>
+            <div class="dashboardHeatmapLegend" aria-label="Activity intensity">
+              <span>Less</span>
+              @for (level of [0, 1, 2, 3, 4]; track level) {
+                <span class="dashboardHeatmapCell dashboardHeatmapCell--pending" [class]="'dashboardHeatmapCell--level' + level" aria-hidden="true"></span>
+              }
+              <span>More</span>
+            </div>
+          </div>
+          <div class="dashboardHeatmapMonths" aria-hidden="true">
+            @for (month of pendingMap.months; track $index) { <span>{{ month }}</span> }
+          </div>
+          <div class="dashboardHeatmapBody">
+            <div class="dashboardHeatmapDays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+            <div class="dashboardHeatmapGridWrap" [style.--dashboard-today-offset]="pendingMap.todayOffset" [attr.aria-label]="'Today marker: ' + pendingMap.todayLabel">
+              <span class="dashboardHeatmapTodayMarker" aria-hidden="true"></span><span class="dashboardHeatmapTodayLabel" aria-hidden="true">Today</span>
+              <div class="dashboardHeatmapGrid" role="img" aria-label="Pending daily due-date activity">
+                @for (cell of pendingMap.cells; track $index) {
+                  <span class="dashboardHeatmapCell dashboardHeatmapCell--pending" [class]="'dashboardHeatmapCell--level' + cell.level" [title]="cell.label" [attr.aria-label]="cell.label"></span>
+                }
+              </div>
+            </div>
+          </div>
+        </article>
+
+        @let completeMap = completeHeatmap();
+        <article class="dashboardHeatmap" aria-label="Completed due activity heatmap">
+          <div class="dashboardHeatmapHeader">
+            <h4 class="dashboardHeatmapTitle">Completed due</h4>
+            <div class="dashboardHeatmapLegend" aria-label="Activity intensity">
+              <span>Less</span>
+              @for (level of [0, 1, 2, 3, 4]; track level) {
+                <span class="dashboardHeatmapCell dashboardHeatmapCell--complete" [class]="'dashboardHeatmapCell--level' + level" aria-hidden="true"></span>
+              }
+              <span>More</span>
+            </div>
+          </div>
+          <div class="dashboardHeatmapMonths" aria-hidden="true">
+            @for (month of completeMap.months; track $index) { <span>{{ month }}</span> }
+          </div>
+          <div class="dashboardHeatmapBody">
+            <div class="dashboardHeatmapDays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+            <div class="dashboardHeatmapGridWrap" [style.--dashboard-today-offset]="completeMap.todayOffset" [attr.aria-label]="'Today marker: ' + completeMap.todayLabel">
+              <span class="dashboardHeatmapTodayMarker" aria-hidden="true"></span><span class="dashboardHeatmapTodayLabel" aria-hidden="true">Today</span>
+              <div class="dashboardHeatmapGrid" role="img" aria-label="Completed daily due-date activity">
+                @for (cell of completeMap.cells; track $index) {
+                  <span class="dashboardHeatmapCell dashboardHeatmapCell--complete" [class]="'dashboardHeatmapCell--level' + cell.level" [title]="cell.label" [attr.aria-label]="cell.label"></span>
+                }
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="dashboardSection dashboardFilterCard" aria-labelledby="dashboardFilterTitle">
+      <div class="dashboardSectionHeader">
+        <h3 id="dashboardFilterTitle" class="dashboardSectionTitle">Tab filter</h3>
+      </div>
+      <div class="dashboardFilterList" role="toolbar" aria-label="Filter dashboard by tab">
+        @for (item of boardFilters(); track item.board) {
+          <button
+            type="button"
+            class="dashboardFilterButton monoLinkButton"
+            [class.dashboardFilterButton--selected]="selectedBoard() === item.board"
+            [attr.aria-pressed]="selectedBoard() === item.board"
+            (click)="selectBoard(item.board)"
+          >
+            <span class="dashboardFilterButton__label">{{ item.label }}</span>
+          </button>
+        }
+      </div>
+    </section>
+  </div>
+</div>

@@ -20,26 +20,44 @@ function copyDir(srcDir, dstDir) {
   }
 }
 
+function resolveSqlJsDist() {
+  const candidates = [
+    path.join(__dirname, "..", "src", "node_modules", "sql.js", "dist"),
+    path.join(__dirname, "..", "node_modules", "sql.js", "dist"),
+  ];
+  for (const dist of candidates) {
+    if (fs.existsSync(path.join(dist, "sql-wasm.wasm"))) return dist;
+  }
+  throw new Error(
+    "sql.js dist files not found. Run `npm install` in repo root and `src/` first."
+  );
+}
+
 function main() {
   const vendorDir = path.join(__dirname, "..", "vendor");
   fs.mkdirSync(vendorDir, { recursive: true });
 
   // --- sql.js ---
-  const sqlJsDist = path.join(__dirname, "..", "node_modules", "sql.js", "dist");
+  const sqlJsDist = resolveSqlJsDist();
 
   const js = path.join(sqlJsDist, "sql-wasm.js");
   const wasm = path.join(sqlJsDist, "sql-wasm.wasm");
+  const browserWasm = path.join(sqlJsDist, "sql-wasm-browser.wasm");
 
   if (!fs.existsSync(js) || !fs.existsSync(wasm)) {
-    throw new Error(
-      "sql.js dist files not found. Run `npm install` first (and ensure sql.js is installed)."
-    );
+    throw new Error("sql-wasm.js / sql-wasm.wasm missing in " + sqlJsDist);
   }
 
   copyFile(js, path.join(vendorDir, "sql-wasm.js"));
   copyFile(wasm, path.join(vendorDir, "sql-wasm.wasm"));
+  // Angular's browser bundle loads sql-wasm-browser.wasm (sql.js >= 1.11).
+  if (fs.existsSync(browserWasm)) {
+    copyFile(browserWasm, path.join(vendorDir, "sql-wasm-browser.wasm"));
+  } else {
+    copyFile(wasm, path.join(vendorDir, "sql-wasm-browser.wasm"));
+  }
 
-  // --- Carbon (IBM) ---
+  // --- Carbon (legacy popup reference; optional after Clarity migration) ---
   const carbonCss = path.join(
     __dirname,
     "..",
@@ -48,12 +66,9 @@ function main() {
     "css",
     "carbon-components.min.css"
   );
-  if (!fs.existsSync(carbonCss)) {
-    throw new Error(
-      "carbon-components CSS not found. Run `npm install` first (and ensure carbon-components is installed)."
-    );
+  if (fs.existsSync(carbonCss)) {
+    copyFile(carbonCss, path.join(vendorDir, "carbon.min.css"));
   }
-  copyFile(carbonCss, path.join(vendorDir, "carbon.min.css"));
 
   // --- D3.js ---
   const d3Min = path.join(__dirname, "..", "node_modules", "d3", "dist", "d3.min.js");
