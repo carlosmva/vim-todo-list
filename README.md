@@ -2,7 +2,7 @@
 
 Chrome extension for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly). Opens as a centered overlay with backdrop blur over the current page (click the extension icon or press `Alt+R` / `Ctrl+R` on Mac).
 
-![Vim To-Do List showcase](icons/vim-todo-notes-img.png)
+![Vim To-Do List logo](icons/logo1024x1024.png)
 
 Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
 
