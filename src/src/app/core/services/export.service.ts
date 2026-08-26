@@ -7,20 +7,22 @@ export class ExportService {
   constructor(private readonly dbService: DatabaseService) {}
 
   exportDbFile(): void {
-    const bytes = this.dbService.exportBytes();
-    const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    a.href = url;
-    a.download = `notes-kanban-${yyyy}-${mm}-${dd}.sqlite`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    void this.dbService.persist().finally(() => {
+      const bytes = this.dbService.exportBytes();
+      const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      a.href = url;
+      a.download = `notes-kanban-${yyyy}-${mm}-${dd}.sqlite`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    });
   }
 
   exportCsv(db: Database): void {

@@ -85,14 +85,17 @@
 }
 
 .calendarDayCell:hover,
+.calendarDayCell:focus,
 .calendarDayCell:focus-visible {
-  background: var(--cds-layer-hover, rgba(0, 0, 0, 0.04));
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
+  color: var(--modern-text, inherit);
   outline: 2px solid var(--modern-focus, var(--cds-focus, #0f62fe));
   outline-offset: -2px;
 }
 
 .calendarDayCell--selected {
-  background: var(--cds-layer-selected, rgba(15, 98, 254, 0.12));
+  background: var(--modern-surface-muted, var(--cds-layer-selected, rgba(15, 98, 254, 0.12)));
+  color: var(--modern-text, inherit);
 }
 
 .calendarCellDay {
@@ -110,7 +113,8 @@
 }
 
 .hasTasks .taskCount {
-  background: var(--cds-layer-accent, #e0e0e0);
+  background: var(--modern-surface-muted, var(--cds-layer-accent, #e0e0e0));
+  color: var(--modern-text, inherit);
 }
 
 .calendarRightPane {

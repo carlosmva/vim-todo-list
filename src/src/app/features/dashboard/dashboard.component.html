@@ -44,8 +44,11 @@
           </div>
           <div class="dashboardHeatmapBody">
             <div class="dashboardHeatmapDays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
-            <div class="dashboardHeatmapGridWrap" [style.--dashboard-today-offset]="pendingMap.todayOffset" [attr.aria-label]="'Today marker: ' + pendingMap.todayLabel">
-              <span class="dashboardHeatmapTodayMarker" aria-hidden="true"></span><span class="dashboardHeatmapTodayLabel" aria-hidden="true">Today</span>
+            <div class="dashboardHeatmapGridWrap" [attr.aria-label]="'Today marker: ' + pendingMap.todayLabel">
+              <div class="dashboardHeatmapTodayOverlay" aria-hidden="true">
+                <span class="dashboardHeatmapTodayMarker" [style.grid-column-start]="pendingMap.todayWeek + 1"></span>
+                <span class="dashboardHeatmapTodayLabel" [style.grid-column-start]="pendingMap.todayWeek + 1">Today</span>
+              </div>
               <div class="dashboardHeatmapGrid" role="img" aria-label="Pending daily due-date activity">
                 @for (cell of pendingMap.cells; track $index) {
                   <span class="dashboardHeatmapCell dashboardHeatmapCell--pending" [class]="'dashboardHeatmapCell--level' + cell.level" [title]="cell.label" [attr.aria-label]="cell.label"></span>
@@ -72,8 +75,11 @@
           </div>
           <div class="dashboardHeatmapBody">
             <div class="dashboardHeatmapDays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
-            <div class="dashboardHeatmapGridWrap" [style.--dashboard-today-offset]="completeMap.todayOffset" [attr.aria-label]="'Today marker: ' + completeMap.todayLabel">
-              <span class="dashboardHeatmapTodayMarker" aria-hidden="true"></span><span class="dashboardHeatmapTodayLabel" aria-hidden="true">Today</span>
+            <div class="dashboardHeatmapGridWrap" [attr.aria-label]="'Today marker: ' + completeMap.todayLabel">
+              <div class="dashboardHeatmapTodayOverlay" aria-hidden="true">
+                <span class="dashboardHeatmapTodayMarker" [style.grid-column-start]="completeMap.todayWeek + 1"></span>
+                <span class="dashboardHeatmapTodayLabel" [style.grid-column-start]="completeMap.todayWeek + 1">Today</span>
+              </div>
               <div class="dashboardHeatmapGrid" role="img" aria-label="Completed daily due-date activity">
                 @for (cell of completeMap.cells; track $index) {
                   <span class="dashboardHeatmapCell dashboardHeatmapCell--complete" [class]="'dashboardHeatmapCell--level' + cell.level" [title]="cell.label" [attr.aria-label]="cell.label"></span>

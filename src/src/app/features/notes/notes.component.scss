@@ -1,3 +1,7 @@
+:host ::ng-deep .tabs .bx--tabs__nav-link {
+  gap: 0.35rem;
+}
+
 :host ::ng-deep .noteEditorArea {
   white-space: pre-wrap;
   word-break: break-word;

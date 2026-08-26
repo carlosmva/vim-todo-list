@@ -1,10 +1,13 @@
 import { Component, OnDestroy, OnInit, ChangeDetectorRef, Injector, afterNextRender, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { MarkdownComponent } from 'ngx-markdown';
 import { AppStateService } from '../../core/services/app-state.service';
 import { DatabaseService } from '../../core/services/database.service';
+import { ObsidianService } from '../../core/services/obsidian.service';
 import { filterNotes, NotesRepository } from '../../core/services/notes.repository';
+import { PriorityRibbonService } from '../../core/services/priority-ribbon.service';
 import { Note, formatDueDate, formatPriorityLabel, nextPriority } from '../../core/models/note.model';
 import { NotesKeyboardBridge } from '../../core/keyboard/notes-keyboard-bridge.service';
 import { NotesVimEditorService } from '../../core/keyboard/notes-vim-editor.service';
@@ -29,14 +32,18 @@ export class NotesComponent implements OnInit, OnDestroy {
   private static readonly NOTES_PAGE_SIZE = 24;
   readonly state = inject(AppStateService);
   private readonly repo = inject(NotesRepository);
+  private readonly ribbon = inject(PriorityRibbonService);
   private readonly dbService = inject(DatabaseService);
+  private readonly obsidian = inject(ObsidianService);
   private readonly keyboardBridge = inject(NotesKeyboardBridge);
   private readonly vimEditor = inject(NotesVimEditorService);
+  private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly injector = inject(Injector);
 
   boards = signal<string[]>([]);
   notes = signal<Note[]>([]);
+  pendingCountsByBoard = signal<Map<string, number>>(new Map());
   readonly pendingVisibleCount = signal(NotesComponent.NOTES_PAGE_SIZE);
   readonly completeVisibleCount = signal(NotesComponent.NOTES_PAGE_SIZE);
   filterQuery = signal('');
@@ -49,6 +56,7 @@ export class NotesComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.refresh();
     afterNextRender(() => this.focusFilter(), { injector: this.injector });
+    this.focusCalendarSelection();
     this.keyboardBridge.register({
       boards: () => this.boards(),
       activeBoard: () => this.state.activeBoard(),
@@ -82,6 +90,16 @@ export class NotesComponent implements OnInit, OnDestroy {
       safeFocus(el);
       el.select();
     }
+  }
+
+  private focusCalendarSelection(): void {
+    const noteId = Number(this.route.snapshot.queryParamMap.get('noteId'));
+    if (!Number.isFinite(noteId)) return;
+    const pendingIndex = this.pendingNotes().findIndex((note) => note.id === noteId);
+    if (pendingIndex < 0) return;
+
+    this.pendingVisibleCount.set(Math.max(this.pendingVisibleCount(), pendingIndex + 1));
+    this.focusNotesToggle(noteId);
   }
 
   closeEditor(noteId: number, options?: { save?: boolean }): void {
@@ -125,6 +143,7 @@ export class NotesComponent implements OnInit, OnDestroy {
     if (!(editor instanceof HTMLElement)) return;
     this.repo.updateNotesHtml(noteId, editorContentToMarkdown(editor));
     await this.dbService.persist();
+    await this.obsidian.pushNoteById(noteId);
   }
 
   private focusNotesToggle(noteId: number): void {
@@ -183,6 +202,8 @@ export class NotesComponent implements OnInit, OnDestroy {
   }
 
   refresh(): void {
+    this.pendingCountsByBoard.set(this.repo.queryPendingCountsByBoard());
+    this.ribbon.refreshItems();
     if (this.openEditors.size > 0) return;
     this.boards.set(this.repo.queryBoards());
     const board = this.state.activeBoard();
@@ -256,6 +277,15 @@ export class NotesComponent implements OnInit, OnDestroy {
   setBoard(board: string): void {
     this.state.setActiveBoard(board);
     this.refresh();
+  }
+
+  pendingCountForBoard(board: string): number {
+    return this.pendingCountsByBoard().get(board) ?? 0;
+  }
+
+  boardTabAriaLabel(board: string): string {
+    const count = this.pendingCountForBoard(board);
+    return `${board}, ${count} pending task${count === 1 ? '' : 's'}`;
   }
 
   openAddDialog(prefill = ''): void {
@@ -343,8 +373,9 @@ export class NotesComponent implements OnInit, OnDestroy {
       const d = new Date(this.newNoteDue + 'T00:00:00');
       dueAt = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
     }
-    this.repo.insertNote(this.state.activeBoard(), text, dueAt);
+    const noteId = this.repo.insertNote(this.state.activeBoard(), text, dueAt);
     await this.dbService.persist();
+    if (Number.isFinite(noteId)) await this.obsidian.pushNoteById(noteId);
     this.addDialogVisible.set(false);
     this.newNoteText = '';
     this.newNoteDue = '';
@@ -359,6 +390,7 @@ export class NotesComponent implements OnInit, OnDestroy {
   async toggleComplete(note: Note): Promise<void> {
     this.repo.setStatus(note.id, note.status === 'pending' ? 'complete' : 'pending');
     await this.dbService.persist();
+    await this.obsidian.pushNoteById(note.id);
     this.refresh();
   }
 
@@ -397,7 +429,7 @@ export class NotesComponent implements OnInit, OnDestroy {
     return this.flipped.has(noteId);
   }
 
-  toggleEditor(note: Note): void {
+  async toggleEditor(note: Note): Promise<void> {
     if (this.openEditors.has(note.id)) {
       void this.saveEditorHtml(note.id).finally(() => {
         this.openEditors.delete(note.id);
@@ -406,9 +438,19 @@ export class NotesComponent implements OnInit, OnDestroy {
       });
       return;
     }
+    await this.obsidian.syncBeforeEditorOpen(note.id);
+    this.refresh();
     this.openEditors.add(note.id);
     this.cdr.detectChanges();
     afterNextRender(() => this.scheduleNotesEditorFocus(note.id), { injector: this.injector });
+  }
+
+  async openInObsidian(note: Note): Promise<void> {
+    await this.obsidian.openNote(note.id);
+  }
+
+  obsidianConfigured(): boolean {
+    return this.obsidian.isConfigured();
   }
 
   private scheduleNotesEditorFocus(noteId: number, attempt = 0): void {

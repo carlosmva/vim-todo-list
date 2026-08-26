@@ -1,15 +1,19 @@
 @if (ready()) {
   <div class="app" role="application" aria-label="Notes Kanban">
+    @if (showViewNav() && ribbonEnabled() && ribbonAtTop()) {
+      <app-priority-ribbon class="app__ribbonTop" />
+    }
     <header class="header" aria-label="Header">
       <div class="headerRow">
-        <div class="headerTitle">Vim To-Do List</div>
+        <div class="headerTitle" id="headerTitle">{{ headerTitleDisplay() }}</div>
         <div class="headerLinks" aria-label="Header links">
           <select
             id="themeSelect"
             class="headerThemeSelect"
+            appThemeSelectKeyboard
+            [themeSelectValue]="themeModel()"
+            (themeSelectChange)="onThemeChange($event)"
             [ngModel]="themeModel()"
-            (ngModelChange)="onThemeChange($event)"
-            aria-label="Theme"
           >
             @for (theme of themeOptions; track theme) {
               <option [value]="theme">{{ theme }}</option>
@@ -28,27 +32,31 @@
               />
             </svg>
           </a>
-          <button id="closePopupBtn" type="button" class="headerLink monoLinkButton" (click)="closePopup()">Close</button>
         </div>
       </div>
     </header>
 
     @if (showViewNav()) {
       <nav class="viewNav" aria-label="Primary views">
-        <a
-          routerLink="/"
-          routerLinkActive="viewNav__link--active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          class="viewNav__link monoLinkButton"
-        >
-          Notes
-        </a>
-        <a routerLink="/dashboard" routerLinkActive="viewNav__link--active" class="viewNav__link monoLinkButton">
-          Dashboard
-        </a>
-        <a routerLink="/calendar" routerLinkActive="viewNav__link--active" class="viewNav__link monoLinkButton">
-          Calendar
-        </a>
+        <div class="viewNav__links">
+          <a
+            routerLink="/"
+            routerLinkActive="viewNav__link--active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="viewNav__link monoLinkButton"
+          >
+            Notes
+          </a>
+          <a routerLink="/dashboard" routerLinkActive="viewNav__link--active" class="viewNav__link monoLinkButton">
+            Dashboard
+          </a>
+          <a routerLink="/calendar" routerLinkActive="viewNav__link--active" class="viewNav__link monoLinkButton">
+            Calendar
+          </a>
+        </div>
+        @if (ribbonEnabled() && !ribbonAtTop()) {
+          <app-priority-ribbon class="viewNav__ribbon" />
+        }
       </nav>
     }
 

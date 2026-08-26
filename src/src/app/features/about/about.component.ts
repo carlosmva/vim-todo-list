@@ -1,45 +1,35 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+interface AboutFeature {
+  title: string;
+  body: string;
+}
+
 @Component({
   selector: 'app-about',
   standalone: true,
   imports: [RouterLink],
-  template: `
-    <div class="view" aria-label="About">
-      <div class="instructionsHeader">
-        <h2 class="instructionsTitle">About</h2>
-        <a routerLink="/" class="monoLinkButton">Close</a>
-      </div>
-      <div class="instructionsContent aboutLanding">
-        <section class="aboutHero" aria-labelledby="aboutHeadline">
-          <p class="aboutEyebrow">Chrome extension · Keyboard-first · Local SQLite</p>
-          <p class="aboutBrandName">vim-todo-list</p>
-          <p class="aboutHeadline" id="aboutHeadline">
-            Capture todos at keyboard speed—stored locally, no account.
-          </p>
-          <p class="aboutSubhead">
-            Boards, priorities, links, and notes in local SQLite—no cloud account.
-          </p>
-          <p class="aboutByLine">
-            <span class="aboutBy">by</span>
-            <a
-              class="aboutByLink"
-              href="https://northeasternsoftware.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              >Northeastern Software Services LLC</a
-            >
-          </p>
-        </section>
-        <p>
-          <a href="https://github.com/carlosmva/vim-todo-list" target="_blank" rel="noreferrer" class="monoLinkButton"
-            >GitHub</a
-          >
-        </p>
-        <p><a routerLink="/" class="monoLinkButton">Back to notes</a></p>
-      </div>
-    </div>
-  `,
+  templateUrl: './about.component.html',
+  styleUrl: './about.component.scss',
 })
-export class AboutComponent {}
+export class AboutComponent {
+  readonly iconUrl = 'icons/icon128.png';
+
+  readonly tags = ['Chrome extension', 'Keyboard-first', 'Local SQLite'];
+
+  readonly features: AboutFeature[] = [
+    {
+      title: 'Vim-style navigation',
+      body: 'Move through boards, cards, and notes with Alt-modified keys and slash search.',
+    },
+    {
+      title: 'Boards & priorities',
+      body: 'Organize pending work by board, priority ribbon, due dates, and kanban columns.',
+    },
+    {
+      title: 'Notes that stay local',
+      body: 'Markdown notes, links, and SQLite storage—no cloud account required.',
+    },
+  ];
+}

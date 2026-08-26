@@ -38,7 +38,18 @@ export function htmlToReadableText(html: string): string {
     if (isBlockTag(tag)) out.push('\n');
   };
 
-  for (const child of container.childNodes) walk(child);
+  for (let i = 0; i < container.childNodes.length; i++) {
+    walk(container.childNodes[i]);
+    if (i >= container.childNodes.length - 1) continue;
+    const cur = container.childNodes[i];
+    const next = container.childNodes[i + 1];
+    const curText = cur.nodeType === Node.TEXT_NODE && (cur.textContent || '').trim();
+    const nextBlock =
+      next.nodeType === Node.ELEMENT_NODE && isBlockTag((next as HTMLElement).tagName);
+    if (curText && nextBlock && out.length > 0 && out[out.length - 1] !== '\n') {
+      out.push('\n');
+    }
+  }
 
   return out
     .join('')
@@ -58,11 +69,12 @@ function looksLikeStoredHtml(source: string): boolean {
 
 /** Persist editor content as markdown source for ngx-markdown preview. */
 export function editorContentToMarkdown(editor: HTMLElement): string {
+  // innerText preserves line breaks from contenteditable block boundaries reliably.
+  const text = (editor.innerText || editor.textContent || '').replace(/\u00a0/g, ' ');
+  if (text.trim()) return text;
   const html = editor.innerHTML.trim();
-  if (html && looksLikeStoredHtml(html)) {
-    return htmlToReadableText(html);
-  }
-  return (editor.innerText || '').replace(/\u00a0/g, ' ');
+  if (html && looksLikeStoredHtml(html)) return htmlToReadableText(html);
+  return text;
 }
 
 /** Markdown passed to ngx-markdown [data] when the notes editor is closed. */
@@ -89,5 +101,10 @@ export function notesContentForEditorSeed(stored: string): string {
 
 /** Apply markdown source to a contenteditable while preserving line breaks. */
 export function applyMarkdownToEditor(editor: HTMLElement, markdown: string): void {
+  if (!markdown) {
+    // Match browser default block so the first typed line stays in a <div>.
+    editor.innerHTML = '<div><br></div>';
+    return;
+  }
   editor.innerText = markdown;
 }

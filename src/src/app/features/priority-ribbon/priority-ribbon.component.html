@@ -1,0 +1,40 @@
+@if (items().length) {
+  <div class="priorityRibbon" aria-label="Priority task ticker" aria-live="off">
+    <div class="priorityRibbon__viewport">
+      <div class="priorityRibbon__track">
+        <div class="priorityRibbon__segment">
+          @for (item of items(); track item.id) {
+            <span class="priorityRibbon__item" [attr.data-priority]="item.priority">
+              <span class="priorityRibbon__priority">{{ formatPriority(item.priority) }}</span>
+              <span class="priorityRibbon__sep" aria-hidden="true">-</span>
+              <span class="priorityRibbon__board">{{ item.board || 'Inbox' }}</span>
+              @if (item.due_at) {
+                <span class="priorityRibbon__sep" aria-hidden="true">-</span>
+                <span class="priorityRibbon__due">Due {{ formatDue(item.due_at) }}</span>
+              }
+              <span class="priorityRibbon__sep" aria-hidden="true">-</span>
+              <span class="priorityRibbon__text">{{ previewText(item.text) }}</span>
+            </span>
+            <span class="priorityRibbon__taskSep" aria-hidden="true">    |    </span>
+          }
+        </div>
+        <div class="priorityRibbon__segment" aria-hidden="true">
+          @for (item of items(); track 'dup-' + item.id) {
+            <span class="priorityRibbon__item" [attr.data-priority]="item.priority">
+              <span class="priorityRibbon__priority">{{ formatPriority(item.priority) }}</span>
+              <span class="priorityRibbon__sep" aria-hidden="true">-</span>
+              <span class="priorityRibbon__board">{{ item.board || 'Inbox' }}</span>
+              @if (item.due_at) {
+                <span class="priorityRibbon__sep" aria-hidden="true">-</span>
+                <span class="priorityRibbon__due">Due {{ formatDue(item.due_at) }}</span>
+              }
+              <span class="priorityRibbon__sep" aria-hidden="true">-</span>
+              <span class="priorityRibbon__text">{{ previewText(item.text) }}</span>
+            </span>
+            <span class="priorityRibbon__taskSep" aria-hidden="true">    |    </span>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}

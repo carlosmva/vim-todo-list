@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "bencium-innovative-ux-designer": {
+      "source": "bencium/bencium-marketplace",
+      "sourceType": "github",
+      "skillPath": "bencium-innovative-ux-designer/skills/bencium-innovative-ux-designer/SKILL.md",
+      "computedHash": "6d5de8eb29c8a3a86683b16031a36c84e132d541c24a3c261efd40e1409305f1"
+    },
+    "better-layout": {
+      "source": "jakubkrehel/skills",
+      "sourceType": "github",
+      "skillPath": "skills/better-layout/SKILL.md",
+      "computedHash": "4d38dfb87825bba2d8359759a3cb25b3da065f7bd8ff41cf72b9936f83c82903"
+    },
     "landing-page-design": {
       "source": "skillssh/skills",
       "sourceType": "github",

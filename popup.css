@@ -578,6 +578,7 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmapPair {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 32rem), 1fr));
   gap: 12px;
 }
 
@@ -616,7 +617,7 @@ html[data-popup-size="full"] body {
 .dashboardHeatmapMonths {
   display: grid;
   grid-template-columns: repeat(51, minmax(0, 1fr));
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
   margin-inline-start: 34px;
   margin-bottom: 4px;
@@ -632,6 +633,7 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmapBody {
   display: flex;
+  align-items: stretch;
   gap: 7px;
   min-width: 0;
   width: 100%;
@@ -639,12 +641,13 @@ html[data-popup-size="full"] body {
 
 .dashboardHeatmapDays {
   display: grid;
-  grid-template-rows: repeat(7, 11px);
-  gap: 3px;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  gap: 2px;
   width: 27px;
   flex: 0 0 auto;
   font-size: 0.62rem;
-  line-height: 11px;
+  line-height: 1;
+  align-items: center;
   color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
 }
 
@@ -653,7 +656,7 @@ html[data-popup-size="full"] body {
   grid-auto-flow: column;
   grid-template-columns: repeat(51, minmax(0, 1fr));
   grid-template-rows: repeat(7, minmax(0, 1fr));
-  gap: 3px;
+  gap: 2px;
   width: 100%;
   aspect-ratio: 51 / 7;
 }
@@ -664,22 +667,28 @@ html[data-popup-size="full"] body {
   min-width: 0;
 }
 
-.dashboardHeatmapTodayMarker {
+.dashboardHeatmapTodayOverlay {
   position: absolute;
-  top: -17px;
-  bottom: -2px;
-  left: calc(var(--dashboard-today-offset, 50%) - 2px);
-  width: calc((100% - 150px) / 51 + 4px);
-  border: 1px solid var(--modern-text, var(--cds-text-primary, #161616));
-  border-radius: 4px;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(51, minmax(0, 1fr));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  gap: 2px;
   pointer-events: none;
 }
 
+.dashboardHeatmapTodayMarker {
+  grid-row: 1 / -1;
+  border: 1px solid var(--modern-text, var(--cds-text-primary, #161616));
+  border-radius: 4px;
+}
+
 .dashboardHeatmapTodayLabel {
-  position: absolute;
-  left: var(--dashboard-today-offset, 50%);
-  top: -31px;
-  transform: translateX(-50%);
+  grid-row: 1;
+  align-self: start;
+  justify-self: center;
+  transform: translateY(-21px);
   padding: 1px 4px;
   border-radius: 3px;
   color: var(--modern-text, var(--cds-text-primary, #161616));
@@ -687,7 +696,6 @@ html[data-popup-size="full"] body {
   font-size: 0.62rem;
   font-weight: 700;
   line-height: 1.2;
-  pointer-events: none;
   white-space: nowrap;
 }
 
@@ -762,9 +770,12 @@ html[data-popup-size="full"] body {
 }
 
 .dashboardFilterButton:hover,
+.dashboardFilterButton:focus,
 .dashboardFilterButton:focus-visible {
   border-color: var(--modern-border-strong, var(--cds-focus, currentColor));
-  outline: 2px solid var(--cds-focus, currentColor);
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+  outline: 2px solid var(--modern-focus, var(--cds-focus, currentColor));
   outline-offset: 1px;
 }
 
@@ -2431,7 +2442,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .calendarDayCell:focus-visible {
   outline: 2px solid var(--modern-focus, var(--cds-focus, #0f62fe));
   outline-offset: 1px;
-  background: var(--cds-layer-hover, rgba(0, 0, 0, 0.04));
+  background: var(--modern-surface-muted, var(--cds-layer-hover, rgba(0, 0, 0, 0.04)));
+  color: var(--modern-text, inherit);
 }
 
 .calendarCellDots {
@@ -2517,11 +2529,55 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-overflow: ellipsis;
   white-space: nowrap;
   appearance: none;
-  background: var(--cds-layer-accent, #e0e0e0);
+  background: var(--modern-surface-muted, var(--cds-layer-accent, #e0e0e0));
   border: 0;
   border-radius: 3px;
   cursor: pointer;
   color: inherit;
+}
+
+/* Carbon's default layer tokens are light. Keep dark-theme controls on app surfaces. */
+[data-theme="dark"] .dashboardFilterButton:hover,
+[data-theme="dark"] .dashboardFilterButton:focus,
+[data-theme="dark"] .dashboardFilterButton:focus-visible,
+[data-theme="solarized-dark"] .dashboardFilterButton:hover,
+[data-theme="solarized-dark"] .dashboardFilterButton:focus,
+[data-theme="solarized-dark"] .dashboardFilterButton:focus-visible,
+[data-theme="nothing"] .dashboardFilterButton:hover,
+[data-theme="nothing"] .dashboardFilterButton:focus,
+[data-theme="nothing"] .dashboardFilterButton:focus-visible,
+[data-theme="dark"] .calendarDayCell:hover,
+[data-theme="dark"] .calendarDayCell:focus,
+[data-theme="dark"] .calendarDayCell:focus-visible,
+[data-theme="solarized-dark"] .calendarDayCell:hover,
+[data-theme="solarized-dark"] .calendarDayCell:focus,
+[data-theme="solarized-dark"] .calendarDayCell:focus-visible,
+[data-theme="nothing"] .calendarDayCell:hover,
+[data-theme="nothing"] .calendarDayCell:focus,
+[data-theme="nothing"] .calendarDayCell:focus-visible {
+  background: var(--modern-surface-muted);
+  color: var(--modern-text);
+}
+
+[data-theme="dark"] .calendarDayCell--selected,
+[data-theme="solarized-dark"] .calendarDayCell--selected,
+[data-theme="nothing"] .calendarDayCell--selected,
+[data-theme="dark"] .calendarTask,
+[data-theme="solarized-dark"] .calendarTask,
+[data-theme="nothing"] .calendarTask {
+  background: var(--modern-surface-muted);
+  color: var(--modern-text);
+}
+
+[data-theme="dark"] .dashboardFilterButton[aria-pressed="true"],
+[data-theme="solarized-dark"] .dashboardFilterButton[aria-pressed="true"],
+[data-theme="nothing"] .dashboardFilterButton[aria-pressed="true"],
+[data-theme="command-line"] .dashboardFilterButton[aria-pressed="true"],
+[data-theme="emacs-dark"] .dashboardFilterButton[aria-pressed="true"] {
+  border-color: var(--modern-focus);
+  background: var(--modern-surface-muted);
+  color: var(--modern-text);
+  box-shadow: inset 0 0 0 1px var(--modern-focus);
 }
 
 .calendarTask:hover {

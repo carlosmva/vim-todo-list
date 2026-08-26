@@ -1,0 +1,89 @@
+.aboutView .aboutLanding {
+  min-height: 0;
+}
+
+.aboutIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0 auto var(--modern-space-2);
+  border-radius: 1.25rem;
+  background: #0a0a0a;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--modern-border-strong, #525252) 65%, transparent),
+    0 10px 28px color-mix(in srgb, #000 35%, transparent);
+  overflow: hidden;
+}
+
+.aboutIcon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.aboutEyebrowRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-block-end: var(--modern-space-2);
+}
+
+.aboutChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--modern-border);
+  border-radius: 999px;
+  background: var(--modern-surface-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--modern-text-subtle);
+}
+
+.aboutFeatures {
+  display: grid;
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 36rem;
+  margin: var(--modern-space-4) 0 0;
+  padding: var(--modern-space-3);
+  border: 1px solid var(--modern-border);
+  border-radius: var(--modern-radius-md);
+  background: var(--modern-surface-muted);
+  list-style: none;
+  text-align: start;
+}
+
+.aboutFeature {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.aboutFeature__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.aboutFeature__body {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--modern-text-subtle);
+}
+
+.aboutFooterNav {
+  margin: var(--modern-space-4) 0 0;
+  text-align: center;
+}
+
+[data-theme='command-line'] .aboutIconWrap {
+  border-radius: 0;
+  box-shadow: 0 0 0 1px var(--modern-focus);
+}

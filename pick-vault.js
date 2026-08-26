@@ -67,11 +67,19 @@
         handle = resolved || handle;
 
         await window.ObsidianVaultIdb.saveVaultHandle(handle);
+        const folderName = typeof handle.name === "string" ? handle.name : "";
+        try {
+          if (typeof chrome !== "undefined" && chrome.storage?.local) {
+            await chrome.storage.local.set({ obsidianVaultFolderSelection_v1: folderName });
+          }
+        } catch {
+          // The broadcast below still updates an already-open settings page.
+        }
         try {
           const bc = new BroadcastChannel("vim-todo-obsidian-vault");
           bc.postMessage({
             type: "linked",
-            folderName: typeof handle.name === "string" ? handle.name : "",
+            folderName,
           });
           bc.close();
         } catch {

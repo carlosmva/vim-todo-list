@@ -1,0 +1,76 @@
+<div class="view aboutView" aria-label="About">
+  <div class="instructionsHeader">
+    <h2 class="instructionsTitle">About</h2>
+    <a routerLink="/" class="monoLinkButton">Close</a>
+  </div>
+
+  <div class="instructionsContent aboutLanding">
+    <section class="aboutHero" aria-labelledby="aboutHeadline">
+      <div class="aboutIconWrap">
+        <img class="aboutIcon" [src]="iconUrl" width="128" height="128" alt="" aria-hidden="true" />
+      </div>
+
+      <div class="aboutEyebrowRow" aria-label="Product tags">
+        @for (tag of tags; track tag) {
+          <span class="aboutChip">{{ tag }}</span>
+        }
+      </div>
+
+      <p class="aboutBrandName">vim-todo-list</p>
+      <p class="aboutHeadline" id="aboutHeadline">
+        Capture todos at keyboard speed—stored locally, no account.
+      </p>
+      <p class="aboutSubhead">
+        Boards, priorities, links, and notes in local SQLite. One of several tools to help you capture,
+        structure, and act faster.
+      </p>
+
+      <ul class="aboutFeatures" aria-label="Key features">
+        @for (feature of features; track feature.title) {
+          <li class="aboutFeature">
+            <span class="aboutFeature__title">{{ feature.title }}</span>
+            <span class="aboutFeature__body">{{ feature.body }}</span>
+          </li>
+        }
+      </ul>
+
+      <p class="aboutByLine">
+        <span class="aboutBy">by</span>
+        <a
+          class="aboutByLink"
+          href="https://northeasternsoftware.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Northeastern Software Services LLC</a
+        >
+      </p>
+
+      <div class="aboutHeroActions">
+        <a
+          class="aboutCtaPrimary"
+          href="https://github.com/carlosmva/vim-todo-list"
+          target="_blank"
+          rel="noopener noreferrer"
+          >View on GitHub</a
+        >
+        <a
+          class="aboutCtaSecondary"
+          href="https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Get from Chrome Web Store</a
+        >
+      </div>
+    </section>
+
+    <p class="aboutTrust">
+      <span class="aboutTrustLine">Built independently</span>
+      <span class="aboutTrustSep" aria-hidden="true">·</span>
+      <span class="aboutTrustLine">Practical tools that actually get used</span>
+    </p>
+
+    <p class="aboutFooterNav">
+      <a routerLink="/" class="monoLinkButton">Back to notes</a>
+    </p>
+  </div>
+</div>

@@ -70,9 +70,8 @@
   };
 
   const POPUP_SIZES = {
-    s: { width: "680px", height: "520px", radius: "10px", padding: "24px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
     m: { width: "800px", height: "600px", radius: "10px", padding: "24px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
-    l: { width: "1040px", height: "720px", radius: "10px", padding: "24px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
+    l: { width: "1200px", height: "860px", radius: "10px", padding: "16px", shadow: "0 24px 48px rgba(0, 0, 0, 0.25)" },
     full: { width: "100%", height: "100%", radius: "0", padding: "0", shadow: "none" }
   };
 

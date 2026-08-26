@@ -121,9 +121,11 @@
               role="tab"
               [attr.data-board]="board"
               [attr.aria-selected]="state.activeBoard() === board"
+              [attr.aria-label]="boardTabAriaLabel(board)"
               (click)="setBoard(board)"
             >
-              {{ board }}
+              <span class="tabLabel">{{ board }}</span>
+              <span class="tabBadge" aria-hidden="true">{{ pendingCountForBoard(board) }}</span>
             </button>
           </li>
         }
@@ -187,6 +189,9 @@
                       </button>
                       <button type="button" class="monoLinkButton" (click)="toggleFlip(note.id)">Links</button>
                       <button type="button" class="monoLinkButton" (click)="toggleEditor(note)">Notes</button>
+                      @if (obsidianConfigured()) {
+                        <button type="button" class="monoLinkButton" (click)="openInObsidian(note)">Obsidian</button>
+                      }
                       <button type="button" class="monoLinkButton" (click)="move(note, 'up')">↑</button>
                       <button type="button" class="monoLinkButton" (click)="move(note, 'down')">↓</button>
                       <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Complete</button>

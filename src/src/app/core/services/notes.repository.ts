@@ -7,6 +7,7 @@ import {
   normalizePriority,
   nextPriority,
 } from '../models/note.model';
+import type { PriorityRibbonNote } from '../models/priority-ribbon.model';
 import { DatabaseService } from './database.service';
 
 @Injectable({ providedIn: 'root' })
@@ -23,6 +24,49 @@ export class NotesRepository {
     );
     if (!res.length) return [];
     return res[0].values.map((r) => String(r[0])).filter(Boolean);
+  }
+
+  queryPendingCountsByBoard(): Map<string, number> {
+    const counts = new Map<string, number>();
+    const res = this.db().exec(
+      `SELECT board, COUNT(*) AS pending_count
+       FROM notes
+       WHERE status = 'pending' AND board IS NOT NULL AND board <> ''
+       GROUP BY board`
+    );
+    if (!res.length) return counts;
+    for (const [board, count] of res[0].values || []) {
+      const boardName = String(board || '').trim();
+      if (!boardName) continue;
+      counts.set(boardName, Number(count) || 0);
+    }
+    return counts;
+  }
+
+  queryPriorityRibbonNotes(limit: number): PriorityRibbonNote[] {
+    const safeLimit = Math.max(1, Math.min(10, Math.floor(limit)));
+    const res = this.db().exec(
+      `SELECT id, text, board, priority, due_at
+       FROM notes
+       WHERE status = 'pending'
+       ORDER BY
+         CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 1 END,
+         CASE WHEN due_at IS NULL THEN 1 ELSE 0 END,
+         due_at ASC,
+         sort_order ASC,
+         id ASC
+       LIMIT ${safeLimit}`
+    );
+    if (!res.length) return [];
+    const { columns, values } = res[0];
+    const idx = Object.fromEntries(columns.map((c, i) => [c, i]));
+    return values.map((row) => ({
+      id: row[idx['id']] as number,
+      text: row[idx['text']] as string,
+      board: row[idx['board']] as string,
+      priority: normalizePriority(row[idx['priority']]),
+      due_at: row[idx['due_at']] != null ? (row[idx['due_at']] as number) : null,
+    }));
   }
 
   addBoard(name: string): boolean {
@@ -88,6 +132,15 @@ export class NotesRepository {
     return this.mapNotes(res);
   }
 
+  queryNote(noteId: number): Note | null {
+    const res = this.db().exec(
+      `SELECT id, text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board, due_at
+       FROM notes WHERE id = ? LIMIT 1`,
+      [noteId]
+    );
+    return res.length && res[0].values.length ? this.mapNotes(res)[0] : null;
+  }
+
   queryAllNotes(): Note[] {
     const res = this.db().exec(
       `SELECT id, text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board, due_at
@@ -115,7 +168,7 @@ export class NotesRepository {
     return rows;
   }
 
-  insertNote(board: string, text: string, dueAt: number | null = null): void {
+  insertNote(board: string, text: string, dueAt: number | null = null): number {
     const now = Date.now();
     const sortOrder = this.getNextPendingSortOrder(board);
     const stmt = this.db().prepare(
@@ -124,6 +177,8 @@ export class NotesRepository {
     );
     stmt.run([text.trim(), now, now, sortOrder, board, dueAt]);
     stmt.free();
+    const result = this.db().exec('SELECT last_insert_rowid()');
+    return result.length ? Number(result[0].values?.[0]?.[0]) : NaN;
   }
 
   updateDueAt(noteId: number, dueAt: number | null): void {
@@ -180,6 +235,18 @@ export class NotesRepository {
   updateNoteText(noteId: number, text: string): void {
     const stmt = this.db().prepare('UPDATE notes SET text = ?, updated_at = ? WHERE id = ?');
     stmt.run([text.trim(), Date.now(), noteId]);
+    stmt.free();
+  }
+
+  updateNoteFromVault(noteId: number, text: string, notesHtml: string, updatedAt: number): void {
+    const stmt = this.db().prepare('UPDATE notes SET text = ?, notes_html = ?, updated_at = ? WHERE id = ?');
+    stmt.run([text.trim(), notesHtml, updatedAt, noteId]);
+    stmt.free();
+  }
+
+  updateNoteUpdatedAt(noteId: number, updatedAt: number): void {
+    const stmt = this.db().prepare('UPDATE notes SET updated_at = ? WHERE id = ?');
+    stmt.run([updatedAt, noteId]);
     stmt.free();
   }
 

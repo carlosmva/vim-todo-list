@@ -14,7 +14,6 @@ interface HeatmapModel {
   months: string[];
   cells: HeatmapCell[];
   todayWeek: number;
-  todayOffset: string;
   todayLabel: string;
 }
 
@@ -104,7 +103,6 @@ interface HeatmapModel {
       months,
       cells,
       todayWeek,
-      todayOffset: `${(todayWeek / (weekCount - 1)) * 100}%`,
       todayLabel: today.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
     };
   }

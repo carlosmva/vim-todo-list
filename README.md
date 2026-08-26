@@ -43,7 +43,7 @@ Configure everything under **Settings** (gear) → **Obsidian**.
    - `npm install`
    - `npm install --prefix src`
 2. Build the Angular extension UI and vendor assets:
-   - `npm run build:ext`
+   - `npm run build:ext` (from the repo root, or `npm run build:ext` from `src/`)
 3. Load the extension:
    - Open `chrome://extensions`
    - Enable **Developer mode**

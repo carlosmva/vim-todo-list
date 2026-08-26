@@ -27,6 +27,7 @@ import {
   getAllCardsInDomOrder,
   getBoardTabElements,
   getCardFromElement,
+  getFocusedAnchor,
   getHeaderNavTargets,
   getViewNavTargets,
   isOnBoardTabs,
@@ -38,9 +39,14 @@ import {
   moveCardFocus,
   moveGlobalFocus,
   resolveBoardTabElement,
+  resolveHeaderNavElement,
+  resolveInternalAppRoute,
   safeFocus,
 } from './keyboard-focus.util';
 import { NotesKeyboardBridge } from './notes-keyboard-bridge.service';
+import { SettingsKeyboardBridge } from './settings-keyboard-bridge.service';
+import { ThemeSelectKeyboardService } from './theme-select-keyboard.service';
+import { handleSettingsEnterActivate, handleSettingsKeyboardNav } from './settings-keyboard.util';
 
 @Injectable({ providedIn: 'root' })
 export class KeyboardNavigationService {
@@ -48,6 +54,8 @@ export class KeyboardNavigationService {
   private readonly router = inject(Router);
   private readonly overlay = inject(OverlayBridgeService);
   private readonly notesBridge = inject(NotesKeyboardBridge);
+  private readonly settingsBridge = inject(SettingsKeyboardBridge);
+  private readonly themeSelectKeyboard = inject(ThemeSelectKeyboardService);
   private readonly vimEditor = inject(NotesVimEditorService);
   private attached = false;
 
@@ -106,6 +114,12 @@ export class KeyboardNavigationService {
   private onEscape = (e: KeyboardEvent): void => {
     if (e.key !== 'Escape' || modKeyActive(e, this.platform()) || e.ctrlKey || e.metaKey) return;
 
+    if (this.themeSelectKeyboard.disarmFocused()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     const bridge = this.notesBridge.get();
     if (bridge?.isAddDialogOpen?.()) {
       e.preventDefault();
@@ -134,23 +148,31 @@ export class KeyboardNavigationService {
   private colonTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    // Chrome assigns Alt+Enter on anchors to download behavior. Primary view
-    // links are application navigation, so activate their routes directly.
+    // Chrome assigns Alt+Enter on anchors to save/download behavior. Route in-app
+    // links through the router and suppress the default for everything else.
     if (e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey) {
-      const active = document.activeElement;
-      const viewLink = active instanceof Element ? active.closest<HTMLAnchorElement>('.viewNav__link') : null;
-      const href = viewLink?.getAttribute('href');
-      if (href === '/' || href === '/dashboard' || href === '/calendar') {
+      const anchor = getFocusedAnchor(document.activeElement);
+      if (anchor) {
         e.preventDefault();
         e.stopPropagation();
-        void this.router.navigateByUrl(href);
+        const route = resolveInternalAppRoute(anchor);
+        if (route !== null) void this.router.navigateByUrl(route);
         return;
       }
+    }
+
+    if (handleSettingsEnterActivate(e)) {
+      return;
     }
 
     const key = (e.key || '').toLowerCase();
     const nav = getNavKeys(this.layout());
     const platform = this.platform();
+
+    if (this.themeSelectKeyboard.handleCaptureKeyDown(e, nav, platform)) {
+      return;
+    }
+
     const bridge = this.notesBridge.get();
 
     // : then x — close notes editor or flipped links panel.
@@ -296,16 +318,20 @@ export class KeyboardNavigationService {
     bridge: ReturnType<NotesKeyboardBridge['get']>
   ): void {
     const path = this.router.url.split('?')[0] || '/';
-    const inHeader =
-      activeEl instanceof Element && !!activeEl.closest('.headerLinks');
+    const headerEl = resolveHeaderNavElement(activeEl);
+    const inHeader = headerEl != null;
     const inViewNav =
       activeEl instanceof Element && !!activeEl.closest('.viewNav');
 
+    if (handleSettingsKeyboardNav(key, nav, activeEl, this.settingsBridge.get())) {
+      return;
+    }
+
     // Header: left/right horizontal; down → view nav (or content); up no-op.
-    if (inHeader) {
+    if (inHeader && headerEl) {
       if (key === nav.left || key === nav.right) {
         const targets = getHeaderNavTargets();
-        const idx = activeEl instanceof HTMLElement ? targets.indexOf(activeEl) : -1;
+        const idx = targets.indexOf(headerEl);
         if (idx >= 0) {
           const delta = key === nav.right ? 1 : -1;
           safeFocus(targets[Math.min(targets.length - 1, Math.max(0, idx + delta))]);
@@ -317,7 +343,7 @@ export class KeyboardNavigationService {
           const link = getActiveViewNavLink();
           if (link) safeFocus(link);
         } else {
-          focusViewContentEntry(path, activeEl);
+          focusViewContentEntry(path, headerEl);
         }
         return;
       }

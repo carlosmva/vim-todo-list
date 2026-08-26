@@ -3,6 +3,7 @@ import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import { ChromeStorageService } from './chrome-storage.service';
 import { ensureSchema } from '../utils/schema.util';
 import { DEFAULT_BOARD } from '../models/envelope.model';
+import { mergePriorityRibbonEnvelopeFromDb } from '../utils/ai-settings.util';
 
 @Injectable({ providedIn: 'root' })
 export class DatabaseService {
@@ -38,7 +39,19 @@ export class DatabaseService {
     this.db?.close();
     this.db = new this.sql.Database(bytes);
     ensureSchema(this.db, DEFAULT_BOARD);
+    this.syncPriorityRibbonEnvelopeFromDb();
     await this.persist();
+  }
+
+  /** After DB import, mirror ribbon AI settings into envelope when present (legacy-safe). */
+  syncPriorityRibbonEnvelopeFromDb(): void {
+    const ai = mergePriorityRibbonEnvelopeFromDb(
+      (key) => this.getSetting(key),
+      this.storage.getEnvelope().ai
+    );
+    if (ai !== undefined) {
+      this.storage.patch({ ai });
+    }
   }
 
   exportBytes(): Uint8Array {

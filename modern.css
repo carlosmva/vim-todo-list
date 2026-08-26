@@ -1,5 +1,5 @@
 :root {
-  --modern-font-sans: "Montserrat", "IBM Plex Sans", sans-serif;
+  --modern-font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
   --modern-font-size-base: 18px;
   --modern-bg: linear-gradient(160deg, #eaf1ff 0%, #f7fbff 55%, #f1f7f4 100%);
   --modern-surface-1: rgba(255, 255, 255, 0.86);
@@ -387,7 +387,7 @@ button,
 }
 
 .headerTitle {
-  font-family: "Kelvinized Normal", var(--modern-font-sans);
+  font-family: var(--header-title-font-family, "Plus Jakarta Sans", var(--modern-font-sans));
   letter-spacing: 0.01em;
   opacity: 0.8;
   color: #c0c0c0;
@@ -912,13 +912,16 @@ button,
 }
 
 /* About view — landing-style layout (hero → trust → more tools → support CTA) */
-#aboutContent.aboutLanding {
+#aboutContent.aboutLanding,
+.instructionsContent.aboutLanding {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  padding: var(--modern-space-4) var(--modern-space-5) var(--modern-space-5);
+  box-sizing: border-box;
+  padding: var(--modern-space-3) var(--modern-space-4) var(--modern-space-3);
   text-align: center;
+  overscroll-behavior: contain;
 }
 
 .aboutHero {
@@ -927,7 +930,7 @@ button,
   align-items: center;
   max-width: 36rem;
   margin: 0 auto;
-  padding-bottom: var(--modern-space-4);
+  padding-bottom: var(--modern-space-3);
 }
 
 .aboutEyebrow {
@@ -994,7 +997,7 @@ button,
   gap: var(--modern-space-2);
   width: 100%;
   max-width: 20rem;
-  margin-top: var(--modern-space-4);
+  margin-top: var(--modern-space-3);
 }
 
 .aboutCtaPrimary,
@@ -1003,7 +1006,7 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 38px;
   padding: 0.55rem 1.15rem;
   border-radius: var(--modern-radius-sm);
   font-size: 0.88rem;
@@ -1073,7 +1076,7 @@ button,
 
 .aboutTrust {
   margin: 0 auto;
-  padding: var(--modern-space-3) var(--modern-space-2);
+  padding: var(--modern-space-2);
   max-width: 52ch;
   font-size: 0.8rem;
   line-height: 1.45;
@@ -1225,6 +1228,64 @@ button,
 [data-theme="command-line"] .attachmentPill {
   background: #1a2e1a;
   color: var(--modern-text);
+}
+
+/* The medium popup has a deliberately compact About page rather than clipped CTAs. */
+html[data-popup-size="m"] .aboutLanding {
+  padding: 10px 12px 12px;
+}
+
+html[data-popup-size="m"] .aboutIconWrap {
+  width: 3.75rem;
+  height: 3.75rem;
+  margin-bottom: 10px;
+  border-radius: 1rem;
+}
+
+html[data-popup-size="m"] .aboutEyebrowRow {
+  margin-block-end: 8px;
+}
+
+html[data-popup-size="m"] .aboutChip {
+  min-height: 1.25rem;
+  padding-inline: 0.4rem;
+  font-size: 0.6rem;
+}
+
+html[data-popup-size="m"] .aboutSubhead {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+html[data-popup-size="m"] .aboutFeatures {
+  gap: 0.45rem;
+  margin-top: 12px;
+  padding: 10px;
+}
+
+html[data-popup-size="m"] .aboutFeature__body {
+  line-height: 1.3;
+}
+
+html[data-popup-size="m"] .aboutByLine,
+html[data-popup-size="m"] .aboutHeroActions,
+html[data-popup-size="m"] .aboutFooterNav {
+  margin-top: 10px;
+}
+
+html[data-popup-size="m"] .aboutHeroActions {
+  gap: 6px;
+}
+
+html[data-popup-size="m"] .aboutCtaPrimary,
+html[data-popup-size="m"] .aboutCtaSecondary {
+  min-height: 32px;
+  padding-block: 0.4rem;
+}
+
+html[data-popup-size="m"] .aboutTrust {
+  padding-block: 8px;
 }
 
 [data-theme="emacs-dark"] .attachmentPill {

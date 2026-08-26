@@ -1,4 +1,4 @@
-<div class="view" aria-label="Settings">
+<div class="view" id="settingsView" aria-label="Settings">
   <div class="instructionsHeader">
     <div class="instructionsTitle">Settings</div>
     <a routerLink="/" class="monoLinkButton">Close</a>
@@ -11,6 +11,7 @@
           type="button"
           class="settingsTab"
           role="tab"
+          [attr.data-settings-tab]="tab.id"
           [attr.aria-selected]="activeTab() === tab.id"
           (click)="selectTab(tab.id)"
         >
@@ -21,7 +22,7 @@
 
     <div class="settingsPanels">
       @if (activeTab() === 'boards') {
-        <div class="settingsPanel instructionsContent settingsPanelBoards" role="tabpanel">
+        <div class="settingsPanel instructionsContent settingsPanelBoards" id="settingsPanelBoards" role="tabpanel">
           <div class="instructionsHeader settingsSubHeader">
             <div class="instructionsTitle">Boards</div>
           </div>
@@ -52,6 +53,7 @@
                   <button
                     type="button"
                     class="monoLinkButton"
+                    data-manage-tabs-action="up"
                     [disabled]="$first"
                     [attr.aria-label]="'Move ' + board + ' up'"
                     (click)="moveBoard(board, 'up')"
@@ -59,6 +61,7 @@
                   <button
                     type="button"
                     class="monoLinkButton"
+                    data-manage-tabs-action="down"
                     [disabled]="$last"
                     [attr.aria-label]="'Move ' + board + ' down'"
                     (click)="moveBoard(board, 'down')"
@@ -66,6 +69,7 @@
                   <button
                     type="button"
                     class="monoLinkButton"
+                    data-manage-tabs-action="remove"
                     [disabled]="boards().length <= 1"
                     [attr.aria-label]="'Remove ' + board"
                     (click)="removeBoard(board)"
@@ -90,12 +94,68 @@
               <select
                 id="settingsTheme"
                 class="headerThemeSelect appearanceThemeSelect"
+                appThemeSelectKeyboard
+                [themeSelectValue]="stateRef.theme()"
+                (themeSelectChange)="onThemeChange($event)"
                 [ngModel]="stateRef.theme()"
-                (ngModelChange)="onThemeChange($event)"
                 name="theme"
               >
                 @for (theme of themeOptions; track theme) {
                   <option [value]="theme">{{ theme }}</option>
+                }
+              </select>
+            </div>
+            <div class="aiSettingsRow">
+              <label for="settingsInterfaceFontSelect">Interface font</label>
+              <select
+                id="settingsInterfaceFontSelect"
+                class="bx--text-input appearanceThemeSelect"
+                aria-label="Interface font"
+                [ngModel]="stateRef.interfaceFont()"
+                (ngModelChange)="onInterfaceFontChange($event)"
+                name="interfaceFont"
+              >
+                @for (font of interfaceFontOptions; track font) {
+                  <option [value]="font">{{ interfaceFontLabels[font] }}</option>
+                }
+              </select>
+            </div>
+            <div class="aiSettingsRow">
+              <label for="settingsHeaderTitleInput">Header title</label>
+              <input
+                id="settingsHeaderTitleInput"
+                class="bx--text-input"
+                type="text"
+                maxlength="80"
+                placeholder="Vim To-Do List"
+                autocomplete="off"
+                aria-describedby="settingsHeaderTitleHint"
+                [(ngModel)]="headerTitleInput"
+                (ngModelChange)="onHeaderTitleInput($event)"
+                (blur)="onHeaderTitleBlur()"
+                name="headerTitle"
+              />
+            </div>
+            <p id="settingsHeaderTitleHint" class="obsidianIntro settingsBoardsHint">
+              Replaces the top bar title. Leave blank for the default.
+            </p>
+            <div class="aiSettingsRow">
+              <label for="settingsHeaderTitleFontSelect">Header title font</label>
+              <select
+                id="settingsHeaderTitleFontSelect"
+                class="bx--text-input appearanceThemeSelect"
+                aria-label="Header title font"
+                appArmedSelectKeyboard
+                [armedSelectOrder]="headerTitleFontOptions"
+                [armedSelectValue]="stateRef.headerTitleFont()"
+                (armedSelectChange)="onHeaderTitleFontChange($event)"
+                armedSelectSubject="Header title font"
+                [armedSelectLabel]="headerTitleFontLabelFn"
+                [ngModel]="stateRef.headerTitleFont()"
+                name="headerTitleFont"
+              >
+                @for (font of headerTitleFontOptions; track font || 'theme-default') {
+                  <option [value]="font">{{ headerTitleFontLabels[font] }}</option>
                 }
               </select>
             </div>
@@ -188,6 +248,37 @@
                 name="aiWords"
               ></textarea>
             </div>
+            <fieldset class="aiSettingsRow keyLayoutFieldset" aria-label="Priority ribbon">
+              <legend class="keyLayoutLegend">Priority ribbon</legend>
+              <label class="keyLayoutRadioLabel">
+                <input
+                  type="checkbox"
+                  [ngModel]="aiPriorityRibbon()"
+                  (ngModelChange)="aiPriorityRibbon.set($event)"
+                  name="aiPriorityRibbon"
+                />
+                Generate Priorities ribbon
+              </label>
+              <p class="obsidianIntro settingsBoardsHint">
+                When enabled, a stock-ticker style ribbon rotates your top pending tasks in the main view nav row.
+              </p>
+              @if (aiPriorityRibbon()) {
+                <div class="keyLayoutRadios">
+                  @for (limit of priorityRibbonLimitOptions; track limit) {
+                    <label class="keyLayoutRadioLabel">
+                      <input
+                        type="radio"
+                        name="aiPriorityRibbonLimit"
+                        [value]="limit"
+                        [checked]="aiPriorityRibbonLimit() === limit"
+                        (change)="aiPriorityRibbonLimit.set(limit)"
+                      />
+                      Top {{ limit }}
+                    </label>
+                  }
+                </div>
+              }
+            </fieldset>
             <div class="aiSettingsRow">
               <button type="button" class="monoLinkButton" (click)="saveAi()">Save AI settings</button>
             </div>

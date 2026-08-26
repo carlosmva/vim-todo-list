@@ -9,7 +9,7 @@ export interface StorageEnvelope {
   kl?: 'qwerty' | 'dvorak';
   knp?: 'mac' | 'winlinux';
   bg?: string;
-  ai?: { u?: string; m?: string; w?: string };
+  ai?: { u?: string; m?: string; w?: string; pr?: boolean; prl?: 3 | 5 | 10 };
   obs?: { v?: string; f?: string; s?: boolean };
   ps?: 's' | 'm' | 'm1' | 'm2' | 'l' | 'full';
 }
@@ -41,3 +41,15 @@ export const THEME_ORDER = [
 ] as const;
 
 export type ThemeId = (typeof THEME_ORDER)[number];
+
+export const THEME_LABELS: Record<ThemeId, string> = {
+  light: 'Light',
+  dark: 'Dark',
+  'solarized-light': 'Solarized',
+  'solarized-dark': 'Solarized Dark',
+  emacs: 'Emacs',
+  'emacs-dark': 'Emacs Dark',
+  'command-line': 'Command Line',
+  nothing: 'Nothing',
+  'nothing-light': 'Nothing Light',
+};

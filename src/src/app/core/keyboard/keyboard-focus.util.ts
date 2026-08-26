@@ -1,3 +1,5 @@
+import { focusSettingsTabEntry } from './settings-keyboard.util';
+
 export function safeFocus(node: HTMLElement | null | undefined): boolean {
   if (!(node instanceof HTMLElement)) return false;
   if (node.hasAttribute('disabled') || node.getAttribute('aria-hidden') === 'true') return false;
@@ -172,6 +174,17 @@ export function getHeaderNavTargets(): HTMLElement[] {
   ].filter((t): t is HTMLElement => t instanceof HTMLElement && isVisible(t));
 }
 
+/** Map focus (including icon children) to a header control. */
+export function resolveHeaderNavElement(el: Element | null): HTMLElement | null {
+  if (!(el instanceof Element) || !el.closest('.headerLinks')) return null;
+  const targets = getHeaderNavTargets();
+  if (el instanceof HTMLElement && targets.includes(el)) return el;
+  for (const target of targets) {
+    if (target.contains(el)) return target;
+  }
+  return null;
+}
+
 export function isViewNavVisible(): boolean {
   const nav = document.querySelector('.viewNav');
   return nav instanceof HTMLElement && isVisible(nav);
@@ -219,7 +232,10 @@ export function focusViewContentEntry(path: string, fromHeaderEl: Element | null
   }
 
   if (route === '/settings') {
-    const close = document.querySelector<HTMLElement>('[aria-label="Settings"] .instructionsHeader .monoLinkButton');
+    if (focusSettingsTabEntry()) return true;
+    const close = document.querySelector<HTMLElement>(
+      '#settingsView .instructionsHeader .monoLinkButton, [aria-label="Settings"] .instructionsHeader .monoLinkButton'
+    );
     return close ? safeFocus(close) : false;
   }
 
@@ -256,4 +272,23 @@ export function moveCalendarFocus(rowDelta: number, columnDelta: number): boolea
     `[data-calendar-row="${targetRow}"][data-calendar-column="${targetColumn}"]`;
   const target = document.querySelector<HTMLElement>(selector);
   return target ? safeFocus(target) : false;
+}
+
+/** In-app route from an anchor href, or null for external / non-nav links. */
+export function resolveInternalAppRoute(anchor: HTMLAnchorElement): string | null {
+  const raw = anchor.getAttribute('href');
+  if (!raw) return null;
+  if (/^(https?:|mailto:|tel:|javascript:|#)/i.test(raw) || raw.startsWith('//')) return null;
+  if (!raw.startsWith('/')) return null;
+  const path = raw.split('?')[0]?.split('#')[0] ?? '/';
+  return path || '/';
+}
+
+export function getFocusedAnchor(el: Element | null): HTMLAnchorElement | null {
+  if (el instanceof HTMLAnchorElement && el.hasAttribute('href')) return el;
+  if (el instanceof Element) {
+    const anchor = el.closest<HTMLAnchorElement>('a[href]');
+    if (anchor) return anchor;
+  }
+  return null;
 }
