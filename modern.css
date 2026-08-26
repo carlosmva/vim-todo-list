@@ -1,5 +1,5 @@
 :root {
-  --modern-font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  --modern-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   --modern-font-size-base: 18px;
   --modern-bg: linear-gradient(160deg, #eaf1ff 0%, #f7fbff 55%, #f1f7f4 100%);
   --modern-surface-1: rgba(255, 255, 255, 0.86);
@@ -142,6 +142,7 @@
  * <option>. Setting color-scheme on the root matches the platform menu to the
  * theme so option text stays readable (fixes light popup + light text on dark themes).
  */
+html[data-theme="puppertino"],
 html[data-theme="light"],
 html[data-theme="solarized-light"],
 html[data-theme="emacs"],
@@ -387,7 +388,7 @@ button,
 }
 
 .headerTitle {
-  font-family: var(--header-title-font-family, "Plus Jakarta Sans", var(--modern-font-sans));
+  font-family: var(--header-title-font-family, -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif);
   letter-spacing: 0.01em;
   opacity: 0.8;
   color: #c0c0c0;

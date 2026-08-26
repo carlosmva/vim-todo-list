@@ -80,7 +80,7 @@ function main() {
   copyDir(path.join(root, 'icons'), path.join(extOut, 'icons'));
   copyDir(path.join(root, 'vendor'), path.join(extOut, 'vendor'));
 
-  for (const css of ['popup.css', 'modern.css', 'nothing.css']) {
+  for (const css of ['popup.css', 'modern.css', 'puppertino.css', 'nothing.css']) {
     const src = path.join(root, css);
     if (fs.existsSync(src)) copyFile(src, path.join(extOut, css));
   }

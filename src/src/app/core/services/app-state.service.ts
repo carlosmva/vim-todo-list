@@ -24,8 +24,8 @@ export class AppStateService {
   readonly keyboardNavPlatform = signal<KeyboardNavPlatform>(defaultKeyboardNavPlatform());
   readonly popupSize = signal<PopupSizeId>('m');
   readonly headerTitleRaw = signal('');
-  readonly headerTitleFont = signal<HeaderTitleFontKey>('plus-jakarta');
-  readonly interfaceFont = signal<InterfaceFontKey>('plus-jakarta');
+  readonly headerTitleFont = signal<HeaderTitleFontKey>('inter');
+  readonly interfaceFont = signal<InterfaceFontKey>('inter');
   readonly headerTitleDisplay = computed(() => headerTitleForDisplay(this.headerTitleRaw()));
   readonly ready = signal(false);
 

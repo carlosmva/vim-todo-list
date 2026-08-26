@@ -5,7 +5,7 @@
   "description": "Chrome extension vim-todo-list persisted with SQLite (sql.js)",
   "type": "commonjs",
   "scripts": {
-    "vendor": "node scripts/copy-sqljs.js",
+    "vendor": "node scripts/copy-sqljs.js && node scripts/copy-puppertino.js",
     "icons": "node scripts/generate-icons.js",
     "build:ng": "npm run build --prefix src",
     "build:ext": "npm run vendor && npm run build:ng && node scripts/build-extension.js",

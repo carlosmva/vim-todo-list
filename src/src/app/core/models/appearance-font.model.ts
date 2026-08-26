@@ -1,8 +1,11 @@
 export const DEFAULT_HEADER_TITLE = 'Vim To-Do List';
 
-/** Top-tier defaults when nothing is stored (replaces theme Montserrat/IBM Plex). */
-export const DEFAULT_INTERFACE_FONT = 'plus-jakarta' as const;
-export const DEFAULT_HEADER_TITLE_FONT = 'plus-jakarta' as const;
+/** Top-tier defaults — Puppertino uses -apple-system + Inter. */
+export const DEFAULT_INTERFACE_FONT = 'inter' as const;
+export const DEFAULT_HEADER_TITLE_FONT = 'inter' as const;
+
+export const PUPPERTINO_FONT_STACK =
+  '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif';
 
 export const INTERFACE_FONT_ORDER = [
   'plus-jakarta',
@@ -27,7 +30,7 @@ export const INTERFACE_FONT_LABELS: Record<InterfaceFontKey, string> = {
 };
 
 export const INTERFACE_FONT_FAMILIES: Record<InterfaceFontKey, string> = {
-  inter: '"Inter", system-ui, sans-serif',
+  inter: `${PUPPERTINO_FONT_STACK}`,
   manrope: '"Manrope", system-ui, sans-serif',
   'dm-sans': '"DM Sans", system-ui, sans-serif',
   'plus-jakarta': '"Plus Jakarta Sans", system-ui, sans-serif',
@@ -71,7 +74,7 @@ export const HEADER_TITLE_FONT_LABELS: Record<HeaderTitleFontKey, string> = {
 
 export const HEADER_TITLE_FONT_FAMILIES: Record<Exclude<HeaderTitleFontKey, ''>, string> = {
   kelvinized: '"Kelvinized Normal", system-ui, sans-serif',
-  inter: '"Inter", system-ui, sans-serif',
+  inter: PUPPERTINO_FONT_STACK,
   manrope: '"Manrope", system-ui, sans-serif',
   'dm-sans': '"DM Sans", system-ui, sans-serif',
   'plus-jakarta': '"Plus Jakarta Sans", system-ui, sans-serif',

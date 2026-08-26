@@ -26,9 +26,10 @@ export const LEGACY_KEYS = {
 } as const;
 
 export const DEFAULT_BOARD = 'To Do';
-export const DEFAULT_THEME = 'dark';
+export const DEFAULT_THEME = 'puppertino';
 
 export const THEME_ORDER = [
+  'puppertino',
   'light',
   'dark',
   'solarized-light',
@@ -43,6 +44,7 @@ export const THEME_ORDER = [
 export type ThemeId = (typeof THEME_ORDER)[number];
 
 export const THEME_LABELS: Record<ThemeId, string> = {
+  puppertino: 'Puppertino (macOS)',
   light: 'Light',
   dark: 'Dark',
   'solarized-light': 'Solarized',
