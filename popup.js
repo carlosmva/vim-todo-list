@@ -2848,6 +2848,7 @@ async function main() {
   const guidedTourSkip = document.getElementById("guidedTourSkip");
 
   const textareaMinHeights = new WeakMap();
+  let pendingSearchTaskDraft = "";
 
   function autosizeTextarea(textarea) {
     if (!(textarea instanceof HTMLTextAreaElement)) return;
@@ -7901,8 +7902,13 @@ async function main() {
     }
 
     if (focusEditor) {
-      const editor = card.querySelector(".noteEditorArea");
-      if (editor instanceof HTMLElement) editor.focus();
+      const focusEditorNow = () => {
+        const liveCard = document.querySelector(`.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`);
+        const editor = liveCard instanceof HTMLElement ? liveCard.querySelector(".noteEditorArea") : null;
+        if (editor instanceof HTMLElement && openNoteEditorIds.has(noteId)) editor.focus();
+      };
+      focusEditorNow();
+      requestAnimationFrame(() => focusEditorNow());
     }
 
     keepCardInView(card);
@@ -7973,6 +7979,13 @@ async function main() {
     });
 
     cardFilterInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const draft = cardFilterInput.value.trim();
+        if (!draft) return;
+        e.preventDefault();
+        openAddTaskModalWithPrefill(draft, { clearSearchOnSubmit: true });
+        return;
+      }
       if (e.key !== "Escape") return;
       e.preventDefault();
       cardFilterInput.value = "";
@@ -7996,8 +8009,56 @@ async function main() {
     }
   }
 
+  function openAddTaskModalWithPrefill(prefillText = "", options = {}) {
+    const { clearSearchOnSubmit = false } = options || {};
+    const noteText = document.getElementById("noteText");
+    pendingSearchTaskDraft = clearSearchOnSubmit ? String(prefillText || "").trim() : "";
+    setAddNoteModalVisible(true);
+    if (!(noteText instanceof HTMLInputElement)) return;
+    noteText.value = String(prefillText || "");
+    clearNewNoteAutocomplete();
+    safeFocus(noteText);
+    try {
+      const len = noteText.value.length;
+      noteText.setSelectionRange(len, len);
+    } catch {
+      // Ignore browsers that do not support input selection here.
+    }
+  }
+
+  async function submitNewNote({ clearSearchDraftOnSuccess = false } = {}) {
+    const input = el("noteText");
+    const dueInput = document.getElementById("noteDueDate");
+    const text = input.value.trim();
+    if (!text) return false;
+
+    let dueAt = null;
+    if (dueInput instanceof HTMLInputElement && dueInput.value) {
+      const dateStr = dueInput.value;
+      const d = new Date(dateStr + "T00:00:00Z");
+      if (Number.isFinite(d.getTime())) dueAt = d.getTime();
+    }
+
+    insertNote(db, activeBoard, text, dueAt);
+    input.value = "";
+    if (dueInput instanceof HTMLInputElement) dueInput.value = "";
+    clearNewNoteAutocomplete();
+
+    if (clearSearchDraftOnSuccess) {
+      pendingSearchTaskDraft = "";
+      if (cardFilterInput instanceof HTMLInputElement) cardFilterInput.value = "";
+      cardFilterQuery = "";
+      updateCardFilterVisibility();
+    }
+
+    await persist();
+    await refresh();
+    setAddNoteModalVisible(false);
+    return true;
+  }
+
   if (addNoteButton instanceof HTMLButtonElement) {
-    addNoteButton.addEventListener("click", () => setAddNoteModalVisible(true));
+    addNoteButton.addEventListener("click", () => openAddTaskModalWithPrefill(""));
   }
   if (closeAddNoteModal instanceof HTMLButtonElement) {
     closeAddNoteModal.addEventListener("click", () => setAddNoteModalVisible(false));
@@ -13844,25 +13905,7 @@ async function main() {
 
   el("createForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const input = el("noteText");
-    const dueInput = document.getElementById("noteDueDate");
-    const text = input.value.trim();
-    if (!text) return;
-
-    let dueAt = null;
-    if (dueInput instanceof HTMLInputElement && dueInput.value) {
-      const dateStr = dueInput.value;
-      const d = new Date(dateStr + "T00:00:00Z");
-      if (Number.isFinite(d.getTime())) dueAt = d.getTime();
-    }
-
-    insertNote(db, activeBoard, text, dueAt);
-    input.value = "";
-    if (dueInput instanceof HTMLInputElement) dueInput.value = "";
-    clearNewNoteAutocomplete();
-    await persist();
-    await refresh();
-    setAddNoteModalVisible(false);
+    await submitNewNote({ clearSearchDraftOnSuccess: !!pendingSearchTaskDraft });
   });
 
   document.body.addEventListener("click", async (e) => {
@@ -14224,13 +14267,6 @@ async function main() {
     "pointerdown",
     (e) => {
       const target = e.target;
-
-      // Never start a card drag from inside the rich notes editor UI.
-      if (target.closest(".noteEditor")) {
-        e.preventDefault();
-        return;
-      }
-
       if (!(target instanceof Element)) return;
       const btn = target.closest("button[data-action='notesCmd']");
       if (!btn) return;
