@@ -6,6 +6,17 @@ Chrome extension for fast, keyboard-first task notes stored locally in an embedd
 
 Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
 
+## What's new in 1.3.0
+
+- Angular-based popup with responsive **medium**, **large**, and **full-screen** sizes.
+- Restored Dashboard activity heatmaps, board filters, and responsive Calendar views for the current and next month.
+- Bidirectional lazy loading keeps large Pending and Complete lists navigable without rendering every card at once.
+- Improved keyboard navigation across Notes, Calendar, Dashboard, Settings, and the add-note dialog.
+- Click a Calendar task to return to Notes with that card focused; click a card due date to edit it inline.
+- Optional Obsidian vault integration creates missing Markdown files, opens mapped notes, and asks which version to keep when a vault file conflicts with a card.
+- AI completion is available in both the task-name field and the rich Notes editor when Ollama is configured.
+- Database import/export includes appearance, popup size, keyboard layout, AI, and Obsidian settings; older databases safely receive missing defaults.
+
 ## Features
 
 - Two columns per board: **Pending** and **Complete**
