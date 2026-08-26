@@ -51,7 +51,14 @@ export class AppStateService {
     const theme = (THEME_ORDER.includes(storedTheme as ThemeId) ? storedTheme : DEFAULT_THEME) as ThemeId;
     this.theme.set(theme);
     this.activeBoard.set(env.b || DEFAULT_BOARD);
-    this.keyLayout.set(env.kl === 'dvorak' ? 'dvorak' : 'qwerty');
+    const storedKeyLayout = this.dbService.getSetting('app.keyboardLayout') ?? env.kl;
+    const keyLayout = storedKeyLayout === 'dvorak' ? 'dvorak' : 'qwerty';
+    this.keyLayout.set(keyLayout);
+    // Imported legacy databases do not contain this setting; seed a stable default for future exports.
+    if (this.dbService.getSetting('app.keyboardLayout') === null) {
+      this.dbService.setSetting('app.keyboardLayout', keyLayout);
+      void this.dbService.persist();
+    }
     this.keyboardNavPlatform.set(
       env.knp === 'mac' || env.knp === 'winlinux' ? env.knp : defaultKeyboardNavPlatform()
     );
@@ -67,7 +74,7 @@ export class AppStateService {
     this.headerTitleFont.set(headerTitleFont);
     this.interfaceFont.set(interfaceFont);
 
-    this.storage.patch({ t: theme, ps });
+    this.storage.patch({ t: theme, ps, kl: keyLayout });
     this.overlay.setTheme(theme);
     this.overlay.setPopupSize(ps);
     this.applyAppearance();
@@ -99,6 +106,8 @@ export class AppStateService {
   setKeyLayout(layout: 'qwerty' | 'dvorak'): void {
     this.keyLayout.set(layout);
     this.storage.patch({ kl: layout });
+    this.dbService.setSetting('app.keyboardLayout', layout);
+    void this.dbService.persist();
   }
 
   setKeyboardNavPlatform(platform: KeyboardNavPlatform): void {

@@ -1,0 +1,183 @@
+:host:empty {
+  display: none;
+}
+
+:host:not(:empty) {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: block;
+  pointer-events: auto;
+}
+
+.obsidianConflictModal {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.obsidianConflictModal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, #000000 52%, transparent);
+}
+
+.obsidianConflictModal__panel {
+  position: relative;
+  z-index: 1;
+  max-width: min(900px, 100%);
+  max-height: min(90vh, 100%);
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: var(--modern-radius-sm, 4px);
+  color: var(--modern-text, #161616);
+  background: var(--modern-surface-2, var(--cds-layer, #ffffff));
+  box-shadow: var(--modern-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.2));
+}
+
+.obsidianConflictModal__title {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--modern-text, inherit);
+}
+
+.obsidianConflictModal__hint {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--modern-text-subtle, rgba(0, 0, 0, 0.65));
+}
+
+.obsidianConflictModal__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: stretch;
+}
+
+@media (max-width: 700px) {
+  .obsidianConflictModal__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.obsidianConflictModal__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+}
+
+.obsidianConflictModal__colLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--modern-text, inherit);
+}
+
+.obsidianConflictModal__pre {
+  flex: 1 1 auto;
+  margin: 0;
+  min-height: 4rem;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 6px 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  color: var(--modern-text, inherit);
+  background: var(--modern-surface-muted, var(--cds-field, #f4f4f4));
+}
+
+.obsidianConflictModal__diffLine {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr);
+  min-height: 1.35em;
+  padding: 1px 8px;
+}
+
+.obsidianConflictModal__diffMarker {
+  font-weight: 700;
+  user-select: none;
+}
+
+.obsidianConflictModal__diffContent {
+  min-width: 0;
+}
+
+.obsidianConflictModal__diffLine--added {
+  color: #0e6027;
+  background: #dafbe1;
+}
+
+.obsidianConflictModal__diffLine--removed {
+  color: #82071e;
+  background: #ffebe9;
+}
+
+.obsidianConflictModal__diffLine--note {
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  background: color-mix(in srgb, var(--modern-border, #e0e0e0) 30%, transparent);
+  font-style: italic;
+}
+
+:host-context([data-theme='dark']) .obsidianConflictModal__diffLine--added,
+:host-context([data-theme='solarized-dark']) .obsidianConflictModal__diffLine--added,
+:host-context([data-theme='nothing']) .obsidianConflictModal__diffLine--added,
+:host-context([data-theme='command-line']) .obsidianConflictModal__diffLine--added {
+  color: #aff5b4;
+  background: rgba(46, 160, 67, 0.26);
+}
+
+:host-context([data-theme='dark']) .obsidianConflictModal__diffLine--removed,
+:host-context([data-theme='solarized-dark']) .obsidianConflictModal__diffLine--removed,
+:host-context([data-theme='nothing']) .obsidianConflictModal__diffLine--removed,
+:host-context([data-theme='command-line']) .obsidianConflictModal__diffLine--removed {
+  color: #ffdcd7;
+  background: rgba(248, 81, 73, 0.25);
+}
+
+.obsidianConflictModal__colActions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.obsidianConflictModal__choiceBtn {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  gap: 0.45rem;
+}
+
+.obsidianConflictModal__kbd {
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 0.28em;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.4;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--modern-surface-muted, #f4f4f4) 80%, transparent);
+}
+
+.obsidianConflictModal__footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  margin: 0 -4px;
+  padding-left: 4px;
+  padding-right: 4px;
+}

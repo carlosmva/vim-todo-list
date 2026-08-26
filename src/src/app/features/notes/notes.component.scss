@@ -1,3 +1,11 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 :host ::ng-deep .tabs .bx--tabs__nav-link {
   gap: 0.35rem;
 }
@@ -5,6 +13,63 @@
 :host ::ng-deep .noteEditorArea {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.noteAiSuggestion {
+  margin-top: 4px;
+  color: var(--modern-link, #0f62fe);
+  text-align: left;
+}
+
+.noteInlineTrailInner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.noteEditorAutocomplete {
+  margin-top: 6px;
+}
+
+.notesLoadMore {
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  color: var(--cds-text-secondary, #6f6f6f);
+  text-align: center;
+  opacity: 0.85;
+}
+
+.notesLoadMore--before {
+  margin-bottom: 4px;
+}
+
+.notesChrome {
+  flex: 0 0 auto;
+  z-index: 3;
+  background: var(--modern-bg, var(--cds-layer, #f4f4f4));
+  padding-bottom: 2px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--cds-border-subtle, #e0e0e0) 65%, transparent);
+}
+
+.obsidianSyncBanner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #82071e;
+  background: #ffebe9;
+  border: 1px solid color-mix(in srgb, #82071e 22%, transparent);
+}
+
+.obsidianSyncBanner--warning {
+  color: #7a5b00;
+  background: #fff3c4;
+  border-color: color-mix(in srgb, #7a5b00 22%, transparent);
 }
 
 :host ::ng-deep .noteNotesPreview__body {

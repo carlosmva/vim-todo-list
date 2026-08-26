@@ -19,17 +19,60 @@
         <div class="createFieldsRow">
           <div class="bx--form-item createField createField--note">
             <label class="createFieldLabel" for="noteText">Task</label>
-            <input
-              id="noteText"
-              class="bx--text-input"
-              type="text"
-              placeholder="New note…"
-              maxlength="300"
-              autocomplete="off"
-              [(ngModel)]="newNoteText"
-              name="noteText"
-              required
-            />
+            <div class="noteTextInlineWrap">
+              <input
+                id="noteText"
+                class="bx--text-input"
+                type="text"
+                placeholder="New note…"
+                maxlength="300"
+                autocomplete="off"
+                [ngModel]="newNoteText"
+                (ngModelChange)="onNewTaskInput($event)"
+                (keydown)="onNewTaskKeydown($event)"
+                name="noteText"
+                required
+              />
+              @if (taskTabCompletion(); as tabCompletion) {
+                <div class="noteInlineTrail" aria-hidden="true">
+                  <div class="noteInlineTrailInner">
+                    <span class="noteInlineTrailPrefix">{{ tabCompletion.baseText }}</span>
+                    <span class="noteInlineTrailSuffix">{{ tabCompletion.completion }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+            @if (taskAutocompleteVisible()) {
+              <div class="noteAutocomplete" aria-label="Autocomplete suggestions">
+                <span class="noteAutocompleteLabel">Suggestions:</span>
+                @if (taskAiPending()) {
+                  <span class="noteAutocompletePending">AI …</span>
+                } @else if (taskAiError()) {
+                  <span class="noteAutocompletePending">AI error: {{ taskAiError() }}</span>
+                }
+                @for (suggestion of taskLocalSuggestions(); track suggestion) {
+                  <button type="button" class="monoLinkButton" (click)="applyTaskLocalSuggestion(suggestion)">{{ suggestion }}</button>
+                }
+                @if (taskLocalCompletion(); as localCompletion) {
+                  <button
+                    type="button"
+                    class="monoLinkButton"
+                    (click)="applyTaskCompletionCandidate(localCompletion)"
+                  >
+                    Complete: {{ completionPreview(localCompletion) }}
+                  </button>
+                }
+                @if (taskAiCompletion(); as aiCompletion) {
+                  <button
+                    type="button"
+                    class="monoLinkButton"
+                    (click)="applyTaskCompletionCandidate(aiCompletion)"
+                  >
+                    AI: {{ completionPreview(aiCompletion) }}
+                  </button>
+                }
+              </div>
+            }
           </div>
           <div class="bx--form-item createField createField--due">
             <label class="createFieldLabel" for="noteDueDate">Due</label>
@@ -72,7 +115,51 @@
   </div>
   }
 
+  @if (deleteDialogVisible()) {
+  <div id="deleteNoteModal" class="addNoteModal deleteNoteModal" role="presentation">
+    <div class="addNoteModalBackdrop" aria-hidden="true" (click)="closeDeleteDialog()"></div>
+    <section
+      class="addNoteModalPanel deleteNoteModalPanel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deleteNoteModalTitle"
+      aria-describedby="deleteNoteModalDesc"
+    >
+      <div class="addNoteModalHeader">
+        <h2 id="deleteNoteModalTitle">Delete task?</h2>
+      </div>
+      <p id="deleteNoteModalDesc" class="deleteNoteModalMessage">
+        This permanently removes <strong>{{ deletePreviewText() }}</strong>. This cannot be undone.
+      </p>
+      <div class="deleteNoteModalActions" aria-label="Delete confirmation actions">
+        <button type="button" id="deleteNoteModalCancel" class="monoLinkButton" (click)="closeDeleteDialog()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          id="deleteNoteModalConfirm"
+          class="monoLinkButton deleteNoteModalConfirm"
+          (click)="confirmDeleteDialog()"
+        >
+          Delete
+        </button>
+      </div>
+    </section>
+  </div>
+  }
+
   <section class="notesMain" aria-label="Notes">
+    <div class="notesChrome">
+    @if (obsidianMessage()) {
+      <div
+        class="obsidianSyncBanner"
+        [class.obsidianSyncBanner--warning]="obsidianMessageKind() === 'warning'"
+        role="status"
+      >
+        <span>{{ obsidianMessage() }}</span>
+        <button type="button" class="monoLinkButton" (click)="dismissObsidianMessage()">Dismiss</button>
+      </div>
+    }
     <div class="notesToolbar">
       <div class="cardFilterRow" aria-label="Search notes across boards">
         <label class="cardFilterLabel" for="cardFilterInput">Search</label>
@@ -131,11 +218,32 @@
         }
       </ul>
     </nav>
+    </div>
 
-    <main id="notesBoard" class="board board--split-pending" aria-label="Notes board" data-board-split="pending">
-      <section id="colPending" class="col bx--tile col--pending" aria-label="Pending column" data-column="pending">
+    <main
+      id="notesBoard"
+      class="board"
+      [class.board--split-pending]="boardSplit() === 'pending'"
+      [class.board--split-complete]="boardSplit() === 'complete'"
+      [attr.data-board-split]="boardSplit()"
+      aria-label="Notes board"
+      (click)="onBoardClick($event)"
+    >
+      <section
+        id="colPending"
+        class="col bx--tile col--pending"
+        aria-label="Pending column"
+        data-column="pending"
+        tabindex="0"
+        [attr.aria-expanded]="boardSplit() === 'pending'"
+        (keydown)="onBoardColumnKeydown($event)"
+        (scroll)="onListScroll('pending', $event)"
+      >
         <div class="colTitle">Pending ({{ pendingNotes().length }})</div>
-        <div id="pendingList" class="list" aria-label="Pending notes" (scroll)="onListScroll('pending', $event)">
+        <div id="pendingList" class="list" aria-label="Pending notes">
+          @if (hasMorePendingBefore()) {
+            <div class="notesLoadMore notesLoadMore--before" aria-live="polite">Scroll up for earlier tasks</div>
+          }
           @for (note of visiblePendingNotes(); track note.id) {
             <article
               class="bx--tile noteCard"
@@ -148,7 +256,21 @@
                 @if (!isFlipped(note.id)) {
                   <div class="noteFace">
                     @if (note.due_at) {
-                      <div class="noteDueDateRow">Due: {{ formatDue(note.due_at) }}</div>
+                      <div class="noteDueDateRow">
+                        @if (editingDueNoteId() === note.id) {
+                          <input
+                            class="bx--text-input noteDueDateInput"
+                            type="date"
+                            [attr.data-due-editor]="note.id"
+                            [(ngModel)]="dueEditValue"
+                            [ngModelOptions]="{ standalone: true }"
+                            (keydown)="onInlineDueDateKeydown(note, $event)"
+                            (blur)="saveInlineDueDate(note)"
+                          />
+                        } @else {
+                          <button type="button" class="monoLinkButton noteDueDateBtn" (click)="editDueDate(note)">Due: {{ formatDue(note.due_at) }}</button>
+                        }
+                      </div>
                     }
                     <div class="noteText" [attr.data-priority]="note.priority">{{ note.text }}</div>
                     @if (editorOpen(note.id)) {
@@ -160,7 +282,44 @@
                           aria-multiline="true"
                           aria-label="Rich notes editor"
                           [attr.data-note-id]="note.id"
+                          (input)="onEditorInput(note.id, $event)"
+                          (keydown)="onEditorKeydown(note.id, $event)"
+                          (keyup)="refreshEditorInlineTrail(note.id)"
+                          (click)="refreshEditorInlineTrail(note.id)"
                         ></div>
+                        @if (editorAutocompleteVisible(note.id)) {
+                          <div class="noteAutocomplete noteEditorAutocomplete" aria-label="Editor autocomplete suggestions">
+                            <span class="noteAutocompleteLabel">Suggestions:</span>
+                            @if (editorAiPending()) {
+                              <span class="noteAutocompletePending">AI …</span>
+                            } @else if (editorAiError()) {
+                              <span class="noteAutocompletePending">AI error: {{ editorAiError() }}</span>
+                            }
+                            @for (suggestion of editorLocalSuggestions(); track suggestion) {
+                              <button type="button" class="monoLinkButton" (click)="applyEditorLocalSuggestion(note.id, suggestion)">{{ suggestion }}</button>
+                            }
+                            @if (editorLocalCompletion(); as localCompletion) {
+                              <button
+                                type="button"
+                                class="monoLinkButton"
+                                (click)="applyEditorCompletionCandidate(note.id, localCompletion)"
+                              >
+                                Complete: {{ completionPreview(localCompletion) }}
+                              </button>
+                            }
+                            @if (editorAiCompletion(); as aiWrap) {
+                              @if (aiWrap.noteId === note.id && aiWrap.candidate.completion) {
+                                <button
+                                  type="button"
+                                  class="monoLinkButton"
+                                  (click)="applyEditorCompletionCandidate(note.id, aiWrap.candidate)"
+                                >
+                                  AI: {{ completionPreview(aiWrap.candidate) }}
+                                </button>
+                              }
+                            }
+                          </div>
+                        }
                         <div
                           class="noteVimToast"
                           [attr.data-note-id]="note.id"
@@ -187,7 +346,7 @@
                       <button type="button" class="monoLinkButton" (click)="cyclePriority(note)">
                         Priority: {{ formatPriority(note.priority) }}
                       </button>
-                      <button type="button" class="monoLinkButton" (click)="toggleFlip(note.id)">Links</button>
+                      <button type="button" class="monoLinkButton" data-action="flip" (click)="toggleFlip(note.id)">Links</button>
                       <button type="button" class="monoLinkButton" (click)="toggleEditor(note)">Notes</button>
                       @if (obsidianConfigured()) {
                         <button type="button" class="monoLinkButton" (click)="openInObsidian(note)">Obsidian</button>
@@ -195,21 +354,80 @@
                       <button type="button" class="monoLinkButton" (click)="move(note, 'up')">↑</button>
                       <button type="button" class="monoLinkButton" (click)="move(note, 'down')">↓</button>
                       <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Complete</button>
-                      <button type="button" class="monoLinkButton" (click)="confirmDelete(note)">Delete</button>
+                      <button type="button" class="monoLinkButton" data-action="deleteNote" (click)="confirmDelete(note)">Delete</button>
                     </div>
                   </div>
                 } @else {
                   <div class="noteFace noteBack">
                     <div class="noteBackBody">
+                      <div class="noteBackTitle">Links</div>
+                      <div class="linksEntryGrid">
+                        <form
+                          class="linkForm linksEntryGrid__form"
+                          [id]="linkFormId(note.id)"
+                          [attr.data-note-id]="note.id"
+                          aria-label="Add link"
+                          (submit)="submitLink(note, $event)"
+                        >
+                          <input
+                            class="bx--text-input linksEntryGrid__desc"
+                            type="text"
+                            name="description"
+                            placeholder="Description…"
+                            autocomplete="off"
+                            maxlength="200"
+                            required
+                            [(ngModel)]="linkDraft(note.id).description"
+                            [ngModelOptions]="{ standalone: true }"
+                          />
+                          <input
+                            class="bx--text-input linksEntryGrid__url"
+                            type="text"
+                            name="url"
+                            placeholder="URL (example.com)…"
+                            autocomplete="off"
+                            maxlength="2000"
+                            required
+                            [(ngModel)]="linkDraft(note.id).url"
+                            [ngModelOptions]="{ standalone: true }"
+                          />
+                        </form>
+                        <button
+                          type="button"
+                          class="monoLinkButton linksEntryGrid__back"
+                          data-action="unflip"
+                          (click)="toggleFlip(note.id)"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="submit"
+                          class="monoLinkButton linksEntryGrid__add"
+                          [attr.form]="linkFormId(note.id)"
+                        >
+                          Add link
+                        </button>
+                      </div>
+                      <hr />
                       <div class="linkList">
-                        @for (link of links(note); track link.id) {
-                          <div class="linkRow">
-                            <a [href]="link.url" target="_blank" rel="noreferrer">{{ link.description || link.url }}</a>
-                            <button type="button" class="monoLinkButton" (click)="deleteLink(link.id)">Remove</button>
-                          </div>
+                        @if (!links(note).length) {
+                          <div class="linkListEmpty">No links yet.</div>
+                        } @else {
+                          @for (link of links(note); track link.id) {
+                            <div class="linkRow">
+                              <a [href]="link.url" target="_blank" rel="noreferrer">{{ link.description || link.url }}</a>
+                              <button
+                                type="button"
+                                class="monoLinkButton"
+                                data-action="deleteLink"
+                                (click)="deleteLink(link.id, note.id)"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          }
                         }
                       </div>
-                      <button type="button" class="monoLinkButton" (click)="toggleFlip(note.id)">Back</button>
                     </div>
                   </div>
                 }
@@ -222,9 +440,21 @@
         </div>
       </section>
 
-      <section id="colComplete" class="col bx--tile col--complete" aria-label="Complete column" data-column="complete">
+      <section
+        id="colComplete"
+        class="col bx--tile col--complete"
+        aria-label="Complete column"
+        data-column="complete"
+        tabindex="0"
+        [attr.aria-expanded]="boardSplit() === 'complete'"
+        (keydown)="onBoardColumnKeydown($event)"
+        (scroll)="onListScroll('complete', $event)"
+      >
         <div class="colTitle">Complete ({{ completeNotes().length }})</div>
-        <div id="completeList" class="list" aria-label="Complete notes" (scroll)="onListScroll('complete', $event)">
+        <div id="completeList" class="list" aria-label="Complete notes">
+          @if (hasMoreCompleteBefore()) {
+            <div class="notesLoadMore notesLoadMore--before" aria-live="polite">Scroll up for earlier tasks</div>
+          }
           @for (note of visibleCompleteNotes(); track note.id) {
             <article class="bx--tile noteCard" [attr.data-note-id]="note.id" [attr.data-priority]="note.priority">
               <div class="noteCardInner">
@@ -232,7 +462,7 @@
                   <div class="noteText" [attr.data-priority]="note.priority">{{ note.text }}</div>
                   <div class="noteActions">
                     <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Pending</button>
-                    <button type="button" class="monoLinkButton" (click)="confirmDelete(note)">Delete</button>
+                    <button type="button" class="monoLinkButton" data-action="deleteNote" (click)="confirmDelete(note)">Delete</button>
                   </div>
                 </div>
               </div>

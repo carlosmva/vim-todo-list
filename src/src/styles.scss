@@ -14,6 +14,13 @@
   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
 }
 
+.app__topChrome {
+  flex: 0 0 auto;
+  z-index: 30;
+  background: var(--modern-bg, var(--cds-layer, #f4f4f4));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--cds-border-subtle, #e0e0e0) 80%, transparent);
+}
+
 .viewNav {
   display: flex;
   flex-wrap: nowrap;

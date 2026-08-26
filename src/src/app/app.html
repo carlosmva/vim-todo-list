@@ -1,5 +1,6 @@
 @if (ready()) {
   <div class="app" role="application" aria-label="Notes Kanban">
+    <div class="app__topChrome">
     @if (showViewNav() && ribbonEnabled() && ribbonAtTop()) {
       <app-priority-ribbon class="app__ribbonTop" />
     }
@@ -59,11 +60,13 @@
         }
       </nav>
     }
+    </div>
 
     <div class="body">
       <router-outlet />
     </div>
   </div>
+  <app-obsidian-conflict-modal />
 } @else {
   <div class="loading">Loading…</div>
 }

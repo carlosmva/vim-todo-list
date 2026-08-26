@@ -4,8 +4,10 @@ import { AppStateService } from '../services/app-state.service';
 import { OverlayBridgeService } from '../services/overlay-bridge.service';
 import {
   getFocusNewNoteKey,
+  getCompleteColumnKey,
   getNavKeys,
   getNotesCheckboxKey,
+  getPendingColumnKey,
   modKeyActive,
   modKeyOnly,
   type KeyboardLayout,
@@ -25,11 +27,14 @@ import {
   focusViewContentEntry,
   getActiveViewNavLink,
   getAllCardsInDomOrder,
+  getBoardColumnElements,
   getBoardTabElements,
   getCardFromElement,
+  getExpandedBoardColumn,
   getFocusedAnchor,
   getHeaderNavTargets,
   getViewNavTargets,
+  isOnBoardColumn,
   isOnBoardTabs,
   isTypingTarget,
   isViewNavVisible,
@@ -46,6 +51,7 @@ import {
 import { NotesKeyboardBridge } from './notes-keyboard-bridge.service';
 import { SettingsKeyboardBridge } from './settings-keyboard-bridge.service';
 import { ThemeSelectKeyboardService } from './theme-select-keyboard.service';
+import { handleLinksPanelModNav, isInLinksPanel } from './note-links-keyboard.util';
 import { handleSettingsEnterActivate, handleSettingsKeyboardNav } from './settings-keyboard.util';
 
 @Injectable({ providedIn: 'root' })
@@ -65,6 +71,7 @@ export class KeyboardNavigationService {
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keydown', this.onBoardShortcut, true);
     document.addEventListener('keydown', this.onSlashFilter, true);
+    document.addEventListener('keydown', this.onColumnPanelShortcut, true);
     document.addEventListener('keydown', this.onEscape, true);
   }
 
@@ -73,6 +80,7 @@ export class KeyboardNavigationService {
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keydown', this.onBoardShortcut, true);
     document.removeEventListener('keydown', this.onSlashFilter, true);
+    document.removeEventListener('keydown', this.onColumnPanelShortcut, true);
     document.removeEventListener('keydown', this.onEscape, true);
     this.attached = false;
   }
@@ -86,6 +94,7 @@ export class KeyboardNavigationService {
   }
 
   private onBoardShortcut = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
     const key = e.key;
     if (key < '1' || key > '9') return;
     const hasMod = modKeyActive(e, this.platform());
@@ -101,6 +110,7 @@ export class KeyboardNavigationService {
   };
 
   private onSlashFilter = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
     if (e.key !== '/' || modKeyActive(e, this.platform()) || e.ctrlKey || e.metaKey) return;
     if (isTypingTarget(document.activeElement)) return;
     const path = this.router.url.split('?')[0];
@@ -111,7 +121,30 @@ export class KeyboardNavigationService {
     bridge.focusFilter();
   };
 
+  private onColumnPanelShortcut = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
+    const layout = this.layout();
+    const pendingKey = getPendingColumnKey(layout);
+    const completeKey = getCompleteColumnKey(layout);
+    const key = (e.key || '').toLowerCase();
+    if (key !== pendingKey && key !== completeKey) return;
+    if (modKeyActive(e, this.platform()) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    const path = this.router.url.split('?')[0];
+    if (path !== '/' && path !== '') return;
+
+    const bridge = this.notesBridge.get();
+    if (!bridge) return;
+    if (bridge.isAddDialogOpen?.() || bridge.isDeleteDialogOpen?.()) return;
+    if (bridge.hasOpenEditor()) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    bridge.setBoardColumnSplit(key === pendingKey ? 'pending' : 'complete');
+  };
+
   private onEscape = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
     if (e.key !== 'Escape' || modKeyActive(e, this.platform()) || e.ctrlKey || e.metaKey) return;
 
     if (this.themeSelectKeyboard.disarmFocused()) {
@@ -121,10 +154,24 @@ export class KeyboardNavigationService {
     }
 
     const bridge = this.notesBridge.get();
+    if (bridge?.isDeleteDialogOpen?.()) {
+      e.preventDefault();
+      e.stopPropagation();
+      bridge.closeDeleteDialog();
+      return;
+    }
+
     if (bridge?.isAddDialogOpen?.()) {
       e.preventDefault();
       e.stopPropagation();
       bridge.closeAddDialog();
+      return;
+    }
+
+    const flippedCard = getCardFromElement(document.activeElement);
+    if (flippedCard?.classList.contains('is-flipped') && bridge?.closeFlippedOrEditor()) {
+      e.preventDefault();
+      e.stopPropagation();
       return;
     }
 
@@ -148,6 +195,7 @@ export class KeyboardNavigationService {
   private colonTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
     // Chrome assigns Alt+Enter on anchors to save/download behavior. Route in-app
     // links through the router and suppress the default for everything else.
     if (e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -234,7 +282,43 @@ export class KeyboardNavigationService {
       return;
     }
 
+    if (bridge?.isDeleteDialogOpen?.()) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        bridge.cycleDeleteDialogFocus(e.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (modKeyOnly(e, platform)) {
+        const direction =
+          key === nav.left ? 'left' : key === nav.right ? 'right' : key === nav.up ? 'up' : key === nav.down ? 'down' : null;
+        if (direction) {
+          e.preventDefault();
+          e.stopPropagation();
+          bridge.moveDeleteDialogFocus(direction);
+        }
+      }
+      return;
+    }
+
     if (bridge?.isAddDialogOpen?.()) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        bridge.cycleAddDialogFocus(e.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (modKeyOnly(e, platform)) {
+        const direction =
+          key === nav.left ? 'left' : key === nav.right ? 'right' : key === nav.up ? 'up' : key === nav.down ? 'down' : null;
+        if (direction) {
+          e.preventDefault();
+          e.stopPropagation();
+          bridge.moveAddDialogFocus(direction);
+        }
+      }
       return;
     }
 
@@ -318,6 +402,38 @@ export class KeyboardNavigationService {
     bridge: ReturnType<NotesKeyboardBridge['get']>
   ): void {
     const path = this.router.url.split('?')[0] || '/';
+    const linksCard =
+      activeEl instanceof Element && isInLinksPanel(activeEl) ? getCardFromElement(activeEl) : null;
+    if (
+      linksCard &&
+      (key === nav.left || key === nav.right || key === nav.up || key === nav.down)
+    ) {
+      if (handleLinksPanelModNav(key, nav, linksCard)) return;
+      if (key === nav.up || key === nav.down) {
+        const cards = getAllCardsInDomOrder();
+        const idx = cards.indexOf(linksCard);
+        const firstPending = document.querySelector('#pendingList .noteCard[data-note-id]');
+        const firstComplete = document.querySelector('#completeList .noteCard[data-note-id]');
+        if (key === nav.up && (linksCard === firstPending || linksCard === firstComplete || idx <= 0)) {
+          bridge?.closeCardOverlays(linksCard);
+          focusMainBoardSwitcherTab();
+          return;
+        }
+        moveCardFocus(key === nav.down ? 1 : -1, {
+          onLeaveCard: (card) => bridge?.closeCardOverlays(card),
+          loadMoreAfter: (card) => {
+            const noteId = Number(card.dataset['noteId']);
+            return Number.isFinite(noteId) && !!bridge?.loadMoreAfter?.(noteId);
+          },
+          loadMoreBefore: (card) => {
+            const noteId = Number(card.dataset['noteId']);
+            return Number.isFinite(noteId) && !!bridge?.loadMoreBefore?.(noteId);
+          },
+        });
+        return;
+      }
+    }
+
     const headerEl = resolveHeaderNavElement(activeEl);
     const inHeader = headerEl != null;
     const inViewNav =
@@ -450,9 +566,69 @@ export class KeyboardNavigationService {
           focusCardPrimaryAction(cards[0]);
           return;
         }
-        const col = document.getElementById('colPending');
-        if (col instanceof HTMLElement) safeFocus(col);
+        const col = getExpandedBoardColumn();
+        if (col) safeFocus(col);
         return;
+      }
+    }
+
+    if (path === '/' || path === '') {
+      const { board, pending, complete } = getBoardColumnElements();
+      if (
+        board &&
+        pending &&
+        complete &&
+        activeEl instanceof HTMLElement &&
+        isOnBoardColumn(activeEl)
+      ) {
+        if (key === nav.left && activeEl === complete) {
+          safeFocus(pending);
+          return;
+        }
+        if (key === nav.right && activeEl === pending) {
+          safeFocus(complete);
+          return;
+        }
+        if (key === nav.up) {
+          focusMainBoardSwitcherTab();
+          return;
+        }
+        if (key === nav.down) {
+          const splitPending = board.classList.contains('board--split-pending');
+          const splitComplete = board.classList.contains('board--split-complete');
+          if (splitPending && activeEl === pending) {
+            const first = document.querySelector('#pendingList .noteCard');
+            if (first instanceof HTMLElement) {
+              focusCardPrimaryAction(first);
+              return;
+            }
+            return;
+          }
+          if (splitComplete && activeEl === complete) {
+            const first = document.querySelector('#completeList .noteCard');
+            if (first instanceof HTMLElement) {
+              focusCardPrimaryAction(first);
+              return;
+            }
+            return;
+          }
+          if (splitPending && activeEl === complete) {
+            bridge?.setBoardColumnSplit('complete');
+            requestAnimationFrame(() => {
+              const first = document.querySelector('#completeList .noteCard');
+              if (first instanceof HTMLElement) focusCardPrimaryAction(first);
+            });
+            return;
+          }
+          if (splitComplete && activeEl === pending) {
+            bridge?.setBoardColumnSplit('pending');
+            requestAnimationFrame(() => {
+              const first = document.querySelector('#pendingList .noteCard');
+              if (first instanceof HTMLElement) focusCardPrimaryAction(first);
+            });
+            return;
+          }
+        }
       }
     }
 
@@ -504,11 +680,15 @@ export class KeyboardNavigationService {
       const onCard = getCardFromElement(activeEl);
       if (onCard) {
         if (key === nav.up) {
+          const noteId = Number(onCard.dataset['noteId']);
+          if (Number.isFinite(noteId) && this.notesBridge.get()?.loadMoreBefore?.(noteId)) return;
+
           const cards = getAllCardsInDomOrder();
           const idx = cards.indexOf(onCard);
           const firstPending = document.querySelector('#pendingList .noteCard[data-note-id]');
           const firstComplete = document.querySelector('#completeList .noteCard[data-note-id]');
           if (onCard === firstPending || onCard === firstComplete || idx <= 0) {
+            this.notesBridge.get()?.closeCardOverlays(onCard);
             focusMainBoardSwitcherTab();
             return;
           }
@@ -517,7 +697,17 @@ export class KeyboardNavigationService {
           const noteId = Number(onCard.dataset['noteId']);
           if (Number.isFinite(noteId) && this.notesBridge.get()?.loadMoreAfter?.(noteId)) return;
         }
-        moveCardFocus(key === nav.down ? 1 : -1);
+        moveCardFocus(key === nav.down ? 1 : -1, {
+          onLeaveCard: (card) => this.notesBridge.get()?.closeCardOverlays(card),
+          loadMoreAfter: (card) => {
+            const noteId = Number(card.dataset['noteId']);
+            return Number.isFinite(noteId) && !!this.notesBridge.get()?.loadMoreAfter?.(noteId);
+          },
+          loadMoreBefore: (card) => {
+            const noteId = Number(card.dataset['noteId']);
+            return Number.isFinite(noteId) && !!this.notesBridge.get()?.loadMoreBefore?.(noteId);
+          },
+        });
         return;
       }
 

@@ -290,6 +290,12 @@ html[data-theme="nothing"] body.bx--body {
   color: var(--modern-text) !important;
 }
 
+[data-theme="nothing"] .dashboardFilterButton.monoLinkButton,
+[data-theme="nothing-light"] .dashboardFilterButton.monoLinkButton {
+  color: inherit;
+  text-decoration: none;
+}
+
 [data-theme="nothing"] .headerLink:hover,
 [data-theme="nothing"] .headerIconButton:hover,
 [data-theme="nothing"] .monoLinkButton:hover:not(:disabled),

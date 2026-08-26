@@ -9,6 +9,7 @@ import { OverlayBridgeService } from './core/services/overlay-bridge.service';
 import { PriorityRibbonService } from './core/services/priority-ribbon.service';
 import { PriorityRibbonComponent } from './features/priority-ribbon/priority-ribbon.component';
 import { ThemeSelectKeyboardDirective } from './core/keyboard/theme-select-keyboard.directive';
+import { ObsidianConflictModalComponent } from './features/obsidian-conflict/obsidian-conflict-modal.component';
 import { THEME_ORDER, ThemeId } from './core/models/envelope.model';
 
 const PRIMARY_VIEW_PATHS = new Set(['/', '/dashboard', '/calendar']);
@@ -17,7 +18,7 @@ const PRIORITY_RIBBON_REFRESH_MS = 30_000;
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, FormsModule, PriorityRibbonComponent, ThemeSelectKeyboardDirective],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, FormsModule, PriorityRibbonComponent, ThemeSelectKeyboardDirective, ObsidianConflictModalComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

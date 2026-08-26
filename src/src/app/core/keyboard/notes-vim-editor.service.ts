@@ -118,6 +118,7 @@ export class NotesVimEditorService {
   };
 
   private onEscape = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
     if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
     const bridge = this.bridge.get();
     if (!bridge?.hasOpenEditor()) return;
@@ -168,6 +169,7 @@ export class NotesVimEditorService {
   };
 
   private onEditorKeyDown = (e: KeyboardEvent): void => {
+    if (document.getElementById('obsidianConflictModal')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
     const target = e.target;

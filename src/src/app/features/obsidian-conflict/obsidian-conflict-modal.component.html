@@ -1,0 +1,67 @@
+@if (conflict(); as conflict) {
+  <div id="obsidianConflictModal" class="obsidianConflictModal" role="presentation">
+    <div id="obsidianConflictModalBackdrop" class="obsidianConflictModal__backdrop" aria-hidden="true" (click)="close()"></div>
+    <section
+      class="obsidianConflictModal__panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="obsidianConflictTitle"
+      aria-describedby="obsidianConflictHint"
+    >
+      <h3 id="obsidianConflictTitle" class="obsidianConflictModal__title">Resolve conflict</h3>
+      <p id="obsidianConflictHint" class="obsidianConflictModal__hint">{{ hint(conflict) }}</p>
+      <div class="obsidianConflictModal__grid">
+        <div class="obsidianConflictModal__col">
+          <div class="obsidianConflictModal__colLabel">This card (extension)</div>
+          <pre id="obsidianConflictApp" class="obsidianConflictModal__pre" tabindex="-1">
+            @for (line of diff(conflict).appLines; track $index) {
+              <span class="obsidianConflictModal__diffLine obsidianConflictModal__diffLine--{{ line.kind }}">
+                <span class="obsidianConflictModal__diffMarker">{{ line.marker }}</span>
+                <span class="obsidianConflictModal__diffContent">{{ line.text }}</span>
+              </span>
+            }
+          </pre>
+          <div class="obsidianConflictModal__colActions">
+            <button
+              type="button"
+              id="obsidianConflictUseApp"
+              class="monoLinkButton obsidianConflictModal__choiceBtn"
+              (click)="resolve('app')"
+            >
+              Keep this card
+              <kbd class="obsidianConflictModal__kbd">1</kbd>
+            </button>
+          </div>
+        </div>
+        <div class="obsidianConflictModal__col">
+          <div class="obsidianConflictModal__colLabel">Vault file on disk</div>
+          <pre id="obsidianConflictVault" class="obsidianConflictModal__pre" tabindex="-1">
+            @for (line of diff(conflict).vaultLines; track $index) {
+              <span class="obsidianConflictModal__diffLine obsidianConflictModal__diffLine--{{ line.kind }}">
+                <span class="obsidianConflictModal__diffMarker">{{ line.marker }}</span>
+                <span class="obsidianConflictModal__diffContent">{{ line.text }}</span>
+              </span>
+            }
+          </pre>
+          <div class="obsidianConflictModal__colActions">
+            <button
+              type="button"
+              id="obsidianConflictUseVault"
+              class="monoLinkButton obsidianConflictModal__choiceBtn"
+              (click)="resolve('vault')"
+            >
+              Keep vault file
+              <kbd class="obsidianConflictModal__kbd">2</kbd>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="obsidianConflictModal__footer">
+        <button type="button" id="obsidianConflictCancel" class="monoLinkButton" (click)="close()">
+          Cancel
+          <kbd class="obsidianConflictModal__kbd">Esc</kbd>
+        </button>
+      </div>
+    </section>
+  </div>
+}

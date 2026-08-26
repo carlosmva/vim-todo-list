@@ -9,6 +9,8 @@ import { ExportService } from '../../core/services/export.service';
 import { BackgroundBridgeService } from '../../core/services/background-bridge.service';
 import { NotesRepository } from '../../core/services/notes.repository';
 import { PriorityRibbonService } from '../../core/services/priority-ribbon.service';
+import { readObsidianSyncEnabled } from '../../core/utils/obsidian-markdown.util';
+import { ObsidianService } from '../../core/services/obsidian.service';
 import { THEME_ORDER, ThemeId } from '../../core/models/envelope.model';
 import {
   DEFAULT_PRIORITY_RIBBON_LIMIT,
@@ -51,6 +53,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   private readonly bg = inject(BackgroundBridgeService);
   private readonly repo = inject(NotesRepository);
   private readonly ribbon = inject(PriorityRibbonService);
+  private readonly obsidian = inject(ObsidianService);
   private readonly settingsKeyboard = inject(SettingsKeyboardBridge);
 
   readonly themeOptions = THEME_ORDER;
@@ -92,6 +95,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
   obsVault = signal('');
   obsFolder = signal('');
   obsSync = signal(false);
+  obsCacheStatus = signal('');
+  vaultLinkedName = signal('');
 
   newBoardName = '';
   private vaultChannel: BroadcastChannel | null = null;
@@ -125,7 +130,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
     this.obsVault.set(this.dbService.getSetting('obsidian.vaultName') ?? env.obs?.v ?? '');
     this.obsFolder.set(this.dbService.getSetting('obsidian.notesFolder') ?? env.obs?.f ?? '');
-    this.obsSync.set((this.dbService.getSetting('obsidian.syncMode') ?? String(!!env.obs?.s)) === '1');
+    this.obsSync.set(readObsidianSyncEnabled(this.dbService.getSetting('obsidian.syncMode'), env.obs?.s));
     this.headerTitleInput = this.state.headerTitleRaw();
   }
 
@@ -310,10 +315,17 @@ export class SettingsComponent implements OnInit, OnDestroy {
     const vaultName = typeof folderName === 'string' ? folderName.trim() : '';
     if (!vaultName) return;
 
+    this.vaultLinkedName.set(vaultName);
+
     this.obsVault.set(vaultName);
     if (!this.obsFolder().trim()) this.obsFolder.set(SettingsComponent.DEFAULT_OBSIDIAN_NOTES_FOLDER);
     this.obsSync.set(true);
     this.saveObsidian();
+  }
+
+  async clearObsidianCache(): Promise<void> {
+    await this.obsidian.clearPathCaches();
+    this.obsCacheStatus.set('Cleared remembered vault paths and first-open cache. The next sync can recreate or remap files.');
   }
 
   readonly stateRef = this.state;

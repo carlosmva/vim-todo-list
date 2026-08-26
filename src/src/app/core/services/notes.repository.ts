@@ -338,6 +338,62 @@ export class NotesRepository {
       due_at: row['due_at'] != null ? (row['due_at'] as number) : null,
     };
   }
+
+  queryLocalTextSuggestions(query: string, limit = 6): string[] {
+    const p = String(query || '').trim();
+    if (!p) return [];
+    const stmt = this.db().prepare(
+      'SELECT text, MAX(updated_at) AS u, CASE WHEN text LIKE ? THEN 0 ELSE 1 END AS np ' +
+        'FROM notes WHERE text LIKE ? GROUP BY text ORDER BY np ASC, u DESC LIMIT ?'
+    );
+    const contains = `%${p}%`;
+    const prefix = `${p}%`;
+    stmt.bind([prefix, contains, limit]);
+    const out: string[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      const t = String(row['text'] || '');
+      if (t && t.toLowerCase() !== p.toLowerCase()) out.push(t);
+    }
+    stmt.free();
+    return out;
+  }
+
+  queryBestLocalWordCompletion(baseText: string): { baseText: string; completion: string } | null {
+    const base = String(baseText || '');
+    if (!base.trim() || /\s$/.test(base)) return null;
+    const match = base.match(/(\S+)$/);
+    const token = match ? match[1] : '';
+    if (!token) return null;
+    const tokenLower = token.toLowerCase();
+
+    const stmt = this.db().prepare(
+      'SELECT text, updated_at FROM notes WHERE text LIKE ? ORDER BY updated_at DESC LIMIT ?'
+    );
+    stmt.bind([`%${token}%`, 40]);
+
+    let bestWord = '';
+    let bestUpdatedAt = -1;
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      const t = String(row['text'] || '');
+      const updatedAt = Number(row['updated_at']);
+      const tokens = t.match(/[A-Za-z0-9_-]+/g) || [];
+      for (const w of tokens) {
+        if (!w || w.length <= token.length) continue;
+        if (w.slice(0, token.length).toLowerCase() !== tokenLower) continue;
+        const isBetterLength = !bestWord || w.length < bestWord.length;
+        const isBetterRecency = updatedAt > bestUpdatedAt;
+        if (isBetterLength || (!isBetterLength && isBetterRecency)) {
+          bestWord = w;
+          bestUpdatedAt = Number.isFinite(updatedAt) ? updatedAt : bestUpdatedAt;
+        }
+      }
+    }
+    stmt.free();
+    if (!bestWord) return null;
+    return { baseText: base, completion: bestWord.slice(token.length) };
+  }
 }
 
 export function filterNotes(notes: Note[], query: string): Note[] {

@@ -1757,8 +1757,22 @@ html[data-popup-size="full"] body {
   padding: 14px;
   border: 1px solid var(--modern-border-strong, var(--cds-border-strong, #8d8d8d));
   border-radius: 8px;
-  background: var(--modern-surface-1, var(--cds-layer, #fff));
+  background: var(--modern-surface-2, var(--cds-layer, #fff));
+  color: var(--modern-text, var(--cds-text-primary, #161616));
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.addNoteModalPanel .create {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+
+.addNoteModalPanel .createFieldLabel,
+.addNoteModalPanel .bx--label {
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
 }
 
 .addNoteModalHeader {
@@ -1801,12 +1815,38 @@ html[data-popup-size="full"] body {
   min-height: 28px;
 }
 
+.deleteNoteModalPanel {
+  width: min(100%, 26rem);
+}
+
+.deleteNoteModalMessage {
+  margin: 0 0 16px;
+  line-height: 1.45;
+  color: var(--modern-text, var(--cds-text-primary, #161616));
+}
+
+.deleteNoteModalMessage strong {
+  font-weight: 600;
+}
+
+.deleteNoteModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.deleteNoteModalConfirm:hover:not(:disabled),
+.deleteNoteModalConfirm:focus-visible:not(:disabled) {
+  color: var(--cds-support-error, #da1e28);
+}
+
 .notesMain {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .notesToolbar {
@@ -2048,8 +2088,10 @@ html[data-popup-size="full"] body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 6px 8px 8px;
+  scrollbar-gutter: stable;
   transition:
     flex 0.38s cubic-bezier(0.4, 0, 0.2, 1),
     min-width 0.38s cubic-bezier(0.4, 0, 0.2, 1),
@@ -2099,6 +2141,11 @@ html[data-popup-size="full"] body {
   padding: 0;
   margin: 0;
   transition: opacity 0.22s ease, max-height 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.board--split-pending .col--complete,
+.board--split-complete .col--pending {
+  overflow: hidden;
 }
 
 .board--split-pending .col--pending .list,
@@ -2167,16 +2214,26 @@ html[data-popup-size="full"] body {
   flex-shrink: 0;
 }
 
+/* Expanded column: keep Pending/Complete label pinned while cards scroll beneath. */
+.board--split-pending .col--pending .colTitle,
+.board--split-complete .col--complete .colTitle {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-bottom: 6px;
+  padding: 2px 0 6px;
+  background: var(--modern-surface-1, var(--cds-layer, #fff));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--cds-border-subtle, #e0e0e0) 72%, transparent);
+}
+
 .list {
   display: grid;
   grid-auto-rows: min-content;
   align-items: start;
   gap: 6px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding-right: 10px;
-  scrollbar-gutter: stable;
-  flex: 1;
+  overflow: visible;
+  padding-right: 2px;
+  flex: 0 1 auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
@@ -2245,6 +2302,8 @@ html[data-popup-size="full"] body {
 
 .noteCard.is-flipped .noteBack {
   display: flex;
+  flex: 1;
+  min-height: 0;
   animation: noteBackReveal var(--motion-card-flip, 160ms) var(--motion-ease-standard, ease);
 }
 
@@ -2276,6 +2335,38 @@ html[data-popup-size="full"] body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.linksEntryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.linkForm.linksEntryGrid__form {
+  display: contents;
+}
+
+.linksEntryGrid__desc {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.linksEntryGrid__url {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.linksEntryGrid__back {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+}
+
+.linksEntryGrid__add {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
 }
 
 .noteText {
@@ -2546,6 +2637,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 [data-theme="nothing"] .dashboardFilterButton:hover,
 [data-theme="nothing"] .dashboardFilterButton:focus,
 [data-theme="nothing"] .dashboardFilterButton:focus-visible,
+[data-theme="nothing-light"] .dashboardFilterButton:hover,
+[data-theme="nothing-light"] .dashboardFilterButton:focus,
+[data-theme="nothing-light"] .dashboardFilterButton:focus-visible,
 [data-theme="dark"] .calendarDayCell:hover,
 [data-theme="dark"] .calendarDayCell:focus,
 [data-theme="dark"] .calendarDayCell:focus-visible,
@@ -2572,12 +2666,27 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 [data-theme="dark"] .dashboardFilterButton[aria-pressed="true"],
 [data-theme="solarized-dark"] .dashboardFilterButton[aria-pressed="true"],
 [data-theme="nothing"] .dashboardFilterButton[aria-pressed="true"],
+[data-theme="nothing-light"] .dashboardFilterButton[aria-pressed="true"],
+[data-theme="nothing-light"] .dashboardFilterButton--selected,
 [data-theme="command-line"] .dashboardFilterButton[aria-pressed="true"],
 [data-theme="emacs-dark"] .dashboardFilterButton[aria-pressed="true"] {
   border-color: var(--modern-focus);
   background: var(--modern-surface-muted);
   color: var(--modern-text);
   box-shadow: inset 0 0 0 1px var(--modern-focus);
+}
+
+[data-theme="nothing-light"] .dashboardFilterButton[aria-pressed="true"]:hover,
+[data-theme="nothing-light"] .dashboardFilterButton[aria-pressed="true"]:focus,
+[data-theme="nothing-light"] .dashboardFilterButton[aria-pressed="true"]:focus-visible,
+[data-theme="nothing-light"] .dashboardFilterButton--selected:hover,
+[data-theme="nothing-light"] .dashboardFilterButton--selected:focus,
+[data-theme="nothing-light"] .dashboardFilterButton--selected:focus-visible {
+  border-color: var(--modern-focus);
+  background: var(--modern-surface-muted);
+  color: var(--modern-text) !important;
+  box-shadow: inset 0 0 0 1px var(--modern-focus);
+  text-decoration: none;
 }
 
 .calendarTask:hover {
@@ -3143,6 +3252,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .noteCard.is-flipped .noteBackBody {
   flex: 1;
+  min-height: 0;
+}
+
+.noteBackTitle {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+}
+
+.linkListEmpty {
+  color: var(--modern-text-subtle, var(--cds-text-secondary, #525252));
+  font-size: 0.85rem;
 }
 
 .noteBackButtonsRow {

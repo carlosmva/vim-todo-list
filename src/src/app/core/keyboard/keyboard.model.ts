@@ -32,6 +32,14 @@ export function getFocusNewNoteKey(layout: KeyboardLayout): string {
   return layout === 'dvorak' ? 'l' : 'p';
 }
 
+export function getPendingColumnKey(_layout: KeyboardLayout): string {
+  return 'p';
+}
+
+export function getCompleteColumnKey(_layout: KeyboardLayout): string {
+  return 'c';
+}
+
 export function modKeyLabel(platform: KeyboardNavPlatform): string {
   return platform === 'mac' ? 'Ctrl' : 'Alt';
 }

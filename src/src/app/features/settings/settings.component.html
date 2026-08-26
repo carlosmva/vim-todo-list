@@ -319,10 +319,26 @@
                 Sync mode
               </label>
             </div>
+            <p class="obsidianIntro">
+              Two-way sync reads and writes Markdown in a linked vault folder. Without a linked folder, Open in
+              Obsidian is URI-only: the first open may create the note; later opens use the existing file and will not
+              create copies.
+            </p>
+            <p class="obsidianIntro settingsBoardsHint">
+              @if (vaultLinkedName()) {
+                Linked folder: {{ vaultLinkedName() }}.
+              } @else {
+                No vault folder linked yet. Choose a folder to enable two-way sync.
+              }
+            </p>
             <div class="aiSettingsRow">
               <button type="button" class="monoLinkButton" (click)="chooseVaultFolder()">Choose vault folder</button>
               <button type="button" class="monoLinkButton" (click)="saveObsidian()">Save Obsidian settings</button>
+              <button type="button" class="monoLinkButton" (click)="clearObsidianCache()">Clear path cache</button>
             </div>
+            @if (obsCacheStatus()) {
+              <p class="obsidianIntro settingsBoardsHint">{{ obsCacheStatus() }}</p>
+            }
           </form>
         </div>
       }

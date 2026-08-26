@@ -70,27 +70,86 @@ export function getCardActionButtons(card: HTMLElement): HTMLButtonElement[] {
 export function focusCardPrimaryAction(card: HTMLElement): void {
   const buttons = getCardActionButtons(card);
   if (buttons[0]) safeFocus(buttons[0]);
-  ensureCardVisible(card);
+  ensureCardFullyVisible(card);
 }
 
-export function ensureCardVisible(card: HTMLElement): void {
-  const list = card.closest('.list');
-  if (list instanceof HTMLElement) {
-    const cr = list.getBoundingClientRect();
-    const nr = card.getBoundingClientRect();
-    if (nr.bottom > cr.bottom) list.scrollTop += nr.bottom - cr.bottom + 8;
-    if (nr.top < cr.top) list.scrollTop -= cr.top - nr.top + 8;
+export function ensureCardFullyVisible(card: HTMLElement): void {
+  const margin = 12;
+  const containers: HTMLElement[] = [];
+  const seen = new Set<HTMLElement>();
+
+  const pushContainer = (node: Element | null): void => {
+    if (!(node instanceof HTMLElement)) return;
+    if (seen.has(node)) return;
+    if (node.scrollHeight <= node.clientHeight) return;
+    seen.add(node);
+    containers.push(node);
+  };
+
+  pushContainer(card.closest('.col'));
+  pushContainer(card.closest('.list'));
+
+  let parent = card.parentElement;
+  while (parent) {
+    pushContainer(parent);
+    parent = parent.parentElement;
+  }
+
+  if (!containers.length) {
+    card.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+
+  for (const container of containers) {
+    const containerRect = container.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+
+    const visibleHeight = Math.max(0, containerRect.height - margin * 2);
+    if (cardRect.height > visibleHeight) {
+      const topDelta = cardRect.top - (containerRect.top + margin);
+      if (topDelta < 0 || topDelta > margin) container.scrollTop += topDelta;
+      continue;
+    }
+
+    const topOverflow = containerRect.top + margin - cardRect.top;
+    const bottomOverflow = cardRect.bottom - (containerRect.bottom - margin);
+
+    if (topOverflow > 0) container.scrollTop -= topOverflow;
+    else if (bottomOverflow > 0) container.scrollTop += bottomOverflow;
   }
 }
 
-export function moveCardFocus(delta: number): void {
+/** @deprecated Use ensureCardFullyVisible */
+export function ensureCardVisible(card: HTMLElement): void {
+  ensureCardFullyVisible(card);
+}
+
+export function moveCardFocus(
+  delta: number,
+  options?: {
+    onLeaveCard?: (card: HTMLElement) => void;
+    loadMoreAfter?: (currentCard: HTMLElement) => boolean;
+    loadMoreBefore?: (currentCard: HTMLElement) => boolean;
+  }
+): void {
   const cards = getAllCardsInDomOrder();
   if (!cards.length) return;
   const active = document.activeElement;
   const current = getCardFromElement(active);
   const idx = current ? cards.indexOf(current) : delta > 0 ? -1 : cards.length;
-  const nextIdx = Math.min(cards.length - 1, Math.max(0, idx + delta));
-  focusCardPrimaryAction(cards[nextIdx]);
+  let nextIdx = Math.min(cards.length - 1, Math.max(0, idx + delta));
+
+  if (delta > 0 && current && nextIdx === idx && options?.loadMoreAfter?.(current)) {
+    return;
+  }
+
+  if (delta < 0 && current && nextIdx === idx && options?.loadMoreBefore?.(current)) {
+    return;
+  }
+
+  const next = cards[nextIdx];
+  if (current && next && current !== next) options?.onLeaveCard?.(current);
+  focusCardPrimaryAction(next);
 }
 
 export function moveButtonFocusWithinCard(card: HTMLElement, delta: number): void {
@@ -101,7 +160,7 @@ export function moveButtonFocusWithinCard(card: HTMLElement, delta: number): voi
   if (next < 0) next = delta < 0 ? buttons.length - 1 : 0;
   else next = Math.min(buttons.length - 1, Math.max(0, next + delta));
   safeFocus(buttons[next]);
-  ensureCardVisible(card);
+  ensureCardFullyVisible(card);
 }
 
 const FOCUSABLE =
@@ -162,6 +221,33 @@ export function focusNotesSearchRow(): boolean {
   if (filter instanceof HTMLElement && safeFocus(filter)) return true;
   const addBtn = document.getElementById('addNoteButton');
   return addBtn instanceof HTMLElement ? safeFocus(addBtn) : false;
+}
+
+export function getBoardColumnElements(): {
+  board: HTMLElement | null;
+  pending: HTMLElement | null;
+  complete: HTMLElement | null;
+} {
+  const board = document.getElementById('notesBoard');
+  const pending = document.getElementById('colPending');
+  const complete = document.getElementById('colComplete');
+  return {
+    board: board instanceof HTMLElement ? board : null,
+    pending: pending instanceof HTMLElement ? pending : null,
+    complete: complete instanceof HTMLElement ? complete : null,
+  };
+}
+
+export function getExpandedBoardColumn(): HTMLElement | null {
+  const { board, pending, complete } = getBoardColumnElements();
+  if (!board || !pending || !complete) return null;
+  return board.classList.contains('board--split-complete') ? complete : pending;
+}
+
+export function isOnBoardColumn(el: Element | null): boolean {
+  if (!(el instanceof Element)) return false;
+  const { pending, complete } = getBoardColumnElements();
+  return el === pending || el === complete;
 }
 
 export function getHeaderNavTargets(): HTMLElement[] {

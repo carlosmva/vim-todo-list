@@ -73,6 +73,32 @@ import {
           </section>
         </div>
 
+        <section class="instructionsSection" tabindex="0" aria-label="Obsidian conflict">
+          <h3>Obsidian conflict</h3>
+          <div class="instructionsKeyList">
+            <div class="instructionsKeyRow">
+              <div class="instructionsKeyRow__keys"><kbd>1</kbd></div>
+              <div class="instructionsKeyRow__desc">Keep this card (write the extension Markdown to the vault file).</div>
+            </div>
+            <div class="instructionsKeyRow">
+              <div class="instructionsKeyRow__keys"><kbd>2</kbd></div>
+              <div class="instructionsKeyRow__desc">Keep the vault file (import it into the card).</div>
+            </div>
+            <div class="instructionsKeyRow">
+              <div class="instructionsKeyRow__keys"><kbd>Enter</kbd></div>
+              <div class="instructionsKeyRow__desc">Confirm the focused choice (Keep this card if none is focused).</div>
+            </div>
+            <div class="instructionsKeyRow">
+              <div class="instructionsKeyRow__keys"><kbd>Esc</kbd></div>
+              <div class="instructionsKeyRow__desc">Cancel without changing either side.</div>
+            </div>
+            <div class="instructionsKeyRow">
+              <div class="instructionsKeyRow__keys"><kbd>{{ navLetters() }}</kbd> / arrows / {{ mod() }}+{{ navLetters() }}</div>
+              <div class="instructionsKeyRow__desc">Move focus between Keep this card, Keep vault, and Cancel.</div>
+            </div>
+          </div>
+        </section>
+
         <ul>
           <li>Type a note and click + (or {{ mod() }}+{{ addKey() }}) to create a task.</li>
           <li>Use Priority, Links, Notes, Complete, and Delete on each card.</li>
@@ -101,6 +127,11 @@ export class InstructionsComponent {
   readonly checkboxKey = computed(() =>
     getNotesCheckboxKey(this.state.keyLayout()).toUpperCase()
   );
+
+  readonly navLetters = computed(() => {
+    const nav = getNavKeys(this.state.keyLayout());
+    return `${nav.left}${nav.down}${nav.up}${nav.right}`.toUpperCase();
+  });
 
   readonly navRows = computed(() => {
     const nav = getNavKeys(this.state.keyLayout());
