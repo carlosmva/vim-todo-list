@@ -212,6 +212,15 @@ export class NotesRepository {
     }
   }
 
+  moveNoteToBoard(noteId: number, targetBoard: string): void {
+    const note = this.queryNote(noteId);
+    if (!note) return;
+    const nextSortOrder = note.status === 'pending' ? this.getNextPendingSortOrder(targetBoard) : note.sort_order;
+    const stmt = this.db().prepare('UPDATE notes SET board = ?, sort_order = ?, updated_at = ? WHERE id = ?');
+    stmt.run([targetBoard, nextSortOrder, Date.now(), noteId]);
+    stmt.free();
+  }
+
   deleteNote(noteId: number): void {
     this.db().run('BEGIN');
     try {
@@ -291,6 +300,26 @@ export class NotesRepository {
     const stmt = this.db().prepare('UPDATE notes SET sort_order = ? WHERE id = ?');
     stmt.run([b.sort_order, a.id]);
     stmt.run([a.sort_order, b.id]);
+    stmt.free();
+  }
+
+  reorderPendingToIndex(noteId: number, board: string, targetIndex: number): void {
+    const notes = this.queryNotes(board).filter((n) => n.status === 'pending');
+    const currentIndex = notes.findIndex((n) => n.id === noteId);
+    if (currentIndex < 0) return;
+    const clampedIndex = Math.max(0, Math.min(targetIndex, notes.length - 1));
+    if (clampedIndex === currentIndex) return;
+
+    const ordered = [...notes];
+    const [moving] = ordered.splice(currentIndex, 1);
+    if (!moving) return;
+    ordered.splice(clampedIndex, 0, moving);
+
+    const stmt = this.db().prepare('UPDATE notes SET sort_order = ?, updated_at = ? WHERE id = ?');
+    const now = Date.now();
+    for (const [index, item] of ordered.entries()) {
+      stmt.run([index, now, item.id]);
+    }
     stmt.free();
   }
 

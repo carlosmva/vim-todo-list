@@ -24,6 +24,7 @@ import {
   notesContentToPreviewMarkdown,
 } from '../../core/utils/notes-html.util';
 import { morphCardHeightByNoteId } from '../../core/utils/card-height.util';
+import { boardSlideDirection } from '../../core/utils/board-slide.util';
 import { normalizeUrl } from '../../core/utils/url.util';
 import {
   CompletionCandidate,
@@ -46,6 +47,10 @@ interface LinkDraft {
 export class NotesComponent implements OnInit, OnDestroy {
   private static readonly NOTES_PAGE_SIZE = 24;
   private static readonly NOTES_WINDOW_MAX = 72;
+  private static readonly COMPLETE_ANIMATION_MS = 320;
+  private static readonly DELETE_ANIMATION_MS = 340;
+  private static readonly BOARD_SLIDE_LEAVE_MS = 70;
+  private static readonly BOARD_SLIDE_ENTER_MS = 80;
   readonly state = inject(AppStateService);
   private readonly repo = inject(NotesRepository);
   private readonly ribbon = inject(PriorityRibbonService);
@@ -86,6 +91,17 @@ export class NotesComponent implements OnInit, OnDestroy {
   editorAiError = signal('');
   obsidianMessage = signal('');
   obsidianMessageKind = signal<'error' | 'warning' | ''>('');
+  completingNoteIds = signal<number[]>([]);
+  deletingNoteIds = signal<number[]>([]);
+  completeRailPulse = signal(0);
+  draggedNoteId = signal<number | null>(null);
+  dragHoverBoard = signal('');
+  reorderTargetNoteId = signal<number | null>(null);
+  reorderTargetEdge = signal<'before' | 'after' | null>(null);
+  movingNoteIds = signal<number[]>([]);
+  boardTransferPulse = signal('');
+  readonly boardSlide = signal('');
+  private boardSlideGen = 0;
   private taskLocalTimer: ReturnType<typeof setTimeout> | null = null;
   private taskAiTimer: ReturnType<typeof setTimeout> | null = null;
   private taskAiAbort: AbortController | null = null;
@@ -142,6 +158,7 @@ export class NotesComponent implements OnInit, OnDestroy {
       renameFocusedCard: () => this.renameFocusedCard(),
       loadMoreAfter: (noteId) => this.loadMoreAfter(noteId),
       loadMoreBefore: (noteId) => this.loadMoreBefore(noteId),
+      focusExtremeCard: (which) => this.focusExtremeCard(which),
     });
     this.conflictResolvedSub = this.obsidianConflict.resolved.subscribe(({ noteId, afterResolve, choice, result }) => {
       this.refresh();
@@ -167,6 +184,7 @@ export class NotesComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.boardSlideGen += 1;
     this.conflictResolvedSub?.unsubscribe();
     this.keyboardBridge.unregister();
     this.clearTaskAutocomplete();
@@ -524,10 +542,78 @@ export class NotesComponent implements OnInit, OnDestroy {
     return true;
   }
 
+  private columnStatusFromFocus(): 'pending' | 'complete' {
+    const active = document.activeElement;
+    const card = getCardFromElement(active);
+    const el = card ?? (active instanceof Element ? active : null);
+    if (el?.closest('#colComplete, #completeList')) return 'complete';
+    if (el?.closest('#colPending, #pendingList')) return 'pending';
+    return this.boardSplit();
+  }
+
+  private focusExtremeCard(which: 'first' | 'last'): boolean {
+    const status = this.columnStatusFromFocus();
+    const notes = status === 'pending' ? this.pendingNotes() : this.completeNotes();
+    if (!notes.length) return false;
+
+    const target = which === 'first' ? notes[0] : notes[notes.length - 1];
+    const page = NotesComponent.NOTES_PAGE_SIZE;
+    const { start, end } = this.listWindow(status);
+    if (which === 'first') {
+      start.set(0);
+      end.set(Math.min(page, notes.length));
+    } else {
+      end.set(notes.length);
+      start.set(Math.max(0, notes.length - page));
+    }
+
+    if (this.boardSplit() !== status) this.boardSplit.set(status);
+    this.closeCardOverlaysForJump();
+    this.cdr.detectChanges();
+    afterNextRender(() => {
+      const card = document.querySelector<HTMLElement>(
+        `.noteCard[data-note-id="${CSS.escape(String(target.id))}"]`
+      );
+      if (card) focusCardPrimaryAction(card);
+    }, { injector: this.injector });
+    return true;
+  }
+
+  private closeCardOverlaysForJump(): void {
+    const current = getCardFromElement(document.activeElement);
+    if (current) this.closeCardOverlays(current);
+  }
 
   setBoard(board: string): void {
+    void this.slideToBoard(board);
+  }
+
+  private async slideToBoard(board: string): Promise<void> {
+    const current = this.state.activeBoard();
+    if (board === current) return;
+
+    const dir = boardSlideDirection(this.boards().indexOf(current), this.boards().indexOf(board));
+    const gen = ++this.boardSlideGen;
+
+    if (!dir || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.state.setActiveBoard(board);
+      this.refresh();
+      this.boardSlide.set('');
+      return;
+    }
+
+    this.boardSlide.set(`leave-${dir}`);
+    this.cdr.markForCheck();
+    await this.wait(NotesComponent.BOARD_SLIDE_LEAVE_MS);
+    if (gen !== this.boardSlideGen) return;
+
     this.state.setActiveBoard(board);
     this.refresh();
+    this.boardSlide.set(dir === 'left' ? 'enter-from-right' : 'enter-from-left');
+    this.cdr.detectChanges();
+    await this.wait(NotesComponent.BOARD_SLIDE_ENTER_MS);
+    if (gen !== this.boardSlideGen) return;
+    this.boardSlide.set('');
   }
 
   setBoardColumnSplit(which: 'pending' | 'complete'): void {
@@ -1125,10 +1211,34 @@ export class NotesComponent implements OnInit, OnDestroy {
   }
 
   async toggleComplete(note: Note): Promise<void> {
-    this.repo.setStatus(note.id, note.status === 'pending' ? 'complete' : 'pending');
+    if (note.status === 'pending') {
+      await this.animateComplete(note);
+      return;
+    }
+    this.repo.setStatus(note.id, 'pending');
     await this.dbService.persist();
     await this.obsidian.pushNoteById(note.id);
     this.refresh();
+  }
+
+  isCompleting(noteId: number): boolean {
+    return this.completingNoteIds().includes(noteId);
+  }
+
+  isDeleting(noteId: number): boolean {
+    return this.deletingNoteIds().includes(noteId);
+  }
+
+  isMoving(noteId: number): boolean {
+    return this.movingNoteIds().includes(noteId);
+  }
+
+  isDragging(noteId: number): boolean {
+    return this.draggedNoteId() === noteId;
+  }
+
+  isReorderTarget(noteId: number, edge: 'before' | 'after'): boolean {
+    return this.reorderTargetNoteId() === noteId && this.reorderTargetEdge() === edge;
   }
 
   async cyclePriority(note: Note): Promise<void> {
@@ -1174,16 +1284,114 @@ export class NotesComponent implements OnInit, OnDestroy {
   }
 
   private async deleteNote(note: Note): Promise<void> {
-    await this.obsidian.forgetFilePath(note.id);
-    this.repo.deleteNote(note.id);
-    await this.dbService.persist();
-    this.refresh();
+    if (this.isDeleting(note.id)) return;
+    const shouldAnimate = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (shouldAnimate) {
+      this.deletingNoteIds.update((ids) => [...ids, note.id]);
+      this.cdr.detectChanges();
+      await this.wait(NotesComponent.DELETE_ANIMATION_MS);
+    }
+
+    try {
+      await this.obsidian.forgetFilePath(note.id);
+      this.repo.deleteNote(note.id);
+      await this.dbService.persist();
+      this.refresh();
+    } finally {
+      if (shouldAnimate) this.deletingNoteIds.update((ids) => ids.filter((id) => id !== note.id));
+    }
   }
 
   async move(note: Note, dir: 'up' | 'down'): Promise<void> {
     this.repo.reorderPending(note.id, note.board, dir);
     await this.dbService.persist();
     this.refresh();
+  }
+
+  handleNoteDragStart(note: Note, event: DragEvent): void {
+    if (this.isCompleting(note.id) || this.isDeleting(note.id) || this.isMoving(note.id)) {
+      event.preventDefault();
+      return;
+    }
+    this.draggedNoteId.set(note.id);
+    this.dragHoverBoard.set('');
+    this.reorderTargetNoteId.set(null);
+    this.reorderTargetEdge.set(null);
+    const dataTransfer = event.dataTransfer;
+    if (!dataTransfer) return;
+    dataTransfer.effectAllowed = 'move';
+    dataTransfer.setData('text/plain', String(note.id));
+    const card = event.currentTarget instanceof HTMLElement ? event.currentTarget : getCardFromElement(event.target as Element | null);
+    if (card instanceof HTMLElement) {
+      dataTransfer.setDragImage(card, Math.min(32, card.clientWidth / 4), 20);
+    }
+  }
+
+  handleNoteDragEnd(): void {
+    this.clearDragState();
+  }
+
+  handleBoardTabDragOver(board: string, event: DragEvent): void {
+    const dragged = this.draggedNote();
+    if (!dragged || dragged.board === board) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    this.dragHoverBoard.set(board);
+  }
+
+  handleBoardTabDragLeave(board: string, event: DragEvent): void {
+    const next = event.relatedTarget;
+    if (next instanceof Element && next.closest(`[data-board="${CSS.escape(board)}"]`)) return;
+    if (this.dragHoverBoard() === board) this.dragHoverBoard.set('');
+  }
+
+  async handleBoardTabDrop(board: string, event: DragEvent): Promise<void> {
+    const dragged = this.draggedNote();
+    if (!dragged || dragged.board === board) return;
+    event.preventDefault();
+
+    const sourceCard = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(dragged.id))}"]`);
+    const targetTab = document.querySelector<HTMLElement>(`#boardTabs [data-board="${CSS.escape(board)}"]`);
+    this.dragHoverBoard.set('');
+    await this.animateBoardTransfer(dragged, board, sourceCard, targetTab);
+    this.clearDragState();
+  }
+
+  handlePendingListDragOver(event: DragEvent): void {
+    const dragged = this.draggedNote();
+    if (!dragged || dragged.status !== 'pending' || dragged.board !== this.state.activeBoard()) return;
+    const targetCard = (event.target instanceof Element ? event.target.closest('.noteCard[data-note-id]') : null);
+    if (targetCard) return;
+    event.preventDefault();
+    this.reorderTargetNoteId.set(null);
+    this.reorderTargetEdge.set('after');
+  }
+
+  async handlePendingListDrop(event: DragEvent): Promise<void> {
+    const dragged = this.draggedNote();
+    if (!dragged || dragged.status !== 'pending' || dragged.board !== this.state.activeBoard()) return;
+    const targetCard = event.target instanceof Element ? event.target.closest('.noteCard[data-note-id]') : null;
+    if (targetCard) return;
+    event.preventDefault();
+    await this.reorderPendingDrop(dragged, null, 'after');
+  }
+
+  handlePendingCardDragOver(note: Note, event: DragEvent): void {
+    const dragged = this.draggedNote();
+    if (!dragged || dragged.status !== 'pending' || dragged.board !== this.state.activeBoard() || dragged.id === note.id) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const edge = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    this.reorderTargetNoteId.set(note.id);
+    this.reorderTargetEdge.set(edge);
+  }
+
+  async handlePendingCardDrop(note: Note, event: DragEvent): Promise<void> {
+    const dragged = this.draggedNote();
+    if (!dragged || dragged.status !== 'pending' || dragged.board !== this.state.activeBoard() || dragged.id === note.id) return;
+    event.preventDefault();
+    await this.reorderPendingDrop(dragged, note, this.reorderTargetEdge() ?? 'before');
   }
 
   flipped = new Set<number>();
@@ -1394,6 +1602,210 @@ export class NotesComponent implements OnInit, OnDestroy {
     );
     const deleteBtn = card?.querySelector<HTMLElement>('button[data-action="deleteNote"]');
     if (deleteBtn) safeFocus(deleteBtn);
+  }
+
+  private async animateComplete(note: Note): Promise<void> {
+    if (this.isCompleting(note.id)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      await this.persistCompletion(note);
+      return;
+    }
+
+    const sourceCard = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(note.id))}"]`);
+    const completeColumn = document.getElementById('colComplete');
+    const completeList = document.getElementById('completeList');
+    if (!(sourceCard instanceof HTMLElement) || !(completeColumn instanceof HTMLElement) || !(completeList instanceof HTMLElement)) {
+      await this.persistCompletion(note);
+      return;
+    }
+
+    this.completingNoteIds.set([...this.completingNoteIds(), note.id]);
+    this.bumpCompleteRailPulse();
+    const cleanupGhost = this.animateGhostToTarget(sourceCard, this.resolveCompleteGhostTarget(completeColumn, completeList));
+
+    try {
+      await this.wait(NotesComponent.COMPLETE_ANIMATION_MS);
+      await this.persistCompletion(note);
+      afterNextRender(() => {
+        const movedCard = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(note.id))}"]`);
+        if (movedCard) {
+          focusCardPrimaryAction(movedCard);
+        } else {
+          safeFocus(completeColumn);
+        }
+      }, { injector: this.injector });
+    } finally {
+      cleanupGhost();
+      this.completingNoteIds.set(this.completingNoteIds().filter((id) => id !== note.id));
+    }
+  }
+
+  private animateGhostToTarget(sourceCard: HTMLElement, targetRect: DOMRect): () => void {
+    const startRect = sourceCard.getBoundingClientRect();
+    const ghost = sourceCard.cloneNode(true);
+    if (!(ghost instanceof HTMLElement)) return () => void 0;
+
+    ghost.classList.remove('is-completing', 'is-flipped', 'is-notes-open');
+    ghost.style.position = 'fixed';
+    ghost.style.left = `${startRect.left}px`;
+    ghost.style.top = `${startRect.top}px`;
+    ghost.style.width = `${startRect.width}px`;
+    ghost.style.height = `${startRect.height}px`;
+    ghost.style.margin = '0';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = '1000';
+    ghost.style.overflow = 'hidden';
+    ghost.style.transformOrigin = 'top left';
+    ghost.style.willChange = 'transform, opacity';
+    ghost.style.boxShadow = '0 14px 32px rgba(23, 34, 56, 0.18)';
+    document.body.appendChild(ghost);
+
+    const deltaX = targetRect.left - startRect.left;
+    const deltaY = targetRect.top - startRect.top;
+    const scaleX = targetRect.width / Math.max(startRect.width, 1);
+    const scaleY = targetRect.height / Math.max(startRect.height, 1);
+    const animation = ghost.animate(
+      [
+        { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 0.96, offset: 0 },
+        { transform: `translate3d(${deltaX * 0.45}px, ${Math.max(8, deltaY * 0.15)}px, 0) scale(0.985, 0.975)`, opacity: 0.9, offset: 0.45 },
+        { transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`, opacity: 0.12, offset: 1 },
+      ],
+      {
+        duration: NotesComponent.COMPLETE_ANIMATION_MS,
+        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        fill: 'forwards',
+      }
+    );
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      animation.cancel();
+      ghost.remove();
+    };
+    animation.addEventListener('finish', cleanup, { once: true });
+    return cleanup;
+  }
+
+  private resolveCompleteGhostTarget(completeColumn: HTMLElement, completeList: HTMLElement): DOMRect {
+    const firstCard = completeList.querySelector<HTMLElement>('.noteCard[data-note-id]');
+    if (firstCard instanceof HTMLElement) return firstCard.getBoundingClientRect();
+
+    const listRect = completeList.getBoundingClientRect();
+    const columnRect = completeColumn.getBoundingClientRect();
+    const width = Math.max(180, columnRect.width - 24);
+    const height = 54;
+    return new DOMRect(listRect.left, listRect.top + 10, width, height);
+  }
+
+  private async persistCompletion(note: Note): Promise<void> {
+    this.repo.setStatus(note.id, 'complete');
+    await this.dbService.persist();
+    await this.obsidian.pushNoteById(note.id);
+    this.refresh();
+  }
+
+  private async animateBoardTransfer(
+    note: Note,
+    targetBoard: string,
+    sourceCard: HTMLElement | null,
+    targetTab: HTMLElement | null
+  ): Promise<void> {
+    if (this.isMoving(note.id)) return;
+    if (
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      !(sourceCard instanceof HTMLElement) ||
+      !(targetTab instanceof HTMLElement)
+    ) {
+      await this.persistBoardMove(note, targetBoard);
+      return;
+    }
+
+    this.movingNoteIds.set([...this.movingNoteIds(), note.id]);
+    this.bumpBoardTransferPulse(targetBoard);
+    const cleanupGhost = this.animateGhostToTarget(sourceCard, targetTab.getBoundingClientRect());
+
+    try {
+      await this.wait(NotesComponent.COMPLETE_ANIMATION_MS);
+      await this.persistBoardMove(note, targetBoard);
+      safeFocus(targetTab);
+    } finally {
+      cleanupGhost();
+      this.movingNoteIds.set(this.movingNoteIds().filter((id) => id !== note.id));
+    }
+  }
+
+  private async persistBoardMove(note: Note, targetBoard: string): Promise<void> {
+    this.repo.moveNoteToBoard(note.id, targetBoard);
+    await this.dbService.persist();
+    await this.obsidian.pushNoteById(note.id);
+    this.refresh();
+  }
+
+  private wait(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  private bumpCompleteRailPulse(): void {
+    const token = this.completeRailPulse() + 1;
+    this.completeRailPulse.set(token);
+    window.setTimeout(() => {
+      if (this.completeRailPulse() === token) this.completeRailPulse.set(0);
+    }, NotesComponent.COMPLETE_ANIMATION_MS + 80);
+  }
+
+  private bumpBoardTransferPulse(board: string): void {
+    this.boardTransferPulse.set(board);
+    window.setTimeout(() => {
+      if (this.boardTransferPulse() === board) this.boardTransferPulse.set('');
+    }, NotesComponent.COMPLETE_ANIMATION_MS + 80);
+  }
+
+  private draggedNote(): Note | null {
+    const noteId = this.draggedNoteId();
+    if (!noteId) return null;
+    return this.notes().find((note) => note.id === noteId) ?? null;
+  }
+
+  private async reorderPendingDrop(
+    dragged: Note,
+    target: Note | null,
+    edge: 'before' | 'after'
+  ): Promise<void> {
+    const notes = this.pendingNotes();
+    const draggedIndex = notes.findIndex((note) => note.id === dragged.id);
+    if (draggedIndex < 0) {
+      this.clearDragState();
+      return;
+    }
+
+    let targetIndex = notes.length - 1;
+    if (target) {
+      const rawTargetIndex = notes.findIndex((note) => note.id === target.id);
+      if (rawTargetIndex < 0) {
+        this.clearDragState();
+        return;
+      }
+      targetIndex = rawTargetIndex + (edge === 'after' ? 1 : 0);
+      if (draggedIndex < targetIndex) targetIndex -= 1;
+    }
+
+    this.repo.reorderPendingToIndex(dragged.id, dragged.board, targetIndex);
+    await this.dbService.persist();
+    this.refresh();
+    this.clearDragState();
+    afterNextRender(() => {
+      const card = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(dragged.id))}"]`);
+      if (card) focusCardPrimaryAction(card);
+    }, { injector: this.injector });
+  }
+
+  private clearDragState(): void {
+    this.draggedNoteId.set(null);
+    this.dragHoverBoard.set('');
+    this.reorderTargetNoteId.set(null);
+    this.reorderTargetEdge.set(null);
   }
 
   async openInObsidian(note: Note): Promise<void> {

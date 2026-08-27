@@ -10,6 +10,17 @@
   gap: 0.35rem;
 }
 
+:host ::ng-deep .noteBoardTab--drop-target .bx--tabs__nav-link {
+  background: color-mix(in srgb, var(--modern-focus, #0f62fe) 18%, var(--modern-surface-2, #fff)) !important;
+  color: var(--modern-text, currentColor) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--modern-focus, #0f62fe) 32%, transparent), 0 8px 18px rgba(23, 34, 56, 0.16) !important;
+  transform: translateY(-2px) scale(1.02);
+}
+
+:host ::ng-deep .noteBoardTab--drop-pulse .bx--tabs__nav-link {
+  animation: noteBoardTabPulse 240ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
 :host ::ng-deep .noteEditorArea {
   white-space: pre-wrap;
   word-break: break-word;
@@ -30,6 +41,175 @@
 
 .noteEditorAutocomplete {
   margin-top: 6px;
+}
+
+.noteText {
+  position: relative;
+}
+
+.noteTextLabel {
+  display: inline-block;
+  position: relative;
+  transition:
+    opacity 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.noteTextStrike {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 50%;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0;
+  transform: translateY(-50%) scaleX(0.08);
+  transform-origin: left center;
+  transition:
+    opacity 110ms cubic-bezier(0.4, 0, 1, 1),
+    transform 170ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.noteCompleteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.noteCompleteButton__icon {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  transition:
+    transform 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.noteCompleteButton__check {
+  font-size: 0.72rem;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity 110ms cubic-bezier(0, 0, 0.2, 1),
+    transform 170ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.noteCard.is-completing {
+  pointer-events: none;
+}
+
+.noteCard.is-deleting {
+  pointer-events: none;
+}
+
+.noteCard.is-board-moving {
+  pointer-events: none;
+}
+
+.noteCard.is-completing .noteCompleteButton__icon {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  transform: scale(1.08);
+}
+
+.noteCard.is-completing .noteCompleteButton__check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.noteCard.is-completing .noteTextLabel {
+  opacity: 0.76;
+  transform: translateX(4px);
+}
+
+.noteCard.is-completing .noteTextStrike {
+  opacity: 0.92;
+  transform: translateY(-50%) scaleX(1);
+}
+
+.noteCard.is-completing .noteCardInner {
+  animation: noteCardCompleteCollapse 320ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.noteCard.is-board-moving .noteCardInner {
+  animation: noteCardBoardTransfer 320ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.noteCard.is-deleting .noteCardInner {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  animation: noteCardBurnAway 340ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.noteCard.is-deleting .noteCardInner::before,
+.noteCard.is-deleting .noteCardInner::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.noteCard.is-deleting .noteCardInner::before {
+  inset: -18% -8%;
+  background:
+    radial-gradient(ellipse at 16% 55%, rgba(255, 239, 178, 0.92) 0 3%, transparent 10%),
+    radial-gradient(ellipse at 42% 38%, rgba(255, 132, 30, 0.86) 0 4%, transparent 13%),
+    radial-gradient(ellipse at 78% 65%, rgba(255, 77, 18, 0.78) 0 3%, transparent 11%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 107, 24, 0.08) 28%, rgba(255, 191, 71, 0.55) 48%, rgba(115, 24, 8, 0.64) 70%, transparent 100%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transform: translateX(-105%) skewX(-14deg);
+  animation: noteCardEmberSweep 260ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.noteCard.is-deleting .noteCardInner::after {
+  inset: 0;
+  border: 1px solid rgba(255, 143, 38, 0.84);
+  box-shadow:
+    inset 0 0 18px rgba(255, 107, 24, 0.62),
+    0 0 20px rgba(255, 96, 18, 0.36);
+  opacity: 0;
+  animation: noteCardBurnGlow 180ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+.colTitle--pulse {
+  animation: completeRailPulse 220ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.list--reorder-tail {
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--modern-focus, #0f62fe) 70%, transparent);
+}
+
+.noteCard--drop-before,
+.noteCard--drop-after {
+  position: relative;
+}
+
+.noteCard--drop-before::before,
+.noteCard--drop-after::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--modern-focus, #0f62fe) 82%, white), color-mix(in srgb, var(--modern-focus, #0f62fe) 52%, transparent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--modern-focus, #0f62fe) 18%, transparent);
+}
+
+.noteCard--drop-before::before {
+  top: -8px;
+}
+
+.noteCard--drop-after::after {
+  bottom: -8px;
 }
 
 .notesLoadMore {
@@ -70,6 +250,178 @@
   color: #7a5b00;
   background: #fff3c4;
   border-color: color-mix(in srgb, #7a5b00 22%, transparent);
+}
+
+@keyframes noteCardCompleteCollapse {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scaleY(1);
+    filter: saturate(1);
+  }
+
+  55% {
+    opacity: 0.78;
+    transform: translateX(8px) scaleY(0.96);
+    filter: saturate(0.92);
+  }
+
+  100% {
+    opacity: 0.08;
+    transform: translateX(18px) scaleY(0.84);
+    filter: saturate(0.82);
+  }
+}
+
+@keyframes noteCardBoardTransfer {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: saturate(1);
+  }
+
+  100% {
+    opacity: 0.06;
+    transform: translateX(22px) scale(0.88);
+    filter: saturate(0.8);
+  }
+}
+
+@keyframes noteCardBurnAway {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    filter: saturate(1) brightness(1);
+  }
+
+  38% {
+    opacity: 0.96;
+    transform: translateY(-2px) scaleY(0.98);
+    filter: saturate(1.35) brightness(1.12);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scaleY(0.2);
+    filter: saturate(0.7) brightness(0.5);
+  }
+}
+
+@keyframes noteCardEmberSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-105%) skewX(-14deg);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(105%) skewX(-14deg);
+  }
+}
+
+@keyframes noteCardBurnGlow {
+  0% {
+    opacity: 0;
+  }
+
+  35% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes completeRailPulse {
+  0% {
+    transform: translateX(0) scale(1);
+  }
+
+  45% {
+    transform: translateX(2px) scale(1.06);
+  }
+
+  100% {
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes noteBoardTabPulse {
+  0% {
+    transform: translateY(-2px) scale(1);
+  }
+
+  50% {
+    transform: translateY(-4px) scale(1.05);
+  }
+
+  100% {
+    transform: translateY(-2px) scale(1);
+  }
+}
+
+.board.board--leave-left,
+.board.board--leave-right,
+.board.board--enter-from-left,
+.board.board--enter-from-right {
+  will-change: transform, opacity;
+}
+
+.board.board--leave-left {
+  --notes-board-slide: -16px;
+  animation: notesBoardLeave 70ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.board.board--leave-right {
+  --notes-board-slide: 16px;
+  animation: notesBoardLeave 70ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.board.board--enter-from-right {
+  --notes-board-slide: 16px;
+  animation: notesBoardEnter 80ms cubic-bezier(0, 0, 0.2, 1) both;
+}
+
+.board.board--enter-from-left {
+  --notes-board-slide: -16px;
+  animation: notesBoardEnter 80ms cubic-bezier(0, 0, 0.2, 1) both;
+}
+
+@keyframes notesBoardLeave {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0.3;
+    transform: translateX(var(--notes-board-slide));
+  }
+}
+
+@keyframes notesBoardEnter {
+  from {
+    opacity: 0.3;
+    transform: translateX(var(--notes-board-slide));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board.board--leave-left,
+  .board.board--leave-right,
+  .board.board--enter-from-left,
+  .board.board--enter-from-right {
+    animation: none;
+  }
 }
 
 :host ::ng-deep .noteNotesPreview__body {

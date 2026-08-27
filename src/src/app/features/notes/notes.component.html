@@ -201,7 +201,13 @@
     <nav class="bx--tabs bx--tabs--container tabs" aria-label="Boards">
       <ul id="boardTabs" class="bx--tabs__nav" role="tablist" aria-label="Boards">
         @for (board of boards(); track board) {
-          <li class="bx--tabs__nav-item" role="presentation" [class.bx--tabs__nav-item--selected]="state.activeBoard() === board">
+          <li
+            class="bx--tabs__nav-item"
+            role="presentation"
+            [class.bx--tabs__nav-item--selected]="state.activeBoard() === board"
+            [class.noteBoardTab--drop-target]="dragHoverBoard() === board"
+            [class.noteBoardTab--drop-pulse]="boardTransferPulse() === board"
+          >
             <button
               type="button"
               class="bx--tabs__nav-link monoLinkButton"
@@ -210,6 +216,9 @@
               [attr.aria-selected]="state.activeBoard() === board"
               [attr.aria-label]="boardTabAriaLabel(board)"
               (click)="setBoard(board)"
+              (dragover)="handleBoardTabDragOver(board, $event)"
+              (dragleave)="handleBoardTabDragLeave(board, $event)"
+              (drop)="handleBoardTabDrop(board, $event)"
             >
               <span class="tabLabel">{{ board }}</span>
               <span class="tabBadge" aria-hidden="true">{{ pendingCountForBoard(board) }}</span>
@@ -225,6 +234,10 @@
       class="board"
       [class.board--split-pending]="boardSplit() === 'pending'"
       [class.board--split-complete]="boardSplit() === 'complete'"
+      [class.board--leave-left]="boardSlide() === 'leave-left'"
+      [class.board--leave-right]="boardSlide() === 'leave-right'"
+      [class.board--enter-from-right]="boardSlide() === 'enter-from-right'"
+      [class.board--enter-from-left]="boardSlide() === 'enter-from-left'"
       [attr.data-board-split]="boardSplit()"
       aria-label="Notes board"
       (click)="onBoardClick($event)"
@@ -240,7 +253,14 @@
         (scroll)="onListScroll('pending', $event)"
       >
         <div class="colTitle">Pending ({{ pendingNotes().length }})</div>
-        <div id="pendingList" class="list" aria-label="Pending notes">
+        <div
+          id="pendingList"
+          class="list"
+          aria-label="Pending notes"
+          [class.list--reorder-tail]="draggedNoteId() !== null && reorderTargetNoteId() === null && reorderTargetEdge() === 'after'"
+          (dragover)="handlePendingListDragOver($event)"
+          (drop)="handlePendingListDrop($event)"
+        >
           @if (hasMorePendingBefore()) {
             <div class="notesLoadMore notesLoadMore--before" aria-live="polite">Scroll up for earlier tasks</div>
           }
@@ -250,7 +270,18 @@
               [attr.data-note-id]="note.id"
               [class.is-flipped]="isFlipped(note.id)"
               [class.is-notes-open]="editorOpen(note.id)"
+              [class.is-completing]="isCompleting(note.id)"
+              [class.is-deleting]="isDeleting(note.id)"
+              [class.is-dragging]="isDragging(note.id)"
+              [class.is-board-moving]="isMoving(note.id)"
+              [class.noteCard--drop-before]="isReorderTarget(note.id, 'before')"
+              [class.noteCard--drop-after]="isReorderTarget(note.id, 'after')"
               [attr.data-priority]="note.priority"
+              [attr.draggable]="!editorOpen(note.id) && !isFlipped(note.id) && !isCompleting(note.id) && !isDeleting(note.id) && !isMoving(note.id)"
+              (dragstart)="handleNoteDragStart(note, $event)"
+              (dragend)="handleNoteDragEnd()"
+              (dragover)="handlePendingCardDragOver(note, $event)"
+              (drop)="handlePendingCardDrop(note, $event)"
             >
               <div class="noteCardInner">
                 @if (!isFlipped(note.id)) {
@@ -272,7 +303,10 @@
                         }
                       </div>
                     }
-                    <div class="noteText" [attr.data-priority]="note.priority">{{ note.text }}</div>
+                    <div class="noteText" [attr.data-priority]="note.priority">
+                      <span class="noteTextLabel">{{ note.text }}</span>
+                      <span class="noteTextStrike" aria-hidden="true"></span>
+                    </div>
                     @if (editorOpen(note.id)) {
                       <div class="noteEditor">
                         <div
@@ -353,7 +387,18 @@
                       }
                       <button type="button" class="monoLinkButton" (click)="move(note, 'up')">↑</button>
                       <button type="button" class="monoLinkButton" (click)="move(note, 'down')">↓</button>
-                      <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Complete</button>
+                      <button
+                        type="button"
+                        class="monoLinkButton noteCompleteButton"
+                        [disabled]="isCompleting(note.id)"
+                        [attr.aria-label]="'Complete ' + note.text"
+                        (click)="toggleComplete(note)"
+                      >
+                        <span class="noteCompleteButton__icon" aria-hidden="true">
+                          <span class="noteCompleteButton__check">✓</span>
+                        </span>
+                        <span>Complete</span>
+                      </button>
                       <button type="button" class="monoLinkButton" data-action="deleteNote" (click)="confirmDelete(note)">Delete</button>
                     </div>
                   </div>
@@ -450,16 +495,28 @@
         (keydown)="onBoardColumnKeydown($event)"
         (scroll)="onListScroll('complete', $event)"
       >
-        <div class="colTitle">Complete ({{ completeNotes().length }})</div>
+        <div class="colTitle" [class.colTitle--pulse]="completeRailPulse() > 0">Complete ({{ completeNotes().length }})</div>
         <div id="completeList" class="list" aria-label="Complete notes">
           @if (hasMoreCompleteBefore()) {
             <div class="notesLoadMore notesLoadMore--before" aria-live="polite">Scroll up for earlier tasks</div>
           }
           @for (note of visibleCompleteNotes(); track note.id) {
-            <article class="bx--tile noteCard" [attr.data-note-id]="note.id" [attr.data-priority]="note.priority">
+            <article
+              class="bx--tile noteCard"
+              [attr.data-note-id]="note.id"
+              [class.is-deleting]="isDeleting(note.id)"
+              [class.is-dragging]="isDragging(note.id)"
+              [class.is-board-moving]="isMoving(note.id)"
+              [attr.data-priority]="note.priority"
+              [attr.draggable]="!isDeleting(note.id) && !isMoving(note.id)"
+              (dragstart)="handleNoteDragStart(note, $event)"
+              (dragend)="handleNoteDragEnd()"
+            >
               <div class="noteCardInner">
                 <div class="noteFace">
-                  <div class="noteText" [attr.data-priority]="note.priority">{{ note.text }}</div>
+                  <div class="noteText" [attr.data-priority]="note.priority">
+                    <span class="noteTextLabel">{{ note.text }}</span>
+                  </div>
                   <div class="noteActions">
                     <button type="button" class="monoLinkButton" (click)="toggleComplete(note)">Pending</button>
                     <button type="button" class="monoLinkButton" data-action="deleteNote" (click)="confirmDelete(note)">Delete</button>
