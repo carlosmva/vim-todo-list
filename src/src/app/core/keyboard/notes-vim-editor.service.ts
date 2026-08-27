@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { NotesKeyboardBridge } from './notes-keyboard-bridge.service';
-import { focusCardPrimaryAction, getCardFromElement, safeFocus } from './keyboard-focus.util';
+import { focusCardPrimaryAction, getCardFromElement, isBlockingOverlayOpen, safeFocus } from './keyboard-focus.util';
 import {
   RegisterValue,
   VimMode,
@@ -118,7 +118,7 @@ export class NotesVimEditorService {
   };
 
   private onEscape = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
     const bridge = this.bridge.get();
     if (!bridge?.hasOpenEditor()) return;
@@ -169,7 +169,7 @@ export class NotesVimEditorService {
   };
 
   private onEditorKeyDown = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
     const target = e.target;
@@ -481,7 +481,7 @@ export class NotesVimEditorService {
     if (key === 'd') {
       if (this.pendingIs(noteId, 'd', 700)) {
         vimDeleteCurrentBlock(editor);
-        showVimToast(noteId, 'Deleted block');
+        showVimToast(noteId, 'Deleted line');
         this.clearPending(noteId);
       } else {
         this.setPending(noteId, 'd');

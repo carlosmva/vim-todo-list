@@ -109,7 +109,8 @@
   gap: 10px;
 }
 
-.settingsDataActions .dataActionButton {
+.settingsDataActions .dataActionButton,
+.settingsTourLaunch .dataActionButton {
   display: inline-flex;
   min-height: 34px;
   align-items: center;
@@ -120,7 +121,8 @@
   text-decoration: none;
 }
 
-.settingsDataActions .dataActionButton:hover:not(:disabled) {
+.settingsDataActions .dataActionButton:hover:not(:disabled),
+.settingsTourLaunch .dataActionButton:hover:not(:disabled) {
   text-decoration: none;
 }
 
@@ -162,13 +164,21 @@
   font-size: 0.82rem;
 }
 
+.settingsTourLaunch {
+  display: grid;
+  gap: 8px;
+  max-width: 42rem;
+  margin-block-start: 20px;
+}
+
 @media (max-width: 500px) {
   .settingsDataGroup {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }
 
-  .settingsDataActions .dataActionButton {
+  .settingsDataActions .dataActionButton,
+  .settingsTourLaunch .dataActionButton {
     flex: 1 1 11rem;
   }
 }

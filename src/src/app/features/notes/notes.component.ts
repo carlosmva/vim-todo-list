@@ -25,6 +25,8 @@ import {
 } from '../../core/utils/notes-html.util';
 import { morphCardHeightByNoteId } from '../../core/utils/card-height.util';
 import { boardSlideDirection } from '../../core/utils/board-slide.util';
+import { focusPendingQueue, nextFocusNote } from '../../core/utils/focus-mode.util';
+import { FocusModeService } from '../../core/services/focus-mode.service';
 import { normalizeUrl } from '../../core/utils/url.util';
 import {
   CompletionCandidate,
@@ -48,7 +50,7 @@ export class NotesComponent implements OnInit, OnDestroy {
   private static readonly NOTES_PAGE_SIZE = 24;
   private static readonly NOTES_WINDOW_MAX = 72;
   private static readonly COMPLETE_ANIMATION_MS = 320;
-  private static readonly DELETE_ANIMATION_MS = 340;
+  private static readonly DELETE_ANIMATION_MS = 680;
   private static readonly BOARD_SLIDE_LEAVE_MS = 70;
   private static readonly BOARD_SLIDE_ENTER_MS = 80;
   readonly state = inject(AppStateService);
@@ -60,6 +62,7 @@ export class NotesComponent implements OnInit, OnDestroy {
   private readonly autocomplete = inject(AutocompleteService);
   private readonly keyboardBridge = inject(NotesKeyboardBridge);
   private readonly vimEditor = inject(NotesVimEditorService);
+  private readonly focusMode = inject(FocusModeService);
   private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly injector = inject(Injector);
@@ -159,6 +162,12 @@ export class NotesComponent implements OnInit, OnDestroy {
       loadMoreAfter: (noteId) => this.loadMoreAfter(noteId),
       loadMoreBefore: (noteId) => this.loadMoreBefore(noteId),
       focusExtremeCard: (which) => this.focusExtremeCard(which),
+      openFocusMode: (noteId) => this.openFocusMode(noteId),
+    });
+    this.focusMode.register({
+      complete: (note) => this.completeFromFocus(note),
+      openNotes: (note) => this.openNotesFromFocus(note),
+      onClosed: (noteId) => this.restoreFocusFromFocus(noteId),
     });
     this.conflictResolvedSub = this.obsidianConflict.resolved.subscribe(({ noteId, afterResolve, choice, result }) => {
       this.refresh();
@@ -185,6 +194,8 @@ export class NotesComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.boardSlideGen += 1;
+    this.focusMode.close({ restoreFocus: false });
+    this.focusMode.unregister();
     this.conflictResolvedSub?.unsubscribe();
     this.keyboardBridge.unregister();
     this.clearTaskAutocomplete();
@@ -549,6 +560,62 @@ export class NotesComponent implements OnInit, OnDestroy {
     if (el?.closest('#colComplete, #completeList')) return 'complete';
     if (el?.closest('#colPending, #pendingList')) return 'pending';
     return this.boardSplit();
+  }
+
+  openFocusMode(noteId: number): boolean {
+    const note = this.notes().find((n) => n.id === noteId) ?? this.repo.queryNote(noteId);
+    if (!note || note.status !== 'pending') return false;
+    return this.focusMode.start(note, this.repo.queryNotes(note.board));
+  }
+
+  private restoreFocusFromFocus(noteId: number | null): void {
+    if (!noteId) {
+      safeFocus(document.getElementById('addNoteButton'));
+      return;
+    }
+    const pendingIndex = this.pendingNotes().findIndex((n) => n.id === noteId);
+    if (pendingIndex >= 0) {
+      this.ensureNoteInWindow('pending', pendingIndex);
+      afterNextRender(() => {
+        const card = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`);
+        if (card) focusCardPrimaryAction(card);
+        else safeFocus(document.getElementById('addNoteButton'));
+      }, { injector: this.injector });
+      return;
+    }
+    const completeIndex = this.completeNotes().findIndex((n) => n.id === noteId);
+    if (completeIndex >= 0) {
+      this.ensureNoteInWindow('complete', completeIndex);
+      this.setBoardColumnSplit('complete');
+      afterNextRender(() => {
+        const card = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(noteId))}"]`);
+        if (card) focusCardPrimaryAction(card);
+        else safeFocus(document.getElementById('colComplete'));
+      }, { injector: this.injector });
+      return;
+    }
+    safeFocus(document.getElementById('addNoteButton'));
+  }
+
+  private async completeFromFocus(note: Note): Promise<void> {
+    try {
+      await this.persistCompletion(note);
+      const boardNotes = this.repo.queryNotes(note.board);
+      const queue = focusPendingQueue(boardNotes, Date.now());
+      const next = nextFocusNote(queue, note.id);
+      this.focusMode.afterComplete(boardNotes, next);
+    } catch {
+      this.focusMode.releaseCompleting();
+    }
+  }
+
+  private async openNotesFromFocus(note: Note): Promise<void> {
+    this.focusMode.close({ restoreFocus: false });
+    const pendingIndex = this.pendingNotes().findIndex((n) => n.id === note.id);
+    if (pendingIndex >= 0) this.ensureNoteInWindow('pending', pendingIndex);
+    const live = this.notes().find((n) => n.id === note.id) ?? this.repo.queryNote(note.id);
+    if (!live) return;
+    await this.toggleEditor(live);
   }
 
   private focusExtremeCard(which: 'first' | 'last'): boolean {
@@ -1289,7 +1356,9 @@ export class NotesComponent implements OnInit, OnDestroy {
     if (shouldAnimate) {
       this.deletingNoteIds.update((ids) => [...ids, note.id]);
       this.cdr.detectChanges();
-      await this.wait(NotesComponent.DELETE_ANIMATION_MS);
+      const card = document.querySelector<HTMLElement>(`.noteCard[data-note-id="${CSS.escape(String(note.id))}"]`);
+      const burn = card ? this.animateCompizBurn(card.getBoundingClientRect()) : Promise.resolve();
+      await Promise.all([this.wait(NotesComponent.DELETE_ANIMATION_MS), burn]);
     }
 
     try {
@@ -1745,6 +1814,160 @@ export class NotesComponent implements OnInit, OnDestroy {
 
   private wait(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  // A WebGL overlay keeps the fire simulation off the board's paint path.
+  private animateCompizBurn(rect: DOMRect): Promise<void> {
+    const canvas = document.createElement('canvas');
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    canvas.width = Math.ceil(width * pixelRatio);
+    canvas.height = Math.ceil(height * pixelRatio);
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;pointer-events:none;';
+    document.body.append(canvas);
+
+    const context = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false });
+    if (!context) {
+      canvas.remove();
+      return Promise.resolve();
+    }
+
+    const compile = (type: number, source: string): WebGLShader | null => {
+      const shader = context.createShader(type);
+      if (!shader) return null;
+      context.shaderSource(shader, source);
+      context.compileShader(shader);
+      return context.getShaderParameter(shader, context.COMPILE_STATUS) ? shader : null;
+    };
+    const vertex = compile(
+      context.VERTEX_SHADER,
+      `attribute vec4 a_particle;
+       attribute vec3 a_color;
+       uniform vec2 u_resolution;
+       varying vec4 v_color;
+       void main() {
+         vec2 clip = (a_particle.xy / u_resolution) * 2.0 - 1.0;
+         gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+         gl_PointSize = a_particle.z;
+         v_color = vec4(a_color, a_particle.w);
+       }`
+    );
+    const fragment = compile(
+      context.FRAGMENT_SHADER,
+      `precision mediump float;
+       varying vec4 v_color;
+       void main() {
+         vec2 point = gl_PointCoord - vec2(0.5);
+         float distance = length(point);
+         float flame = 1.0 - smoothstep(0.08, 0.5, distance);
+         float core = 1.0 - smoothstep(0.0, 0.2, distance);
+         vec3 color = mix(v_color.rgb, vec3(1.0, 0.94, 0.56), core);
+         gl_FragColor = vec4(color, v_color.a * flame);
+       }`
+    );
+    const program = context.createProgram();
+    if (!vertex || !fragment || !program) {
+      canvas.remove();
+      return Promise.resolve();
+    }
+    context.attachShader(program, vertex);
+    context.attachShader(program, fragment);
+    context.linkProgram(program);
+    if (!context.getProgramParameter(program, context.LINK_STATUS)) {
+      canvas.remove();
+      return Promise.resolve();
+    }
+
+    const particleCount = Math.max(180, Math.round(rect.width * 1.6));
+    const frontCount = 54;
+    const particles = Array.from({ length: particleCount }, () => {
+      const x = rect.left + Math.random() * rect.width;
+      const y = rect.top + Math.random() * rect.height;
+      const depth = (y - rect.top) / Math.max(rect.height, 1);
+      return {
+        x,
+        y,
+        delay: (1 - depth) * 0.58 + Math.random() * 0.11,
+        drift: (Math.random() - 0.5) * 36,
+        lift: 24 + Math.random() * 66,
+        radius: 1.5 + Math.random() * 5.5,
+        hue: Math.random() > 0.72 ? 52 : Math.random() > 0.4 ? 26 : 8,
+      };
+    });
+    const buffer = context.createBuffer();
+    const particleLocation = context.getAttribLocation(program, 'a_particle');
+    const colorLocation = context.getAttribLocation(program, 'a_color');
+    const resolutionLocation = context.getUniformLocation(program, 'u_resolution');
+    if (!buffer || particleLocation < 0 || colorLocation < 0 || !resolutionLocation) {
+      canvas.remove();
+      return Promise.resolve();
+    }
+    const stride = 7;
+    const frameData = new Float32Array((particleCount + frontCount) * stride);
+    context.useProgram(program);
+    context.bindBuffer(context.ARRAY_BUFFER, buffer);
+    context.enableVertexAttribArray(particleLocation);
+    context.vertexAttribPointer(particleLocation, 4, context.FLOAT, false, stride * 4, 0);
+    context.enableVertexAttribArray(colorLocation);
+    context.vertexAttribPointer(colorLocation, 3, context.FLOAT, false, stride * 4, 4 * 4);
+    context.uniform2f(resolutionLocation, canvas.width, canvas.height);
+    context.viewport(0, 0, canvas.width, canvas.height);
+    context.enable(context.BLEND);
+    context.blendFunc(context.SRC_ALPHA, context.ONE);
+
+    return new Promise((resolve) => {
+      const startedAt = performance.now();
+      const duration = NotesComponent.DELETE_ANIMATION_MS;
+      const writeParticle = (index: number, x: number, y: number, size: number, alpha: number, hue: number): void => {
+        const offset = index * stride;
+        const warmth = hue / 55;
+        frameData[offset] = x * pixelRatio;
+        frameData[offset + 1] = y * pixelRatio;
+        frameData[offset + 2] = size * pixelRatio;
+        frameData[offset + 3] = alpha;
+        frameData[offset + 4] = 1;
+        frameData[offset + 5] = 0.08 + warmth * 0.7;
+        frameData[offset + 6] = warmth * 0.18;
+      };
+
+      const render = (now: number): void => {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        const burnFront = rect.bottom - rect.height * Math.min(progress * 1.18, 1);
+        let index = 0;
+
+        for (let flameIndex = 0; flameIndex < frontCount; flameIndex += 1) {
+          const flameProgress = (flameIndex / frontCount + progress * 0.72) % 1;
+          const x = rect.left + flameProgress * rect.width;
+          const wobble = Math.sin(progress * 22 + flameIndex * 2.7) * 11;
+          const size = 11 + ((flameIndex * 13) % 18);
+          writeParticle(index, x, burnFront + wobble, size, Math.max(0, 0.84 - progress * 0.36), flameIndex % 3 === 0 ? 52 : 20);
+          index += 1;
+        }
+
+        for (const particle of particles) {
+          const life = progress < particle.delay ? 0 : Math.min((progress - particle.delay) / (1 - particle.delay), 1);
+          const alpha = life === 0 ? 0 : (1 - life) * Math.min(1, life * 7) * 0.94;
+          const x = particle.x + particle.drift * life + Math.sin(life * 13 + particle.y) * 3;
+          const y = particle.y - particle.lift * life - life * life * 48;
+          writeParticle(index, x, y, particle.radius * (1 - life * 0.42), alpha, particle.hue);
+          index += 1;
+        }
+
+        context.clear(context.COLOR_BUFFER_BIT);
+        context.bufferData(context.ARRAY_BUFFER, frameData, context.DYNAMIC_DRAW);
+        context.drawArrays(context.POINTS, 0, index);
+        if (progress < 1) {
+          requestAnimationFrame(render);
+          return;
+        }
+        canvas.remove();
+        resolve();
+      };
+
+      requestAnimationFrame(render);
+    });
   }
 
   private bumpCompleteRailPulse(): void {

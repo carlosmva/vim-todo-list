@@ -26,6 +26,8 @@ export interface NotesKeyboardHandlers {
   renameFocusedCard?(): void;
   loadMoreAfter?(noteId: number): boolean;
   loadMoreBefore?(noteId: number): boolean;
+  focusExtremeCard?(which: 'first' | 'last'): boolean;
+  openFocusMode?(noteId: number): boolean;
 }
 
 @Injectable({ providedIn: 'root' })

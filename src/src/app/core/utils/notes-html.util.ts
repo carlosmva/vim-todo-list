@@ -1,3 +1,5 @@
+import { richNotesHtmlToObsidianBodyMarkdown } from './obsidian-markdown.util';
+
 /** Plain text extracted from rich notes HTML (matches legacy popup.js behavior). */
 export function htmlToReadableText(html: string): string {
   const source = String(html || '').trim();
@@ -81,7 +83,7 @@ export function editorContentToMarkdown(editor: HTMLElement): string {
 export function notesContentToPreviewMarkdown(stored: string): string {
   const source = String(stored || '').trim();
   if (!source) return '';
-  if (looksLikeStoredHtml(source)) return htmlToReadableText(source);
+  if (looksLikeStoredHtml(source)) return richNotesHtmlToObsidianBodyMarkdown(source);
   return source;
 }
 

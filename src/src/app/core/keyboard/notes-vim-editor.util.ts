@@ -20,17 +20,147 @@ export function isEditableElement(el: Element | null): boolean {
   );
 }
 
+const LINE_BLOCK_SELECTOR = 'li, p, div, pre, blockquote, h1, h2, h3, h4, h5, h6';
+
 export function getCurrentBlockElement(editor: HTMLElement, useFocus = false): HTMLElement | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return null;
   const node = useFocus ? sel.focusNode : sel.anchorNode;
   if (!node) return null;
+  return blockElementAroundNode(editor, node);
+}
+
+function blockElementAroundNode(editor: HTMLElement, node: Node): HTMLElement | null {
   const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-  if (!(el instanceof Element)) return null;
-  if (!editor.contains(el)) return null;
-  const block = el.closest('li, p, div, pre, blockquote, h1, h2, h3, h4, h5, h6');
+  if (!(el instanceof Element) || !editor.contains(el)) return null;
+  const block = el.closest(LINE_BLOCK_SELECTOR);
   if (block instanceof HTMLElement && editor.contains(block) && block !== editor) return block;
   return null;
+}
+
+function caretRangeFromSelection(editor: HTMLElement): Range | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  try {
+    const r = sel.getRangeAt(0).cloneRange();
+    r.collapse(true);
+    if (!editor.contains(r.startContainer)) return null;
+    return r;
+  } catch {
+    return null;
+  }
+}
+
+function isBrNode(node: Node | null): node is HTMLBRElement {
+  return node instanceof HTMLElement && node.tagName === 'BR';
+}
+
+function hasVisibleContentAfter(node: Node): boolean {
+  let n: Node | null = node.nextSibling;
+  while (n) {
+    if (isBrNode(n)) return false;
+    if (n.nodeType === Node.TEXT_NODE && (n.nodeValue || '').replace(/\u00a0/g, '').trim()) return true;
+    if (n.nodeType === Node.ELEMENT_NODE && ((n as Element).textContent || '').replace(/\u00a0/g, '').trim()) {
+      return true;
+    }
+    n = n.nextSibling;
+  }
+  return false;
+}
+
+/** True when a block is one visual row (not a wrapper of several `<br>` lines). */
+export function isSingleVisualLineBlock(block: HTMLElement): boolean {
+  const brs = [...block.querySelectorAll('br')];
+  if (brs.length === 0) return true;
+  if (brs.length === 1 && !hasVisibleContentAfter(brs[0])) return true;
+  return false;
+}
+
+function collapsedRangeBefore(node: Node): Range {
+  const r = document.createRange();
+  r.setStartBefore(node);
+  r.collapse(true);
+  return r;
+}
+
+function compareCaretToRangeStart(caret: Range, other: Range): number {
+  return caret.compareBoundaryPoints(Range.START_TO_START, other);
+}
+
+function newlineTextLineRange(textNode: Text, offset: number): Range | null {
+  const value = textNode.nodeValue || '';
+  if (!value.includes('\n')) return null;
+  const start = value.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+  let end = value.indexOf('\n', offset);
+  const r = document.createRange();
+  if (end < 0) {
+    const prevNl = value.lastIndexOf('\n', start - 1);
+    if (prevNl >= 0) r.setStart(textNode, prevNl);
+    else r.setStart(textNode, start);
+    r.setEnd(textNode, value.length);
+  } else {
+    r.setStart(textNode, start);
+    r.setEnd(textNode, end + 1);
+  }
+  return r;
+}
+
+function brDelimitedLineRange(root: Node, caret: Range): Range {
+  if (caret.startContainer.nodeType === Node.TEXT_NODE) {
+    const textLine = newlineTextLineRange(caret.startContainer as Text, caret.startOffset);
+    if (textLine) return textLine;
+  }
+
+  const brs = [...(root instanceof Element ? root.querySelectorAll('br') : [])];
+  let prevBr: Node | null = null;
+  let nextBr: Node | null = null;
+  for (const br of brs) {
+    if (compareCaretToRangeStart(caret, collapsedRangeBefore(br)) <= 0) {
+      if (!nextBr) nextBr = br;
+    } else {
+      prevBr = br;
+    }
+  }
+
+  const line = document.createRange();
+  if (nextBr) {
+    if (prevBr) line.setStartAfter(prevBr);
+    else line.setStart(root, 0);
+    line.setEndAfter(nextBr);
+    return line;
+  }
+  if (prevBr) {
+    line.selectNodeContents(root);
+    line.setStartBefore(prevBr);
+    return line;
+  }
+  line.selectNodeContents(root);
+  return line;
+}
+
+/**
+ * Range covering the visual row under the caret.
+ * Markdown notes are often `line<br>line` inside the editor, not one block per row.
+ */
+export function lineRangeFromCaret(editor: HTMLElement, caret: Range): Range | null {
+  const node = caret.startContainer;
+  if (!(node instanceof Node) || !editor.contains(node)) return null;
+
+  const block = blockElementAroundNode(editor, node);
+  if (block && isSingleVisualLineBlock(block)) {
+    const r = document.createRange();
+    r.selectNode(block);
+    return r;
+  }
+
+  const root = block && editor.contains(block) ? block : editor;
+  return brDelimitedLineRange(root, caret);
+}
+
+export function getCurrentLineRange(editor: HTMLElement): Range | null {
+  const caret = caretRangeFromSelection(editor);
+  if (!caret) return null;
+  return lineRangeFromCaret(editor, caret);
 }
 
 export function getSelectionRangeInEditor(editor: HTMLElement): Range | null {
@@ -413,32 +543,42 @@ export function vimDeleteSelection(editor: HTMLElement): boolean {
   }
 }
 
+function seedEmptyEditorLine(editor: HTMLElement): void {
+  editor.innerHTML = '<div><br></div>';
+  collapseSelectionToEditorStart(editor);
+}
+
 export function vimDeleteCurrentBlock(editor: HTMLElement): void {
-  const block = getCurrentBlockElement(editor);
-  if (!block) {
-    editor.innerHTML = '';
-    collapseSelectionToEditorStart(editor);
+  const line = getCurrentLineRange(editor);
+  if (!line) {
+    seedEmptyEditorLine(editor);
     editor.dispatchEvent(new Event('input', { bubbles: true }));
     return;
   }
-  const nextFocus =
-    block.nextElementSibling instanceof HTMLElement
-      ? block.nextElementSibling
-      : block.previousElementSibling instanceof HTMLElement
-        ? block.previousElementSibling
-        : null;
-  block.remove();
-  if (nextFocus) {
+
+  try {
+    editor.focus();
+    line.deleteContents();
+  } catch {
+    try {
+      const block = getCurrentBlockElement(editor);
+      if (block && isSingleVisualLineBlock(block)) block.remove();
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!editor.innerHTML.trim()) seedEmptyEditorLine(editor);
+  else {
     const sel = window.getSelection();
     if (sel) {
-      const r = document.createRange();
-      r.selectNodeContents(nextFocus);
-      r.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(r);
+      try {
+        sel.removeAllRanges();
+        sel.addRange(line);
+      } catch {
+        collapseSelectionToEditorStart(editor);
+      }
     }
-  } else {
-    collapseSelectionToEditorStart(editor);
   }
   editor.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -600,9 +740,13 @@ export function yankFromRange(editor: HTMLElement, r: Range): { html: string; te
 }
 
 export function yankCurrentBlock(editor: HTMLElement): { html: string; text: string } {
+  const line = getCurrentLineRange(editor);
+  if (line) return yankFromRange(editor, line);
   const block = getCurrentBlockElement(editor);
-  if (block) return { html: block.outerHTML, text: block.textContent || '' };
-  return { html: editor.innerHTML, text: editor.textContent || '' };
+  if (block && isSingleVisualLineBlock(block)) {
+    return { html: block.outerHTML, text: block.textContent || '' };
+  }
+  return { html: '', text: '' };
 }
 
 export function updateVimStatusInDom(noteId: number, status: string): void {

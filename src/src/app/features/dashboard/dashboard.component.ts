@@ -22,7 +22,9 @@ interface HeatmapModel {
   standalone: true,
   imports: [CommonModule, RouterLink],
   templateUrl: './dashboard.component.html',
-})export class DashboardComponent implements OnInit {
+  styleUrl: './dashboard.component.scss',
+})
+export class DashboardComponent implements OnInit {
   private readonly dbService = inject(DatabaseService);
   private readonly dashboard = inject(DashboardService);
 

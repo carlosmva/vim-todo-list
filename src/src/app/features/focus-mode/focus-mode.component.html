@@ -1,0 +1,53 @@
+@if (focus.active()) {
+  <div
+    id="focusMode"
+    class="focusMode"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="focusModeTitle"
+    aria-describedby="focusModeProgress"
+  >
+    <div class="focusMode__stage">
+      <div class="focusMode__progress" id="focusModeProgress">
+        {{ focus.progress().done }} / {{ focus.progress().total }} TODAY
+      </div>
+
+      @if (focus.cleared()) {
+        <h1 class="focusMode__title" id="focusModeTitle">All clear</h1>
+        <p class="focusMode__empty">Nothing left on this board.</p>
+        <div class="focusMode__actions">
+          <button id="focusModeDismiss" class="monoLinkButton" type="button" (click)="dismiss()">
+            Return
+          </button>
+        </div>
+      } @else {
+        <div class="focusMode__timer" aria-label="Elapsed time">{{ focus.elapsedLabel() }}</div>
+        <h1 class="focusMode__title" id="focusModeTitle">{{ focus.note()?.text?.trim() || 'Untitled task' }}</h1>
+        @if (formatDue(focus.note()?.due_at); as due) {
+          <div class="focusMode__due">{{ due }}</div>
+        }
+        <div class="focusMode__actions">
+          <button
+            id="focusModeComplete"
+            class="monoLinkButton"
+            type="button"
+            [disabled]="focus.completing()"
+            (click)="complete()"
+          >
+            Complete
+          </button>
+          <button
+            id="focusModeNotes"
+            class="monoLinkButton"
+            type="button"
+            [disabled]="focus.completing()"
+            (click)="openNotes()"
+          >
+            Notes
+          </button>
+        </div>
+      }
+    </div>
+    <p class="focusMode__hint">Esc</p>
+  </div>
+}

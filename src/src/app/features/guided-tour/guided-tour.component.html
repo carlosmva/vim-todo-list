@@ -1,0 +1,48 @@
+@if (tour.active()) {
+  <div
+    id="guidedTour"
+    class="guidedTour"
+    [class.guidedTour--hasTarget]="tour.hasTarget()"
+    [style.--guided-tour-spotlight-x.px]="tour.spotlight().x"
+    [style.--guided-tour-spotlight-y.px]="tour.spotlight().y"
+    [style.--guided-tour-spotlight-width.px]="tour.spotlight().width"
+    [style.--guided-tour-spotlight-height.px]="tour.spotlight().height"
+    [style.--guided-tour-spotlight-radius.px]="tour.spotlight().radius"
+    aria-hidden="false"
+  >
+    <div class="guidedTour__backdrop"></div>
+    <div class="guidedTour__spotlight" aria-hidden="true"></div>
+    <section
+      class="guidedTour__panel"
+      [class.guidedTour__panel--anchored]="!!tour.panel()?.anchored"
+      [style.left.px]="tour.panel()?.left"
+      [style.top.px]="tour.panel()?.top"
+      [style.transform]="tour.panel()?.anchored ? 'none' : null"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="guidedTourTitle"
+      aria-describedby="guidedTourBody"
+    >
+      <div class="guidedTour__eyebrow" id="guidedTourProgress">{{ tour.progressLabel() }}</div>
+      <h2 class="guidedTour__title" id="guidedTourTitle">{{ tour.step()?.title }}</h2>
+      <p class="guidedTour__body" id="guidedTourBody">{{ tour.step()?.body }}</p>
+      <div class="guidedTour__actions">
+        <button id="guidedTourSkip" class="monoLinkButton" type="button" (click)="skip()">Skip</button>
+        <div class="guidedTour__stepActions">
+          <button
+            id="guidedTourBack"
+            class="monoLinkButton"
+            type="button"
+            [disabled]="tour.isFirst()"
+            (click)="back()"
+          >
+            Back
+          </button>
+          <button id="guidedTourNext" class="monoLinkButton" type="button" (click)="next()">
+            {{ tour.nextLabel() }}
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+}

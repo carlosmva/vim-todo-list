@@ -3,6 +3,11 @@ import { ChromeStorageService } from './chrome-storage.service';
 import { DatabaseService } from './database.service';
 import { OverlayBridgeService } from './overlay-bridge.service';
 import { DEFAULT_BOARD, DEFAULT_THEME, ThemeId, THEME_ORDER } from '../models/envelope.model';
+import {
+  AI_ENDPOINT_BASE_URL_KEY,
+  DEFAULT_OLLAMA_ENDPOINT,
+  shouldSeedDefaultOllamaEndpoint,
+} from '../utils/ai-settings.util';
 import { POPUP_SIZE_ORDER, PopupSizeId } from '../models/popup-size.model';
 import { defaultKeyboardNavPlatform, type KeyboardNavPlatform } from '../keyboard/keyboard.model';
 import {
@@ -55,8 +60,18 @@ export class AppStateService {
     const keyLayout = storedKeyLayout === 'dvorak' ? 'dvorak' : 'qwerty';
     this.keyLayout.set(keyLayout);
     // Imported legacy databases do not contain this setting; seed a stable default for future exports.
+    let persistSeededDefaults = false;
     if (this.dbService.getSetting('app.keyboardLayout') === null) {
       this.dbService.setSetting('app.keyboardLayout', keyLayout);
+      persistSeededDefaults = true;
+    }
+    const storedAiUrl = this.dbService.getSetting(AI_ENDPOINT_BASE_URL_KEY);
+    const seedOllamaEndpoint = shouldSeedDefaultOllamaEndpoint(storedAiUrl, env.ai?.u);
+    if (seedOllamaEndpoint) {
+      this.dbService.setSetting(AI_ENDPOINT_BASE_URL_KEY, DEFAULT_OLLAMA_ENDPOINT);
+      persistSeededDefaults = true;
+    }
+    if (persistSeededDefaults) {
       void this.dbService.persist();
     }
     this.keyboardNavPlatform.set(
@@ -74,7 +89,12 @@ export class AppStateService {
     this.headerTitleFont.set(headerTitleFont);
     this.interfaceFont.set(interfaceFont);
 
-    this.storage.patch({ t: theme, ps, kl: keyLayout });
+    this.storage.patch({
+      t: theme,
+      ps,
+      kl: keyLayout,
+      ...(seedOllamaEndpoint ? { ai: { ...env.ai, u: DEFAULT_OLLAMA_ENDPOINT } } : {}),
+    });
     this.overlay.setTheme(theme);
     this.overlay.setPopupSize(ps);
     this.applyAppearance();

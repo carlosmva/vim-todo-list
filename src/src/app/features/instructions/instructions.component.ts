@@ -13,6 +13,17 @@ import {
   selector: 'app-instructions',
   standalone: true,
   imports: [RouterLink],
+  styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      overflow: hidden;
+    }
+  `],
   template: `
     <div class="view" id="instructionsView" aria-label="Instructions">
       <div class="instructionsHeader">
@@ -32,6 +43,22 @@ import {
             Change layout and modifier in <b>Settings &gt; Keyboard</b>.
           </p>
         </div>
+
+        <section class="instructionsSection" tabindex="0" aria-label="Open the app">
+          <h3>Open the app</h3>
+          <div class="instructionsKeyList">
+            <div class="instructionsKeyRow">
+              <div class="instructionsKeyRow__keys"><kbd>Alt</kbd><span class="keycapSep">+</span><kbd>R</kbd></div>
+              <div class="instructionsKeyRow__desc">Open or close the overlay from any Chrome tab, after you assign it in Chrome shortcuts.</div>
+            </div>
+          </div>
+          <ul>
+            <li>In the address bar, open <b>chrome://extensions/shortcuts</b>.</li>
+            <li>Find <b>vim-todo-list</b> and set <b>Open vim-todo-list popup</b> to <kbd>Alt</kbd>+<kbd>R</kbd> (Mac: <kbd>Ctrl</kbd>+<kbd>R</kbd> if you use Control).</li>
+            <li>Chrome often leaves the suggested key blank when it conflicts. The shortcuts page is the source of truth.</li>
+            <li>You can also click the extension icon in the toolbar.</li>
+          </ul>
+        </section>
 
         <div class="instructionsGrid">
           <section class="instructionsSection" tabindex="0" aria-label="Core Navigation">
@@ -104,6 +131,7 @@ import {
           <li>Use Priority, Links, Notes, Complete, and Delete on each card.</li>
           <li>Reorder pending cards with ↑ / ↓.</li>
           <li>Open Calendar from the view bar to see due dates.</li>
+          <li>A guided tour starts on first open. Replay it from Settings → Keyboard or the header pin.</li>
         </ul>
         <p><a routerLink="/" class="monoLinkButton">Back to notes</a></p>
       </div>
@@ -147,6 +175,9 @@ export class InstructionsComponent {
       { keys: '<kbd>/</kbd>', desc: 'Focus the card filter.' },
       { keys: '<kbd>F2</kbd>', desc: 'Rename the focused card.' },
       { keys: combo(mod, '1') + ' … ' + combo(mod, '9'), desc: 'Switch boards (1–9 without modifier when not typing).' },
+      { keys: '<kbd>gg</kbd>', desc: 'On board tabs: first tab. On cards: first card in the current column (filtered list if searching).' },
+      { keys: '<kbd>G</kbd>', desc: 'On board tabs: last tab. On cards: last card in the current column (filtered list if searching).' },
+      { keys: '<kbd>f</kbd>', desc: 'Focus mode on a pending card. c completes, n opens notes, Esc returns to the board.' },
     ];
   });
 }

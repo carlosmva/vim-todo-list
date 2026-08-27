@@ -1,6 +1,6 @@
 # vim-todo-list
 
-Chrome extension for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly). Opens as a centered overlay with backdrop blur over the current page (click the extension icon or press `Alt+R` / `Ctrl+R` on Mac).
+Chrome extension for fast, keyboard-first task notes stored locally in an embedded SQLite database (sql.js/WebAssembly). Opens as a centered overlay with backdrop blur over the current page (click the extension icon, or assign `Alt+R` / `Ctrl+R` on Mac in `chrome://extensions/shortcuts`).
 
 ![Vim To-Do List logo](icons/logo1024x1024.png)
 
@@ -33,6 +33,7 @@ Also available in chrome webstore https://chromewebstore.google.com/detail/vim-t
   - Configure via **AI** in the header (endpoint URL, model name)
   - Works alongside local completions (DB, custom words, dictionary)
   - Press `Tab` to accept a suggestion; use arrow keys to cycle through options
+- **Guided tour**: runs on first open and can be replayed from **Settings → Keyboard** or the header pin
 - **Obsidian (optional)**: link the extension to a vault folder, sync Markdown with your notes, open notes in Obsidian, and resolve conflicts when vault files and cards disagree (see below)
 
 ## Obsidian integration
@@ -80,6 +81,7 @@ For development with auto-rebuild:
 - Use **Links** to flip the card and manage saved URLs.
 - Use **Notes** to open the rich notes editor for that card.
 - Use **Priority** to cycle `normal → high → low → normal`.
+- A **guided tour** starts on first open. Replay it from **Settings → Keyboard** or the header pin.
 
 ## Themes
 
@@ -92,9 +94,11 @@ For development with auto-rebuild:
 
 ## Keyboard
 
-- Open popup: `Alt+R` (Windows/Linux) or `Ctrl+R` (Mac)
+- Open popup: assign `Alt+R` (Windows/Linux) or `Ctrl+R` (Mac) in `chrome://extensions/shortcuts` (Chrome often leaves the suggested key unassigned). You can also click the toolbar icon.
 - The popup also includes an in-app **Instructions** view with the full, up-to-date keybindings.
 - **Settings** → **Keyboard** chooses **QWERTY** or **Dvorak** mappings (the in-app Instructions update to match).
+- Replay the guided tour from **Settings → Keyboard** or the header pin; it also runs automatically on first open.
+- Press **f** on a pending task to enter Focus Mode (one task, a today counter, and a timer). **Esc** returns to the board.
 - **Tabs** and **About** are in the header links row; **Settings** (gear) holds AI, Obsidian, and keyboard options.
 - When a word-completion suggestion is shown while typing a new note, press `Tab` to accept it.
 

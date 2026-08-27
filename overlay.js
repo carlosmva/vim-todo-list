@@ -83,6 +83,7 @@
     height: ${POPUP_SIZES.m.height};
     max-width: 100%;
     max-height: 100%;
+    overflow: hidden;
     border: none;
     border-radius: ${POPUP_SIZES.m.radius};
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);

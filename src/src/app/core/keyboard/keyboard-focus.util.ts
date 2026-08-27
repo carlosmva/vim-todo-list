@@ -1,13 +1,65 @@
 import { focusSettingsTabEntry } from './settings-keyboard.util';
 
-export function safeFocus(node: HTMLElement | null | undefined): boolean {
+export function isVerticallyScrollable(node: HTMLElement): boolean {
+  const style = getComputedStyle(node);
+  const overflowY = style.overflowY;
+  if (overflowY !== 'auto' && overflowY !== 'scroll' && overflowY !== 'overlay') return false;
+  return node.scrollHeight > node.clientHeight + 1;
+}
+
+/** Scroll overflow ancestors so `el` is fully visible. Ignores overflow:hidden shells. */
+export function ensureElementFullyVisible(el: HTMLElement, margin = 12): void {
+  const containers: HTMLElement[] = [];
+  const seen = new Set<HTMLElement>();
+  let parent = el.parentElement;
+  while (parent) {
+    if (!seen.has(parent) && isVerticallyScrollable(parent)) {
+      seen.add(parent);
+      containers.push(parent);
+    }
+    parent = parent.parentElement;
+  }
+
+  if (!containers.length) {
+    try {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  for (const container of containers) {
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const visibleHeight = Math.max(0, containerRect.height - margin * 2);
+
+    if (elRect.height > visibleHeight) {
+      const topDelta = elRect.top - (containerRect.top + margin);
+      if (topDelta < 0 || topDelta > margin) container.scrollTop += topDelta;
+      continue;
+    }
+
+    const topOverflow = containerRect.top + margin - elRect.top;
+    const bottomOverflow = elRect.bottom - (containerRect.bottom - margin);
+    if (topOverflow > 0) container.scrollTop -= topOverflow;
+    else if (bottomOverflow > 0) container.scrollTop += bottomOverflow;
+  }
+}
+
+export function safeFocus(
+  node: HTMLElement | null | undefined,
+  options?: { scroll?: boolean }
+): boolean {
   if (!(node instanceof HTMLElement)) return false;
   if (node.hasAttribute('disabled') || node.getAttribute('aria-hidden') === 'true') return false;
 
   const attempt = (): boolean => {
     try {
       node.focus({ preventScroll: true });
-      return document.activeElement === node;
+      if (document.activeElement !== node) return false;
+      if (options?.scroll) ensureElementFullyVisible(node);
+      return true;
     } catch {
       return false;
     }
@@ -181,7 +233,7 @@ export function moveGlobalFocus(delta: number): boolean {
   let idx = active ? targets.indexOf(active) : -1;
   if (idx < 0) idx = delta < 0 ? targets.length : 0;
   else idx = Math.min(targets.length - 1, Math.max(0, idx + delta));
-  return safeFocus(targets[idx]);
+  return safeFocus(targets[idx], { scroll: true });
 }
 
 export function getBoardTabElements(): HTMLElement[] {
@@ -192,6 +244,19 @@ export function isOnBoardTabs(el: Element | null): boolean {
   if (!(el instanceof Element)) return false;
   if (el.closest('#boardTabs')) return true;
   return el.getAttribute('role') === 'tab' && !!el.closest('.tabs, .bx--tabs');
+}
+
+export type VimListJumpContext = 'tabs' | 'cards';
+
+/** Board tabs row vs kanban cards/columns. Ignores typing fields and the notes editor. */
+export function resolveVimListJumpContext(el: Element | null): VimListJumpContext | null {
+  if (!(el instanceof Element)) return null;
+  if (isTypingTarget(el) || el.closest('.noteEditorArea')) return null;
+  if (isOnBoardTabs(el)) return 'tabs';
+  if (getCardFromElement(el) || isOnBoardColumn(el) || el.closest('#pendingList, #completeList, #notesBoard')) {
+    return 'cards';
+  }
+  return null;
 }
 
 export function resolveBoardTabElement(el: Element | null): HTMLElement | null {
@@ -250,11 +315,20 @@ export function isOnBoardColumn(el: Element | null): boolean {
   return el === pending || el === complete;
 }
 
+export function isBlockingOverlayOpen(): boolean {
+  return !!(
+    document.getElementById('obsidianConflictModal') ||
+    document.getElementById('guidedTour') ||
+    document.getElementById('focusMode')
+  );
+}
+
 export function getHeaderNavTargets(): HTMLElement[] {
   return [
     document.getElementById('themeSelect'),
     document.getElementById('instructionsLink'),
     document.getElementById('aboutLink'),
+    document.getElementById('tourBtn'),
     document.getElementById('settingsBtn'),
     document.getElementById('closePopupBtn'),
   ].filter((t): t is HTMLElement => t instanceof HTMLElement && isVisible(t));

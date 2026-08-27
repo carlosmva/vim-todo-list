@@ -269,7 +269,11 @@ export function buildObsidianMarkdown(note: Note): string {
   return out;
 }
 
-/** Parse vault Markdown back into title + notes_html (legacy popup.js parity). */
+/**
+ * Parse vault Markdown back into title + notes body.
+ * The notes editor/preview store markdown in `notes_html`, so keep the body as
+ * markdown — converting to HTML would later be stripped to plain text.
+ */
 export function parseObsidianMarkdownImport(md: string): { title: string; notes_html: string } {
   const norm = normalizeObsidianMarkdown(md);
   const lines = norm.split('\n');
@@ -291,5 +295,5 @@ export function parseObsidianMarkdownImport(md: string): { title: string; notes_
     if (alt >= 0 && /\n---\s*$/m.test(rest.slice(alt))) rest = rest.slice(0, alt).trim();
   }
 
-  return { title, notes_html: obsidianMarkdownBodyToNotesHtml(rest) };
+  return { title, notes_html: rest };
 }

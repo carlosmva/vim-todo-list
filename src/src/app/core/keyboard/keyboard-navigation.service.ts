@@ -34,6 +34,7 @@ import {
   getFocusedAnchor,
   getHeaderNavTargets,
   getViewNavTargets,
+  isBlockingOverlayOpen,
   isOnBoardColumn,
   isOnBoardTabs,
   isTypingTarget,
@@ -46,6 +47,7 @@ import {
   resolveBoardTabElement,
   resolveHeaderNavElement,
   resolveInternalAppRoute,
+  resolveVimListJumpContext,
   safeFocus,
 } from './keyboard-focus.util';
 import { NotesKeyboardBridge } from './notes-keyboard-bridge.service';
@@ -94,7 +96,7 @@ export class KeyboardNavigationService {
   }
 
   private onBoardShortcut = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     const key = e.key;
     if (key < '1' || key > '9') return;
     const hasMod = modKeyActive(e, this.platform());
@@ -110,7 +112,7 @@ export class KeyboardNavigationService {
   };
 
   private onSlashFilter = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     if (e.key !== '/' || modKeyActive(e, this.platform()) || e.ctrlKey || e.metaKey) return;
     if (isTypingTarget(document.activeElement)) return;
     const path = this.router.url.split('?')[0];
@@ -122,7 +124,7 @@ export class KeyboardNavigationService {
   };
 
   private onColumnPanelShortcut = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     const layout = this.layout();
     const pendingKey = getPendingColumnKey(layout);
     const completeKey = getCompleteColumnKey(layout);
@@ -144,7 +146,7 @@ export class KeyboardNavigationService {
   };
 
   private onEscape = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     if (e.key !== 'Escape' || modKeyActive(e, this.platform()) || e.ctrlKey || e.metaKey) return;
 
     if (this.themeSelectKeyboard.disarmFocused()) {
@@ -193,9 +195,11 @@ export class KeyboardNavigationService {
 
   private colonPending = false;
   private colonTimer: ReturnType<typeof setTimeout> | null = null;
+  private gPending = false;
+  private gTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (document.getElementById('obsidianConflictModal')) return;
+    if (isBlockingOverlayOpen()) return;
     // Chrome assigns Alt+Enter on anchors to save/download behavior. Route in-app
     // links through the router and suppress the default for everything else.
     if (e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -272,6 +276,38 @@ export class KeyboardNavigationService {
         e.preventDefault();
         bridge.renameFocusedCard();
         return;
+      }
+    }
+
+    if (this.handleVimListJump(e, bridge)) {
+      return;
+    }
+
+    if (
+      key === 'f' &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !modKeyActive(e, platform) &&
+      bridge?.openFocusMode
+    ) {
+      if (
+        !isTypingTarget(document.activeElement) &&
+        !(document.activeElement instanceof Element && document.activeElement.closest('.noteEditorArea')) &&
+        !bridge.isAddDialogOpen?.() &&
+        !bridge.isDeleteDialogOpen?.()
+      ) {
+        const path = this.router.url.split('?')[0] || '/';
+        if (path === '/' || path === '') {
+          const card = getCardFromElement(document.activeElement);
+          if (card && !card.classList.contains('is-flipped')) {
+            const noteId = Number(card.dataset['noteId']);
+            if (Number.isFinite(noteId) && bridge.openFocusMode(noteId)) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+          }
+        }
       }
     }
 
@@ -729,4 +765,95 @@ export class KeyboardNavigationService {
       moveGlobalFocus(key === nav.right ? 1 : -1);
     }
   };
+
+  private handleVimListJump(
+    e: KeyboardEvent,
+    bridge: ReturnType<NotesKeyboardBridge['get']>
+  ): boolean {
+    if (e.ctrlKey || e.metaKey || modKeyActive(e, this.platform())) return false;
+    const raw = e.key;
+    if (raw === 'Shift' || raw === 'Control' || raw === 'Alt' || raw === 'Meta' || raw === 'CapsLock') {
+      return false;
+    }
+
+    if (bridge?.isAddDialogOpen?.() || bridge?.isDeleteDialogOpen?.()) {
+      this.clearGPending();
+      return false;
+    }
+    if (isTypingTarget(document.activeElement)) {
+      this.clearGPending();
+      return false;
+    }
+    if (document.activeElement instanceof Element && document.activeElement.closest('.noteEditorArea')) {
+      this.clearGPending();
+      return false;
+    }
+
+    const path = this.router.url.split('?')[0] || '/';
+    if (path !== '/' && path !== '') {
+      this.clearGPending();
+      return false;
+    }
+
+    const ctx = resolveVimListJumpContext(document.activeElement);
+    if (raw === 'g') {
+      if (!ctx) {
+        this.clearGPending();
+        return false;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (this.gPending) {
+        this.clearGPending();
+        this.jumpListExtreme('first', ctx, bridge);
+      } else {
+        this.gPending = true;
+        if (this.gTimer) clearTimeout(this.gTimer);
+        this.gTimer = setTimeout(() => this.clearGPending(), 700);
+      }
+      return true;
+    }
+
+    if (raw === 'G') {
+      if (!ctx) {
+        this.clearGPending();
+        return false;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      this.clearGPending();
+      this.jumpListExtreme('last', ctx, bridge);
+      return true;
+    }
+
+    this.clearGPending();
+    return false;
+  }
+
+  private jumpListExtreme(
+    which: 'first' | 'last',
+    ctx: ReturnType<typeof resolveVimListJumpContext>,
+    bridge: ReturnType<NotesKeyboardBridge['get']>
+  ): void {
+    if (ctx === 'tabs') {
+      const tabs = getBoardTabElements();
+      const target = which === 'first' ? tabs[0] : tabs[tabs.length - 1];
+      if (!target) return;
+      safeFocus(target);
+      const boardName = target.getAttribute('data-board');
+      if (boardName) bridge?.setBoard(boardName);
+      return;
+    }
+    if (ctx === 'cards') {
+      bridge?.focusExtremeCard?.(which);
+    }
+  }
+
+  private clearGPending(): void {
+    this.gPending = false;
+    if (this.gTimer) {
+      clearTimeout(this.gTimer);
+      this.gTimer = null;
+    }
+  }
 }

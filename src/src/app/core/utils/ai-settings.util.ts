@@ -5,6 +5,9 @@ import {
   PriorityRibbonLimit,
 } from '../models/priority-ribbon.model';
 
+export const AI_ENDPOINT_BASE_URL_KEY = 'ai.endpointBaseUrl';
+export const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434';
+
 export const AI_PRIORITY_RIBBON_ENABLED_KEY = 'ai.priorityRibbonEnabled';
 export const AI_PRIORITY_RIBBON_LIMIT_KEY = 'ai.priorityRibbonLimit';
 
@@ -16,6 +19,22 @@ export const AI_RIBBON_SETTING_KEYS = [
 export interface PriorityRibbonSettings {
   enabled: boolean;
   limit: PriorityRibbonLimit;
+}
+
+/** True when no endpoint has ever been stored. An empty string is an explicit disable. */
+export function shouldSeedDefaultOllamaEndpoint(
+  dbValue: string | null,
+  envelopeUrl?: string
+): boolean {
+  if (dbValue != null) return false;
+  return !String(envelopeUrl ?? '').trim();
+}
+
+/** DB wins when the key exists; envelope is fallback; first open uses the local Ollama default. */
+export function resolveOllamaEndpoint(dbValue: string | null, envelopeUrl?: string): string {
+  if (dbValue != null) return dbValue;
+  const fromEnvelope = String(envelopeUrl ?? '').trim();
+  return fromEnvelope || DEFAULT_OLLAMA_ENDPOINT;
 }
 
 /** Read ribbon settings: DB wins when keys exist; envelope is fallback; legacy defaults to off / top 5. */

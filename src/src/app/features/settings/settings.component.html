@@ -84,7 +84,7 @@
       }
 
       @if (activeTab() === 'appearance') {
-        <div class="settingsPanel instructionsContent" role="tabpanel">
+        <div class="settingsPanel instructionsContent" id="settingsPanelAppearance" role="tabpanel">
           <div class="instructionsHeader settingsSubHeader">
             <div class="instructionsTitle">Appearance</div>
           </div>
@@ -181,7 +181,7 @@
       }
 
       @if (activeTab() === 'data') {
-        <div class="settingsPanel instructionsContent" role="tabpanel">
+        <div class="settingsPanel instructionsContent" id="settingsPanelData" role="tabpanel">
           <div class="instructionsHeader settingsSubHeader">
             <div class="instructionsTitle">Data</div>
           </div>
@@ -211,7 +211,7 @@
       }
 
       @if (activeTab() === 'ai') {
-        <div class="settingsPanel instructionsContent" role="tabpanel">
+        <div class="settingsPanel instructionsContent" id="settingsPanelAi" role="tabpanel">
           <div class="instructionsHeader settingsSubHeader">
             <div class="instructionsTitle aiSettingsTitle">AI</div>
           </div>
@@ -224,6 +224,7 @@
                 type="url"
                 [ngModel]="aiUrl()"
                 (ngModelChange)="aiUrl.set($event)"
+                [placeholder]="defaultOllamaEndpoint"
                 name="aiUrl"
               />
             </div>
@@ -288,7 +289,7 @@
       }
 
       @if (activeTab() === 'obsidian') {
-        <div class="settingsPanel instructionsContent" role="tabpanel">
+        <div class="settingsPanel instructionsContent" id="settingsPanelObsidian" role="tabpanel">
           <div class="instructionsHeader settingsSubHeader">
             <div class="instructionsTitle">Obsidian</div>
           </div>
@@ -344,7 +345,7 @@
       }
 
       @if (activeTab() === 'keyboard') {
-        <div class="settingsPanel instructionsContent" role="tabpanel">
+        <div class="settingsPanel instructionsContent" id="settingsPanelKeyboard" role="tabpanel">
           <div class="instructionsHeader settingsSubHeader">
             <div class="instructionsTitle">Keyboard</div>
           </div>
@@ -393,10 +394,17 @@
             </fieldset>
             <p class="obsidianIntro settingsBoardsHint">
               Use the modifier with I/J/K/L (QWERTY) or C/H/N/T (Dvorak) to move focus. Press / to search notes,
-              {{ modLabel() }}+P to add a note, {{ modLabel() }}+1–9 to switch boards, F2 to rename, :x to close
-              links or notes editor.
+              {{ modLabel() }}+P to add a note, {{ modLabel() }}+1–9 to switch boards, F2 to rename, f for focus
+              mode, :x to close links or notes editor. To open the overlay from any tab, assign <b>Alt+R</b> at
+              <b>chrome://extensions/shortcuts</b>.
             </p>
           </form>
+          <div class="settingsTourLaunch">
+            <button type="button" class="monoLinkButton dataActionButton" (click)="startTour()">Start guided tour</button>
+            <p class="obsidianIntro settingsBoardsHint">
+              Replay the first-run walkthrough of the board and each Settings section.
+            </p>
+          </div>
         </div>
       }
     </div>

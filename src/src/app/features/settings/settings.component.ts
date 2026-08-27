@@ -11,13 +11,19 @@ import { NotesRepository } from '../../core/services/notes.repository';
 import { PriorityRibbonService } from '../../core/services/priority-ribbon.service';
 import { readObsidianSyncEnabled } from '../../core/utils/obsidian-markdown.util';
 import { ObsidianService } from '../../core/services/obsidian.service';
+import { GuidedTourService } from '../../core/services/guided-tour.service';
 import { THEME_ORDER, ThemeId } from '../../core/models/envelope.model';
 import {
   DEFAULT_PRIORITY_RIBBON_LIMIT,
   PRIORITY_RIBBON_LIMITS,
   PriorityRibbonLimit,
 } from '../../core/models/priority-ribbon.model';
-import { readPriorityRibbonSettings } from '../../core/utils/ai-settings.util';
+import {
+  AI_ENDPOINT_BASE_URL_KEY,
+  DEFAULT_OLLAMA_ENDPOINT,
+  readPriorityRibbonSettings,
+  resolveOllamaEndpoint,
+} from '../../core/utils/ai-settings.util';
 import { POPUP_SIZE_DIMENSIONS, POPUP_SIZE_ORDER, PopupSizeId } from '../../core/models/popup-size.model';
 import { ThemeSelectKeyboardDirective } from '../../core/keyboard/theme-select-keyboard.directive';
 import { ArmedSelectKeyboardDirective } from '../../core/keyboard/armed-select-keyboard.directive';
@@ -43,6 +49,17 @@ type SettingsTab = 'boards' | 'appearance' | 'data' | 'ai' | 'obsidian' | 'keybo
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, ThemeSelectKeyboardDirective, ArmedSelectKeyboardDirective],
   templateUrl: './settings.component.html',
+  styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      overflow: hidden;
+    }
+  `],
 })
 export class SettingsComponent implements OnInit, OnDestroy {
   private static readonly DEFAULT_OBSIDIAN_NOTES_FOLDER = 'ToDo';
@@ -54,6 +71,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   private readonly repo = inject(NotesRepository);
   private readonly ribbon = inject(PriorityRibbonService);
   private readonly obsidian = inject(ObsidianService);
+  private readonly tour = inject(GuidedTourService);
   private readonly settingsKeyboard = inject(SettingsKeyboardBridge);
 
   readonly themeOptions = THEME_ORDER;
@@ -68,6 +86,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly headerTitleFontLabels = HEADER_TITLE_FONT_LABELS;
   readonly headerTitleFontLabelFn = (value: string): string =>
     headerTitleFontLabel(value as HeaderTitleFontKey);
+  readonly defaultOllamaEndpoint = DEFAULT_OLLAMA_ENDPOINT;
   headerTitleInput = '';
   readonly layoutOptions = [
     { label: 'QWERTY', value: 'qwerty' as const },
@@ -120,7 +139,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   private loadPersistedSettings(): void {
     const env = this.storage.getEnvelope();
-    this.aiUrl.set(this.dbService.getSetting('ai.endpointBaseUrl') ?? env.ai?.u ?? '');
+    this.aiUrl.set(resolveOllamaEndpoint(this.dbService.getSetting(AI_ENDPOINT_BASE_URL_KEY), env.ai?.u));
     this.aiModel.set(this.dbService.getSetting('ai.endpointModel') ?? env.ai?.m ?? '');
     this.aiWords.set(this.customWordsFromSetting(this.dbService.getSetting('ai.customWordsJson'), env.ai?.w ?? ''));
 
@@ -137,6 +156,10 @@ export class SettingsComponent implements OnInit, OnDestroy {
   selectTab(tab: SettingsTab): void {
     this.activeTab.set(tab);
     if (tab === 'boards') this.refreshBoards();
+  }
+
+  startTour(): void {
+    void this.tour.start();
   }
 
   onThemeChange(theme: ThemeId): void {
@@ -192,7 +215,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
         prl: this.aiPriorityRibbonLimit(),
       },
     });
-    this.dbService.setSetting('ai.endpointBaseUrl', this.aiUrl());
+    this.dbService.setSetting(AI_ENDPOINT_BASE_URL_KEY, this.aiUrl());
     this.dbService.setSetting('ai.endpointModel', this.aiModel());
     this.dbService.setSetting('ai.customWordsJson', JSON.stringify(words));
     this.ribbon.saveSettings(this.aiPriorityRibbon(), this.aiPriorityRibbonLimit());
