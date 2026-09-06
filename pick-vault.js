@@ -66,6 +66,14 @@
         }
         handle = resolved || handle;
 
+        // Ask while the picker click is still a live user gesture. Saving a prompt-state handle
+        // here makes Chrome defer this consent to a later task action, which feels like a second setup.
+        const permission = await handle.requestPermission({ mode: "readwrite" });
+        if (permission !== "granted") {
+          setMessage("Read/write access is required to sync with this vault. Choose the folder again and allow access.", "error");
+          return;
+        }
+
         await window.ObsidianVaultIdb.saveVaultHandle(handle);
         const folderName = typeof handle.name === "string" ? handle.name : "";
         try {
@@ -85,14 +93,20 @@
         } catch {
           // ignore
         }
-        setMessage("Vault folder saved. Closing this tab…", "success");
+        setMessage(
+          "Vault folder saved. Return to Settings and click Allow folder access — Chrome asks again for the extension window, on this same folder (not ToDo).",
+          "success"
+        );
         setTimeout(() => {
           try {
             window.close();
           } catch {
-            setMessage("Vault folder saved. You can close this tab and return to the extension.", "success");
+            setMessage(
+              "Vault folder saved. You can close this tab, then in Settings click Allow folder access.",
+              "success"
+            );
           }
-        }, 350);
+        }, 2200);
       } catch (e) {
         if (e && e.name === "AbortError") {
           setMessage("Folder selection canceled.");

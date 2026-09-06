@@ -173,7 +173,7 @@ export class InstructionsComponent {
       { keys: combo(mod, fmt(nav.right)), desc: 'Move right or to the next control.' },
       { keys: combo(mod, fmt(getFocusNewNoteKey(this.state.keyLayout()))), desc: 'Open the new note form.' },
       { keys: '<kbd>/</kbd>', desc: 'Focus the card filter.' },
-      { keys: '<kbd>F2</kbd>', desc: 'Rename the focused card.' },
+      { keys: '<kbd>F2</kbd>', desc: 'Rename the focused card, or the focused board tab (moves Obsidian files when Sync is on).' },
       { keys: combo(mod, '1') + ' … ' + combo(mod, '9'), desc: 'Switch boards (1–9 without modifier when not typing).' },
       { keys: '<kbd>gg</kbd>', desc: 'On board tabs: first tab. On cards: first card in the current column (filtered list if searching).' },
       { keys: '<kbd>G</kbd>', desc: 'On board tabs: last tab. On cards: last card in the current column (filtered list if searching).' },

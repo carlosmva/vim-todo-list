@@ -154,7 +154,8 @@ html[data-theme="dark"],
 html[data-theme="solarized-dark"],
 html[data-theme="command-line"],
 html[data-theme="emacs-dark"],
-html[data-theme="nothing"] {
+html[data-theme="nothing"],
+html[data-theme="puppertino-dark"] {
   color-scheme: dark;
 }
 
@@ -165,7 +166,8 @@ html[data-theme="nothing"] {
  */
 [data-theme="dark"] .headerThemeSelect,
 [data-theme="solarized-dark"] .headerThemeSelect,
-[data-theme="command-line"] .headerThemeSelect {
+[data-theme="command-line"] .headerThemeSelect,
+[data-theme="puppertino-dark"] .headerThemeSelect {
   color-scheme: dark;
 }
 
@@ -210,7 +212,8 @@ html[data-theme="nothing"] {
 
 [data-theme="dark"] .headerThemeSelect option,
 [data-theme="solarized-dark"] .headerThemeSelect option,
-[data-theme="command-line"] .headerThemeSelect option {
+[data-theme="command-line"] .headerThemeSelect option,
+[data-theme="puppertino-dark"] .headerThemeSelect option {
   background-color: var(--modern-surface-2);
   color: var(--modern-text);
 }
@@ -306,7 +309,29 @@ button,
 [data-theme="command-line"] .noteAttachments,
 [data-theme="command-line"] .noteAttachmentsTitle,
 [data-theme="command-line"] .noteBackBody,
-[data-theme="command-line"] .noteText {
+[data-theme="command-line"] .noteText,
+[data-theme="puppertino-dark"] body,
+[data-theme="puppertino-dark"] .app,
+[data-theme="puppertino-dark"] .header,
+[data-theme="puppertino-dark"] .create,
+[data-theme="puppertino-dark"] .col,
+[data-theme="puppertino-dark"] .noteCard,
+[data-theme="puppertino-dark"] .instructionsContent,
+[data-theme="puppertino-dark"] .instructionsHeader,
+[data-theme="puppertino-dark"] .instructionsTitle,
+[data-theme="puppertino-dark"] .calendarTable,
+[data-theme="puppertino-dark"] .calendarTable th,
+[data-theme="puppertino-dark"] .calendarTable td,
+[data-theme="puppertino-dark"] .calendarMonthTitle,
+[data-theme="puppertino-dark"] .calendarCell--empty,
+[data-theme="puppertino-dark"] .calendarContent,
+[data-theme="puppertino-dark"] .calendarRightPane,
+[data-theme="puppertino-dark"] .manageTabsMessage,
+[data-theme="puppertino-dark"] .manageTabsName,
+[data-theme="puppertino-dark"] .noteAttachments,
+[data-theme="puppertino-dark"] .noteAttachmentsTitle,
+[data-theme="puppertino-dark"] .noteBackBody,
+[data-theme="puppertino-dark"] .noteText {
   color: var(--modern-text);
 }
 
@@ -514,7 +539,10 @@ button,
 [data-theme="solarized-dark"] textarea,
 [data-theme="command-line"] .bx--text-input,
 [data-theme="command-line"] input,
-[data-theme="command-line"] textarea {
+[data-theme="command-line"] textarea,
+[data-theme="puppertino-dark"] .bx--text-input,
+[data-theme="puppertino-dark"] input,
+[data-theme="puppertino-dark"] textarea {
   color: var(--modern-text);
   background: var(--modern-surface-2) !important;
 }
@@ -527,7 +555,10 @@ button,
 [data-theme="solarized-dark"] textarea::placeholder,
 [data-theme="command-line"] .bx--text-input::placeholder,
 [data-theme="command-line"] input::placeholder,
-[data-theme="command-line"] textarea::placeholder {
+[data-theme="command-line"] textarea::placeholder,
+[data-theme="puppertino-dark"] .bx--text-input::placeholder,
+[data-theme="puppertino-dark"] input::placeholder,
+[data-theme="puppertino-dark"] textarea::placeholder {
   color: var(--modern-muted-on-dark);
 }
 
@@ -551,13 +582,15 @@ button,
 
 [data-theme="dark"] a,
 [data-theme="solarized-dark"] a,
-[data-theme="command-line"] a {
+[data-theme="command-line"] a,
+[data-theme="puppertino-dark"] a {
   color: var(--modern-link);
 }
 
 [data-theme="dark"] a:hover,
 [data-theme="solarized-dark"] a:hover,
-[data-theme="command-line"] a:hover {
+[data-theme="command-line"] a:hover,
+[data-theme="puppertino-dark"] a:hover {
   color: var(--modern-link-hover);
 }
 

@@ -269,13 +269,20 @@ export class KeyboardNavigationService {
       !e.ctrlKey &&
       !e.metaKey &&
       !modKeyActive(e, platform) &&
-      bridge?.renameFocusedCard
+      !isTypingTarget(document.activeElement)
     ) {
-      const card = getCardFromElement(document.activeElement);
-      if (card && !card.classList.contains('is-flipped')) {
+      if (isOnBoardTabs(document.activeElement) && bridge?.renameFocusedBoard) {
         e.preventDefault();
-        bridge.renameFocusedCard();
+        bridge.renameFocusedBoard();
         return;
+      }
+      if (bridge?.renameFocusedCard) {
+        const card = getCardFromElement(document.activeElement);
+        if (card && !card.classList.contains('is-flipped')) {
+          e.preventDefault();
+          bridge.renameFocusedCard();
+          return;
+        }
       }
     }
 

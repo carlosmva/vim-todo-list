@@ -30,6 +30,7 @@ export const DEFAULT_THEME = 'puppertino';
 
 export const THEME_ORDER = [
   'puppertino',
+  'puppertino-dark',
   'light',
   'dark',
   'solarized-light',
@@ -45,6 +46,7 @@ export type ThemeId = (typeof THEME_ORDER)[number];
 
 export const THEME_LABELS: Record<ThemeId, string> = {
   puppertino: 'Puppertino (macOS)',
+  'puppertino-dark': 'Puppertino Dark',
   light: 'Light',
   dark: 'Dark',
   'solarized-light': 'Solarized',

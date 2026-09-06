@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from '../models/note.model';
 import {
+  collectNotesFolderVaultFiles,
   findVaultNoteFile,
+  isSafeBoardFolderPath,
   pickCanonicalVaultFile,
+  removeDirectoryAtPath,
   type VaultDirectoryHandle,
   type VaultFileHandle,
   type VaultNoteFile,
@@ -64,6 +67,17 @@ class MockDir implements VaultDirectoryHandle {
     const file = new MockFile(name, '');
     this.children.set(name, file);
     return file;
+  }
+
+  async removeEntry(name: string, _options?: { recursive?: boolean }): Promise<void> {
+    if (this.children.delete(name)) return;
+    for (const [entryName] of this.children) {
+      if (entryName.toLowerCase() === name.toLowerCase()) {
+        this.children.delete(entryName);
+        return;
+      }
+    }
+    throw new Error('missing entry');
   }
 
   async *entries(): AsyncIterableIterator<[string, VaultFileHandle | VaultDirectoryHandle]> {
@@ -153,5 +167,64 @@ describe('findVaultNoteFile', () => {
     );
     const found = await findVaultNoteFile(root, note(), 'ToDo', 'ToDo/Work/Title.md', null);
     expect(found).toBeNull();
+  });
+});
+
+describe('collectNotesFolderVaultFiles', () => {
+  it('groups notes-folder files by (id N), prefers the canonical file, and ignores no-footer and vault-root files', async () => {
+    const work = new MockDir(
+      'Work',
+      new Map<string, MockDir | MockFile>([
+        ['Title.md', new MockFile('Title.md', md(7), 5)],
+        ['Title 1.md', new MockFile('Title 1.md', md(7), 9)],
+        ['Orphan.md', new MockFile('Orphan.md', '# Native\n\nNo footer.', 3)],
+      ])
+    );
+    const archive = new MockDir(
+      'Archive',
+      new Map<string, MockDir | MockFile>([['Later.md', new MockFile('Later.md', md(42, 'Later'), 8)]])
+    );
+    const todo = new MockDir(
+      'ToDo',
+      new Map<string, MockDir | MockFile>([
+        ['Work', work],
+        ['Archive', archive],
+        ['Loose.md', new MockFile('Loose.md', md(99), 1)],
+      ])
+    );
+    const root = new MockDir(
+      'Vault',
+      new Map<string, MockDir | MockFile>([
+        ['ToDo', todo],
+        ['Stray.md', new MockFile('Stray.md', md(7), 1)],
+      ])
+    );
+
+    const scanned = await collectNotesFolderVaultFiles(root, 'ToDo');
+    expect(scanned.byId.get(7)?.path).toBe('ToDo/Work/Title.md');
+    expect(scanned.byId.get(42)?.path).toBe('ToDo/Archive/Later.md');
+    expect(scanned.byId.has(99)).toBe(false);
+    expect(scanned.ignoredCount).toBe(2);
+  });
+});
+
+describe('isSafeBoardFolderPath', () => {
+  it('allows only the board directory under the notes folder', () => {
+    expect(isSafeBoardFolderPath('ToDo', 'ToDo/Work')).toBe(true);
+    expect(isSafeBoardFolderPath('ToDo', 'ToDo')).toBe(false);
+    expect(isSafeBoardFolderPath('ToDo', '')).toBe(false);
+    expect(isSafeBoardFolderPath('ToDo', 'Work')).toBe(false);
+    expect(isSafeBoardFolderPath('', 'Work')).toBe(true);
+    expect(isSafeBoardFolderPath('', 'ToDo/Work')).toBe(false);
+  });
+});
+
+describe('removeDirectoryAtPath', () => {
+  it('deletes a board folder and leaves the notes folder', async () => {
+    const root = vaultTree();
+    expect(await removeDirectoryAtPath(root, 'ToDo/Work')).toBe(true);
+    const todo = await root.getDirectoryHandle('ToDo', { create: false });
+    await expect(todo.getDirectoryHandle('Work', { create: false })).rejects.toThrow();
+    expect(todo.name).toBe('ToDo');
   });
 });

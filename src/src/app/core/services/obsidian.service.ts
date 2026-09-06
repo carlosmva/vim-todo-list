@@ -2,17 +2,22 @@ import { Injectable, inject } from '@angular/core';
 import { Note } from '../models/note.model';
 import {
   buildObsidianMarkdown,
-  normalizeObsidianMarkdown,
+  compareObsidianNoteToVault,
   obsidianBaseFilenameStem,
   parseObsidianMarkdownImport,
   readObsidianSyncEnabled,
   slugifyObsidianBoardSegment,
+  type ObsidianPropertyDiff,
 } from '../utils/obsidian-markdown.util';
 import {
+  boardDirectoryPath,
+  collectNotesFolderVaultFiles,
   findVaultNoteFile,
   getDirectoryAtPath,
   getFileHandleAtPath,
+  isSafeBoardFolderPath,
   joinVaultPath,
+  removeDirectoryAtPath,
   type VaultDirectoryHandle,
   type VaultFileHandle,
   type VaultNoteFile,
@@ -51,6 +56,8 @@ export interface ObsidianConflict {
   noteId: number;
   appMarkdown: string;
   vaultMarkdown: string;
+  vaultRawMarkdown: string;
+  propertyDiffs: ObsidianPropertyDiff[];
   vaultUpdatedAt: number;
   appUpdatedAt: number;
   vaultNewerByClock: boolean;
@@ -65,8 +72,42 @@ export type ObsidianOpResult =
   | { kind: 'conflict'; conflict: ObsidianConflict }
   | { kind: 'error'; code: ObsidianErrorCode; message: string };
 
+export interface VaultImportMissingNote {
+  id: number;
+  path: string;
+  markdown: string;
+  title: string;
+  board: string;
+  status: Note['status'];
+  due_at: number | null;
+  notes_html: string;
+  priority?: Note['priority'] | null;
+  updatedAt: number;
+}
+
+export interface VaultImportPresentNote {
+  id: number;
+  path: string;
+  differs: boolean;
+}
+
+export interface VaultCompareResult {
+  missing: VaultImportMissingNote[];
+  present: VaultImportPresentNote[];
+  ignoredCount: number;
+}
+
+export type VaultCompareOpResult =
+  | { kind: 'ok'; compare: VaultCompareResult }
+  | { kind: 'error'; code: ObsidianErrorCode; message: string };
+
+export type VaultImportOpResult =
+  | { kind: 'ok'; imported: number; skipped: number; ignored: number }
+  | { kind: 'error'; code: ObsidianErrorCode; message: string };
+
 const ERROR_MESSAGES: Record<ObsidianErrorCode, string> = {
-  'permission-denied': 'Obsidian folder access was denied. Grant access under Settings → Obsidian.',
+  'permission-denied':
+    'Chrome needs a second Allow on the same vault folder — not a second folder, and not the ToDo notes folder. Click Allow folder access.',
   'no-folder': 'Two-way Obsidian sync needs a linked vault folder. Choose a folder under Settings → Obsidian.',
   'write-failed': 'Could not write the Obsidian vault file. No extra note was created.',
   'vault-mismatch': 'Set the Obsidian vault name in Settings so it matches the vault shown in Obsidian.',
@@ -100,6 +141,25 @@ export class ObsidianService {
   }
 
   /**
+   * Load the persisted folder handle before the user clicks. Compare/Open must not
+   * await IndexedDB first — that expires Chrome’s user gesture and requestPermission
+   * then returns denied without a prompt.
+   */
+  async preloadVaultRoot(): Promise<void> {
+    if (!this.vaultRoot) await this.loadVaultRoot();
+  }
+
+  async reloadVaultRoot(): Promise<void> {
+    this.vaultRoot = null;
+    await this.loadVaultRoot();
+  }
+
+  openGrantAccessPage(): void {
+    if (typeof chrome === 'undefined' || !chrome.tabs?.create || !chrome.runtime?.getURL) return;
+    chrome.tabs.create({ url: chrome.runtime.getURL('grant-vault-access.html') });
+  }
+
+  /**
    * Must run in the same user-gesture as the click. Chrome expires folder permission
    * if we await other work first, which made vault scans fail and triggered duplicates.
    */
@@ -108,10 +168,130 @@ export class ObsidianService {
     const root = this.vaultRoot ?? (await this.loadVaultRoot());
     if (!root) return false;
     try {
+      if ((await root.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
       return (await root.requestPermission({ mode: 'readwrite' })) === 'granted';
     } catch {
       return false;
     }
+  }
+
+  async compareVaultNotes(): Promise<VaultCompareOpResult> {
+    if (!this.settings().sync) return errorResult('no-folder');
+    const granted = await this.ensureVaultAccess();
+    if (!granted) {
+      const root = this.vaultRoot ?? (await this.loadVaultRoot());
+      return errorResult(root ? 'permission-denied' : 'no-folder');
+    }
+    const resolved = await this.resolveWritableRoot();
+    if (!resolved.ok) return errorResult(resolved.code);
+
+    const scanned = await collectNotesFolderVaultFiles(resolved.root, this.settings().folder);
+    const missing: VaultImportMissingNote[] = [];
+    const present: VaultImportPresentNote[] = [];
+    for (const [id, file] of scanned.byId) {
+      const existing = this.repo.queryNote(id);
+      if (existing) {
+        present.push({ id, path: file.path, differs: !compareObsidianNoteToVault(existing, file.markdown).equal });
+        continue;
+      }
+      const parsed = parseObsidianMarkdownImport(file.markdown);
+      missing.push({
+        id,
+        path: file.path,
+        markdown: file.markdown,
+        title: parsed.title || `Note ${id}`,
+        board: parsed.board,
+        status: parsed.status,
+        due_at: parsed.due_at,
+        notes_html: parsed.notes_html,
+        priority: parsed.priority,
+        updatedAt: file.updatedAt,
+      });
+    }
+    return { kind: 'ok', compare: { missing, present, ignoredCount: scanned.ignoredCount } };
+  }
+
+  async importMissingVaultNotes(compare: VaultCompareResult): Promise<VaultImportOpResult> {
+    if (!this.settings().sync) return errorResult('no-folder');
+    const granted = await this.ensureVaultAccess();
+    if (!granted) {
+      const root = this.vaultRoot ?? (await this.loadVaultRoot());
+      return errorResult(root ? 'permission-denied' : 'no-folder');
+    }
+    const vault = this.settings().vault;
+    let imported = 0;
+    for (const item of compare.missing) {
+      if (this.repo.queryNote(item.id)) continue;
+      const ok = this.repo.insertNoteWithId({
+        id: item.id,
+        board: item.board,
+        text: item.title,
+        notes_html: item.notes_html,
+        status: item.status,
+        due_at: item.due_at,
+        priority: item.priority ?? undefined,
+        created_at: item.updatedAt,
+        updated_at: item.updatedAt,
+      });
+      if (!ok) continue;
+      imported += 1;
+      await this.rememberFilePath(vault, item.id, item.path);
+    }
+    for (const item of compare.present) {
+      await this.rememberFilePath(vault, item.id, item.path);
+    }
+    await this.dbService.persist();
+    return {
+      kind: 'ok',
+      imported,
+      skipped: compare.present.length,
+      ignored: compare.ignoredCount,
+    };
+  }
+
+  async rememberedVaultPath(noteId: number): Promise<string | null> {
+    return this.rememberedFilePath(this.settings().vault, noteId);
+  }
+
+  /** After a board rename: move/rewrite each mapped vault file onto the new board path. */
+  async pushNotesOnBoard(board: string): Promise<ObsidianOpResult> {
+    if (!this.settings().sync) return { kind: 'ok' };
+    const granted = await this.ensureVaultAccess();
+    if (!granted) {
+      const root = this.vaultRoot ?? (await this.loadVaultRoot());
+      return errorResult(root ? 'permission-denied' : 'no-folder');
+    }
+    const notes = this.repo.queryNotes(board);
+    const warnings: string[] = [];
+    for (const note of notes) {
+      const result = await this.pushCanonical(note.id);
+      if (result.kind === 'error') return result;
+      if (result.kind === 'ok' && result.warning) warnings.push(result.warning);
+    }
+    return { kind: 'ok', warning: warnings[0] };
+  }
+
+  /** Deletes `{notesFolder}/{boardSlug}` in the linked vault. Does not touch the vault root. */
+  async deleteBoardFolder(board: string): Promise<ObsidianOpResult> {
+    if (!this.settings().sync) return { kind: 'ok' };
+    const granted = await this.ensureVaultAccess();
+    if (!granted) {
+      const root = this.vaultRoot ?? (await this.loadVaultRoot());
+      return errorResult(root ? 'permission-denied' : 'no-folder');
+    }
+    const resolved = await this.resolveWritableRoot();
+    if (!resolved.ok) return errorResult(resolved.code);
+    const path = boardDirectoryPath(this.settings().folder, board);
+    if (!isSafeBoardFolderPath(this.settings().folder, path)) {
+      return errorResult('write-failed', 'Refused to delete a vault path outside the board folder.');
+    }
+    const existed = await getDirectoryAtPath(resolved.root, path, false);
+    if (!existed) return { kind: 'ok' };
+    const removed = await removeDirectoryAtPath(resolved.root, path);
+    if (!removed) {
+      return errorResult('write-failed', `Could not delete the vault folder ${path}. The board was still removed here.`);
+    }
+    return { kind: 'ok', path };
   }
 
   async syncBeforeEditorOpen(noteId: number): Promise<ObsidianOpResult> {
@@ -130,7 +310,6 @@ export class ObsidianService {
 
     const computedPath = this.relativePath(note);
     const rememberedPath = await this.rememberedFilePath(settings.vault, note.id);
-    const appMarkdown = normalizeObsidianMarkdown(buildObsidianMarkdown(note));
     const appUpdatedAt = Number.isFinite(note.updated_at) ? note.updated_at : 0;
 
     let vaultFile: VaultNoteFile | null;
@@ -143,15 +322,17 @@ export class ObsidianService {
     if (!vaultFile) return { kind: 'ok' };
 
     await this.rememberFilePath(settings.vault, note.id, vaultFile.path);
-    const vaultMarkdown = normalizeObsidianMarkdown(vaultFile.markdown);
+    const compared = compareObsidianNoteToVault(note, vaultFile.markdown);
     const vaultUpdatedAt = vaultFile.updatedAt;
-    if (appMarkdown !== vaultMarkdown) {
+    if (!compared.equal) {
       return {
         kind: 'conflict',
         conflict: {
           noteId: note.id,
-          appMarkdown,
-          vaultMarkdown,
+          appMarkdown: compared.appBody,
+          vaultMarkdown: compared.vaultBody,
+          vaultRawMarkdown: vaultFile.markdown,
+          propertyDiffs: compared.propertyDiffs,
           vaultUpdatedAt,
           appUpdatedAt,
           vaultNewerByClock: vaultUpdatedAt > appUpdatedAt + OBSIDIAN_VAULT_TIME_SLACK_MS,
@@ -180,8 +361,13 @@ export class ObsidianService {
       if (!written.ok) return errorResult(written.code);
       return { kind: 'ok', path: written.path };
     }
-    const imported = parseObsidianMarkdownImport(conflict.vaultMarkdown);
-    this.repo.updateNoteFromVault(note.id, imported.title || note.text, imported.notes_html, conflict.vaultUpdatedAt);
+    const imported = parseObsidianMarkdownImport(conflict.vaultRawMarkdown || conflict.vaultMarkdown);
+    this.repo.updateNoteFromVault(note.id, imported.title || note.text, imported.notes_html, conflict.vaultUpdatedAt, {
+      due_at: imported.due_at,
+      status: imported.status,
+      board: imported.board,
+      priority: imported.priority,
+    });
     await this.dbService.persist();
     await this.rememberFilePath(settings.vault, note.id, vaultPath);
     this.markPathCreated(settings.vault, note.id);
@@ -571,8 +757,14 @@ export class ObsidianService {
     try {
       const found = await getFileHandleAtPath(root, path, true);
       if (!found) return { ok: false, code: 'write-failed' };
+      let existingMarkdown = '';
+      try {
+        existingMarkdown = await (await found.handle.getFile()).text();
+      } catch {
+        existingMarkdown = '';
+      }
       const writable = await (found.handle as WritableVaultFileHandle).createWritable();
-      await writable.write(buildObsidianMarkdown(note));
+      await writable.write(buildObsidianMarkdown(note, existingMarkdown));
       await writable.close();
       this.repo.updateNoteUpdatedAt(note.id, (await found.handle.getFile()).lastModified);
       await this.dbService.persist();

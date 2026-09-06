@@ -13,7 +13,7 @@ import { ThemeSelectKeyboardDirective } from './core/keyboard/theme-select-keybo
 import { ObsidianConflictModalComponent } from './features/obsidian-conflict/obsidian-conflict-modal.component';
 import { GuidedTourComponent } from './features/guided-tour/guided-tour.component';
 import { FocusModeComponent } from './features/focus-mode/focus-mode.component';
-import { THEME_ORDER, ThemeId } from './core/models/envelope.model';
+import { THEME_LABELS, THEME_ORDER, ThemeId } from './core/models/envelope.model';
 
 const PRIMARY_VIEW_PATHS = new Set(['/', '/dashboard', '/calendar']);
 const PRIORITY_RIBBON_REFRESH_MS = 30_000;
@@ -35,6 +35,7 @@ export class App implements OnDestroy {
 
   readonly ready = this.state.ready;
   readonly themeOptions = THEME_ORDER;
+  readonly themeLabels = THEME_LABELS;
   themeModel = computed(() => this.state.theme());
   readonly headerTitleDisplay = this.state.headerTitleDisplay;
   readonly ribbonEnabled = this.ribbon.enabled;

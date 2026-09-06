@@ -14,6 +14,7 @@ export interface VaultDirectoryHandle {
   name?: string;
   getDirectoryHandle(name: string, options: { create: boolean }): Promise<VaultDirectoryHandle>;
   getFileHandle(name: string, options: { create: boolean }): Promise<VaultFileHandle>;
+  removeEntry?(name: string, options?: { recursive?: boolean }): Promise<void>;
   entries?(): AsyncIterableIterator<[string, VaultFileHandle | VaultDirectoryHandle]>;
   values?(): AsyncIterableIterator<VaultFileHandle | VaultDirectoryHandle>;
 }
@@ -38,6 +39,19 @@ export function boardDirectoryPath(folder: string, board: string): string {
   const boardSeg = slugifyObsidianBoardSegment(board);
   const trimmed = String(folder || '').trim().replace(/^\/+|\/+$/g, '');
   return trimmed ? `${trimmed}/${boardSeg}` : boardSeg;
+}
+
+/** True only for `{notesFolder}/{boardSlug}` — never the vault root or the notes folder itself. */
+export function isSafeBoardFolderPath(folder: string, relativePath: string): boolean {
+  const notes = String(folder || '').trim().replace(/^\/+|\/+$/g, '');
+  const path = String(relativePath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!path) return false;
+  const parts = path.split('/').filter(Boolean);
+  if (!parts.length) return false;
+  if (!notes) return parts.length === 1;
+  const prefix = notes.split('/').filter(Boolean);
+  if (parts.length !== prefix.length + 1) return false;
+  return parts.slice(0, prefix.length).join('/').toLowerCase() === prefix.join('/').toLowerCase();
 }
 
 export function joinVaultPath(...parts: string[]): string {
@@ -138,6 +152,26 @@ export async function getDirectoryAtPath(
   return { directory, path: joinVaultPath(...actual) };
 }
 
+export async function removeDirectoryAtPath(
+  root: VaultDirectoryHandle,
+  relativePath: string
+): Promise<boolean> {
+  const parts = String(relativePath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean);
+  const name = parts.pop();
+  if (!name) return false;
+  const parent = await getDirectoryAtPath(root, parts.join('/'), false);
+  if (!parent || typeof parent.directory.removeEntry !== 'function') return false;
+  try {
+    await parent.directory.removeEntry(name, { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getFileHandleAtPath(
   root: VaultDirectoryHandle,
   relativePath: string,
@@ -200,7 +234,7 @@ export function pickCanonicalVaultFile(matches: VaultNoteFile[], computedPath: s
 async function collectMarkdownInDirectory(
   directory: VaultDirectoryHandle,
   relativeDir: string,
-  noteId: number,
+  noteId: number | null,
   into: VaultNoteFile[],
   depth: number
 ): Promise<void> {
@@ -211,7 +245,7 @@ async function collectMarkdownInDirectory(
       try {
         const file = await handle.getFile();
         const markdown = await file.text();
-        if (noteIdFromVaultMarkdown(markdown) !== noteId) continue;
+        if (noteId != null && noteIdFromVaultMarkdown(markdown) !== noteId) continue;
         into.push({
           path: joinVaultPath(relativeDir, name),
           markdown,
@@ -226,6 +260,49 @@ async function collectMarkdownInDirectory(
       await collectMarkdownInDirectory(handle, joinVaultPath(relativeDir, name), noteId, into, depth - 1);
     }
   }
+}
+
+/**
+ * List `{notesFolder}/{board}/*.md` only. Groups by footer id and prefers the
+ * canonical file when several copies share an id. Files without `(id N)` are counted.
+ */
+export async function collectNotesFolderVaultFiles(
+  root: VaultDirectoryHandle,
+  folder: string
+): Promise<{ byId: Map<number, VaultNoteFile>; ignoredCount: number }> {
+  const byIdMatches = new Map<number, VaultNoteFile[]>();
+  let ignoredCount = 0;
+  const notesDir = await getDirectoryAtPath(root, folder, false);
+  if (!notesDir) return { byId: new Map(), ignoredCount: 0 };
+
+  const entries = await listEntries(notesDir.directory);
+  for (const [name, handle] of entries) {
+    if (name.startsWith('.')) continue;
+    if (isFileHandle(handle) && name.toLowerCase().endsWith('.md')) {
+      ignoredCount += 1;
+      continue;
+    }
+    if (!isDirectoryHandle(handle)) continue;
+    const files: VaultNoteFile[] = [];
+    await collectMarkdownInDirectory(handle, joinVaultPath(notesDir.path, name), null, files, 0);
+    for (const file of files) {
+      const id = noteIdFromVaultMarkdown(file.markdown);
+      if (id == null) {
+        ignoredCount += 1;
+        continue;
+      }
+      const list = byIdMatches.get(id) ?? [];
+      list.push(file);
+      byIdMatches.set(id, list);
+    }
+  }
+
+  const byId = new Map<number, VaultNoteFile>();
+  for (const [id, files] of byIdMatches) {
+    const picked = pickCanonicalVaultFile(files, files[0]?.path ?? '');
+    if (picked) byId.set(id, picked);
+  }
+  return { byId, ignoredCount };
 }
 
 function markdownMatchesNote(markdown: string, noteId: number): boolean {

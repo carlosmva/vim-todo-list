@@ -27,7 +27,9 @@
             <div class="instructionsTitle">Boards</div>
           </div>
           <p class="obsidianIntro settingsBoardsHint">
-            Add boards for organizing notes. Switch boards from the strip above the columns in the main view.
+            Add boards for organizing notes. Switch boards from the strip above the columns in the main view. Removing a
+            board deletes its tasks. With Sync and a linked vault, the matching folder under the notes directory is
+            deleted too.
           </p>
           <form class="manageTabsAdd" aria-label="Add board" (submit)="addBoard(); $event.preventDefault()">
             <input
@@ -101,7 +103,7 @@
                 name="theme"
               >
                 @for (theme of themeOptions; track theme) {
-                  <option [value]="theme">{{ theme }}</option>
+                  <option [value]="theme">{{ themeLabels[theme] }}</option>
                 }
               </select>
             </div>
@@ -326,19 +328,56 @@
               create copies.
             </p>
             <p class="obsidianIntro settingsBoardsHint">
+              Chrome needs two Allows on the <strong>same vault root</strong> (the name in Obsidian’s lower-left — not
+              the ToDo notes folder, and not <code>.obsidian</code>). First
+              <strong>Choose vault folder</strong> and pick that root. Then
+              <strong>Allow folder access</strong> so this window can use it. The picker tab’s permission does not carry
+              into the extension popup.
+            </p>
+            <p class="obsidianIntro settingsBoardsHint">
               @if (vaultLinkedName()) {
-                Linked folder: {{ vaultLinkedName() }}.
+                Linked folder: {{ vaultLinkedName() }}. If Compare or Open still says access was denied, click Allow
+                folder access — do not pick a second folder.
               } @else {
-                No vault folder linked yet. Choose a folder to enable two-way sync.
+                No vault folder linked yet. Start with Choose vault folder.
               }
             </p>
             <div class="aiSettingsRow">
               <button type="button" class="monoLinkButton" (click)="chooseVaultFolder()">Choose vault folder</button>
+              @if (vaultLinkedName()) {
+                <button type="button" class="monoLinkButton" (click)="grantVaultAccess()">Allow folder access</button>
+              }
               <button type="button" class="monoLinkButton" (click)="saveObsidian()">Save Obsidian settings</button>
               <button type="button" class="monoLinkButton" (click)="clearObsidianCache()">Clear path cache</button>
+              @if (canCompareVault()) {
+                <button type="button" class="monoLinkButton" (click)="compareVault()">Compare vault</button>
+              }
             </div>
             @if (obsCacheStatus()) {
               <p class="obsidianIntro settingsBoardsHint">{{ obsCacheStatus() }}</p>
+            }
+            @if (vaultCompareError()) {
+              <p class="obsidianIntro settingsBoardsHint" role="alert">{{ vaultCompareError() }}</p>
+            }
+            @if (vaultImportStatus()) {
+              <p class="obsidianIntro settingsBoardsHint">{{ vaultImportStatus() }}</p>
+            }
+            @if (vaultCompare(); as compare) {
+              <p class="obsidianIntro settingsBoardsHint">
+                Missing {{ compare.missing.length }} · Already in database {{ compare.present.length }}
+                ({{ compare.present.filter((item) => item.differs).length }} differ) · Ignored
+                {{ compare.ignoredCount }}
+              </p>
+              @if (compare.missing.length) {
+                <p class="obsidianIntro settingsBoardsHint">
+                  Will import:
+                  {{ compare.missing.map((item) => item.title || 'Note ' + item.id).join(', ') }}
+                </p>
+              }
+              <div class="aiSettingsRow">
+                <button type="button" class="monoLinkButton" (click)="confirmVaultImport()">Confirm import</button>
+                <button type="button" class="monoLinkButton" (click)="cancelVaultImport()">Cancel</button>
+              </div>
             }
           </form>
         </div>
@@ -394,7 +433,7 @@
             </fieldset>
             <p class="obsidianIntro settingsBoardsHint">
               Use the modifier with I/J/K/L (QWERTY) or C/H/N/T (Dvorak) to move focus. Press / to search notes,
-              {{ modLabel() }}+P to add a note, {{ modLabel() }}+1–9 to switch boards, F2 to rename, f for focus
+              {{ modLabel() }}+P to add a note, {{ modLabel() }}+1–9 to switch boards, F2 to rename a card or board tab, f for focus
               mode, :x to close links or notes editor. To open the overlay from any tab, assign <b>Alt+R</b> at
               <b>chrome://extensions/shortcuts</b>.
             </p>

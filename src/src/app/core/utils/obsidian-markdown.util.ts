@@ -1,4 +1,4 @@
-import { Note } from '../models/note.model';
+import { Note, NotePriority, normalizePriority } from '../models/note.model';
 
 const OBSIDIAN_NEW_CONTENT_MAX = 20000;
 
@@ -46,12 +46,322 @@ export function obsidianBaseFilenameStem(boardNotes: Note[], note: Note): string
   return sameSlugCount > 1 ? `${titleSlug}-${id}` : titleSlug;
 }
 
+const OBSIDIAN_DUE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function formatDueDateForObsidian(ts: number): string {
   if (!ts || !Number.isFinite(ts)) return '';
   const d = new Date(ts);
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  return `${OBSIDIAN_DUE_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
+
+export function parseDueDateFromObsidian(value: string): number | null {
+  const text = String(value || '')
+    .replace(/^\*\*Due:\*\*\s*/i, '')
+    .trim();
+  const match = text.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})$/);
+  if (!match) return null;
+  const month = OBSIDIAN_DUE_MONTHS.indexOf(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 0 || !Number.isFinite(day) || !Number.isFinite(year)) return null;
+  return Date.UTC(year, month, day);
+}
+
+export function formatDueDateForObsidianProperty(ts: number): string {
+  if (!ts || !Number.isFinite(ts)) return '';
+  const d = new Date(ts);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function parseDueDateFromObsidianProperty(value: string): number | null {
+  const text = unquoteYamlScalar(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return Date.UTC(year, month - 1, day);
+}
+
+function sameUtcDate(a: number | null, b: number | null): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return formatDueDateForObsidianProperty(a) === formatDueDateForObsidianProperty(b);
+}
+
+function unquoteYamlScalar(value: string): string {
+  const text = String(value || '').trim();
+  if (
+    (text.startsWith('"') && text.endsWith('"') && text.length >= 2) ||
+    (text.startsWith("'") && text.endsWith("'") && text.length >= 2)
+  ) {
+    return text.slice(1, -1);
+  }
+  const comment = text.search(/\s+#/);
+  return comment >= 0 ? text.slice(0, comment).trim() : text;
+}
+
+function quoteYamlScalar(value: string): string {
+  if (value === '') return '""';
+  if (/[:#\[\]{},&*!|>%@`]/.test(value) || /^\s|\s$/.test(value) || /^(true|false|null|yes|no)$/i.test(value)) {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
+function looksLikeYamlProperties(yaml: string): boolean {
+  const lines = String(yaml || '')
+    .split('\n')
+    .map((line) => line.replace(/\t/g, '  '))
+    .filter((line) => line.trim() && !line.trim().startsWith('#'));
+  if (!lines.length) return true;
+  return lines.every((line) => /^\s+/.test(line) || /^[\w.-]+\s*:/.test(line));
+}
+
+/** Split a closed leading Obsidian Properties fence from body Markdown. */
+export function splitObsidianFrontmatter(markdown: string): ObsidianFrontmatterSplit {
+  const text = String(markdown || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  if (!/^---\s*$/.test(lines[0] ?? '')) {
+    return { hasFence: false, yaml: '', body: text };
+  }
+  for (let i = 1; i < lines.length; i += 1) {
+    if (!/^---\s*$/.test(lines[i])) continue;
+    const yaml = lines.slice(1, i).join('\n');
+    const next = (lines[i + 1] ?? '').trim();
+    const followedByFooter = /^\*Board:/.test(next);
+    const hasKeyedLine = yaml.split('\n').some((line) => /^[\w.-]+\s*:/.test(line));
+    if (followedByFooter && !hasKeyedLine) continue;
+    if (!looksLikeYamlProperties(yaml)) continue;
+    let body = lines.slice(i + 1).join('\n');
+    if (body.startsWith('\n')) body = body.slice(1);
+    return { hasFence: true, yaml, body };
+  }
+  return { hasFence: false, yaml: '', body: text };
+}
+
+function parseFlowYamlList(value: string): string[] {
+  const inner = value.trim().replace(/^\[/, '').replace(/\]$/, '');
+  if (!inner.trim()) return [];
+  const items: string[] = [];
+  let current = '';
+  let quote = '';
+  for (const char of inner) {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === ',') {
+      items.push(unquoteYamlScalar(current));
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) items.push(unquoteYamlScalar(current));
+  return items;
+}
+
+export function parseObsidianYamlEntries(yaml: string): ObsidianYamlEntry[] {
+  const lines = String(yaml || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
+  const entries: ObsidianYamlEntry[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim() || line.trim().startsWith('#')) {
+      i += 1;
+      continue;
+    }
+    const keyed = line.match(/^([\w.-]+)\s*:\s*(.*)$/);
+    if (!keyed) {
+      i += 1;
+      continue;
+    }
+    const key = keyed[1];
+    const rest = keyed[2];
+    i += 1;
+    if (!rest.trim()) {
+      const list: string[] = [];
+      const raw: string[] = [];
+      while (i < lines.length) {
+        const next = lines[i];
+        if (!next.trim()) {
+          i += 1;
+          continue;
+        }
+        const item = next.match(/^\s+-\s+(.*)$/);
+        if (!item) break;
+        list.push(unquoteYamlScalar(item[1]));
+        raw.push(next);
+        i += 1;
+      }
+      entries.push({ key, value: raw.length ? list : '' });
+      continue;
+    }
+    if (rest.trim().startsWith('[') && rest.trim().endsWith(']')) {
+      entries.push({ key, value: parseFlowYamlList(rest) });
+      continue;
+    }
+    entries.push({ key, value: unquoteYamlScalar(rest) });
+  }
+  return entries;
+}
+
+function parseStatusProperty(value: string): Note['status'] | null {
+  const text = unquoteYamlScalar(value).toLowerCase();
+  if (text === 'complete' || text === 'completed' || text === 'done') return 'complete';
+  if (text === 'pending' || text === 'todo' || text === 'open') return 'pending';
+  return null;
+}
+
+function parsePriorityProperty(value: string): NotePriority | null {
+  const text = unquoteYamlScalar(value).toLowerCase();
+  if (text === 'low' || text === 'normal' || text === 'high') return text;
+  return null;
+}
+
+export function parseObsidianProperties(yaml: string): ObsidianNoteProperties {
+  const entries = parseObsidianYamlEntries(yaml);
+  const props: ObsidianNoteProperties = {
+    due: null,
+    status: null,
+    board: null,
+    priority: null,
+    vimTodoId: null,
+    unknown: [],
+  };
+  for (const entry of entries) {
+    const key = entry.key.toLowerCase();
+    const scalar = Array.isArray(entry.value) ? entry.value[0] ?? '' : entry.value;
+    if (key === 'due' || key === 'due_at') {
+      props.due = parseDueDateFromObsidianProperty(scalar);
+      continue;
+    }
+    if (key === 'status') {
+      props.status = parseStatusProperty(scalar);
+      continue;
+    }
+    if (key === 'board') {
+      props.board = unquoteYamlScalar(scalar);
+      continue;
+    }
+    if (key === 'priority') {
+      props.priority = parsePriorityProperty(scalar);
+      continue;
+    }
+    if (key === 'vim-todo-id' || key === 'vim_todo_id') {
+      const id = Number(unquoteYamlScalar(scalar));
+      props.vimTodoId = Number.isFinite(id) ? id : null;
+      continue;
+    }
+    props.unknown.push(entry);
+  }
+  return props;
+}
+
+function serializeYamlValue(value: ObsidianYamlValue): string {
+  if (Array.isArray(value)) {
+    if (!value.length) return '[]';
+    return `\n${value.map((item) => `  - ${quoteYamlScalar(item)}`).join('\n')}`;
+  }
+  return ` ${quoteYamlScalar(value)}`;
+}
+
+export function serializeObsidianProperties(props: ObsidianNoteProperties): string {
+  const lines: string[] = [];
+  const push = (key: string, value: ObsidianYamlValue | null | undefined) => {
+    if (value == null || value === '') return;
+    lines.push(`${key}:${serializeYamlValue(value)}`);
+  };
+  if (props.due != null) push('due', formatDueDateForObsidianProperty(props.due));
+  if (props.status) push('status', props.status);
+  if (props.board) push('board', props.board);
+  if (props.priority) push('priority', props.priority);
+  if (props.vimTodoId != null && Number.isFinite(props.vimTodoId)) push('vim-todo-id', String(props.vimTodoId));
+  for (const entry of props.unknown) {
+    if (KNOWN_PROPERTY_KEYS.has(entry.key.toLowerCase())) continue;
+    lines.push(`${entry.key}:${serializeYamlValue(entry.value)}`);
+  }
+  return lines.length ? `${lines.join('\n')}\n` : '';
+}
+
+export function propertiesFromNote(note: Note, existingMarkdown = ''): ObsidianNoteProperties {
+  const existing = parseObsidianProperties(splitObsidianFrontmatter(existingMarkdown).yaml);
+  return {
+    due: note.due_at != null && Number.isFinite(Number(note.due_at)) ? Number(note.due_at) : null,
+    status: note.status === 'complete' ? 'complete' : 'pending',
+    board: String(note.board || '').trim() || null,
+    priority: normalizePriority(note.priority),
+    vimTodoId: Number.isFinite(Number(note.id)) ? Number(note.id) : null,
+    unknown: existing.unknown,
+  };
+}
+
+function formatPropertyDisplay(value: string | number | null | undefined): string {
+  if (value == null || value === '') return '(none)';
+  return String(value);
+}
+
+export interface ObsidianMarkdownImport {
+  title: string;
+  notes_html: string;
+  board: string;
+  status: Note['status'];
+  due_at: number | null;
+  id: number | null;
+  priority: NotePriority | null;
+}
+
+export type ObsidianYamlValue = string | string[];
+
+export interface ObsidianYamlEntry {
+  key: string;
+  value: ObsidianYamlValue;
+}
+
+export interface ObsidianNoteProperties {
+  due: number | null;
+  status: Note['status'] | null;
+  board: string | null;
+  priority: NotePriority | null;
+  vimTodoId: number | null;
+  unknown: ObsidianYamlEntry[];
+}
+
+export interface ObsidianFrontmatterSplit {
+  hasFence: boolean;
+  yaml: string;
+  body: string;
+}
+
+export interface ObsidianPropertyDiff {
+  key: string;
+  appValue: string;
+  vaultValue: string;
+}
+
+export interface ObsidianNoteCompare {
+  equal: boolean;
+  appBody: string;
+  vaultBody: string;
+  propertyDiffs: ObsidianPropertyDiff[];
+}
+
+const KNOWN_PROPERTY_KEYS = new Set(['due', 'status', 'board', 'priority', 'vim-todo-id']);
 
 export function normalizeObsidianMarkdown(value: string): string {
   return String(value || '')
@@ -239,8 +549,8 @@ export function obsidianMarkdownBodyToNotesHtml(bodyMd: string): string {
   return markdownToSimpleHtml(bodyMd);
 }
 
-/** Markdown stored in the vault for a note (legacy popup.js parity). */
-export function buildObsidianMarkdown(note: Note): string {
+/** Body Markdown without the Properties fence (title, due line, notes, footer). */
+export function buildObsidianMarkdownBody(note: Note): string {
   const id = Number(note.id);
   const title = String(note.text || '').trim() || `Note ${Number.isFinite(id) ? id : ''}`.trim();
   const lines: string[] = [`# ${title}`, ''];
@@ -269,13 +579,78 @@ export function buildObsidianMarkdown(note: Note): string {
   return out;
 }
 
+/** Vault Markdown for a note: Properties fence plus canonical body. */
+export function buildObsidianMarkdown(note: Note, existingMarkdown = ''): string {
+  const yaml = serializeObsidianProperties(propertiesFromNote(note, existingMarkdown));
+  const body = buildObsidianMarkdownBody(note);
+  return `---\n${yaml}---\n\n${body}`;
+}
+
+export function compareObsidianNoteToVault(note: Note, vaultMarkdown: string): ObsidianNoteCompare {
+  const appBody = normalizeObsidianMarkdown(buildObsidianMarkdownBody(note));
+  const split = splitObsidianFrontmatter(vaultMarkdown);
+  const vaultBody = normalizeObsidianMarkdown(split.body);
+  const vaultProps = parseObsidianProperties(split.yaml);
+  const propertyDiffs: ObsidianPropertyDiff[] = [];
+  if (vaultProps.due != null && !sameUtcDate(vaultProps.due, note.due_at)) {
+    propertyDiffs.push({
+      key: 'due',
+      appValue: note.due_at != null ? formatDueDateForObsidianProperty(note.due_at) : '(none)',
+      vaultValue: formatDueDateForObsidianProperty(vaultProps.due),
+    });
+  }
+  if (vaultProps.status != null && vaultProps.status !== note.status) {
+    propertyDiffs.push({
+      key: 'status',
+      appValue: formatPropertyDisplay(note.status),
+      vaultValue: formatPropertyDisplay(vaultProps.status),
+    });
+  }
+  if (vaultProps.board != null && vaultProps.board !== String(note.board || '')) {
+    propertyDiffs.push({
+      key: 'board',
+      appValue: formatPropertyDisplay(note.board),
+      vaultValue: formatPropertyDisplay(vaultProps.board),
+    });
+  }
+  if (vaultProps.priority != null && vaultProps.priority !== normalizePriority(note.priority)) {
+    propertyDiffs.push({
+      key: 'priority',
+      appValue: formatPropertyDisplay(normalizePriority(note.priority)),
+      vaultValue: formatPropertyDisplay(vaultProps.priority),
+    });
+  }
+  if (vaultProps.vimTodoId != null && vaultProps.vimTodoId !== Number(note.id)) {
+    propertyDiffs.push({
+      key: 'vim-todo-id',
+      appValue: formatPropertyDisplay(note.id),
+      vaultValue: formatPropertyDisplay(vaultProps.vimTodoId),
+    });
+  }
+  return {
+    equal: appBody === vaultBody && propertyDiffs.length === 0,
+    appBody,
+    vaultBody,
+    propertyDiffs,
+  };
+}
+
 /**
  * Parse vault Markdown back into title + notes body.
  * The notes editor/preview store markdown in `notes_html`, so keep the body as
  * markdown — converting to HTML would later be stripped to plain text.
  */
-export function parseObsidianMarkdownImport(md: string): { title: string; notes_html: string } {
-  const norm = normalizeObsidianMarkdown(md);
+export function parseObsidianMarkdownImport(md: string): ObsidianMarkdownImport {
+  const split = splitObsidianFrontmatter(md);
+  const props = parseObsidianProperties(split.yaml);
+  const norm = normalizeObsidianMarkdown(split.body);
+  const footer = norm.match(/\*Board:\s*(.*?)\s*·\s*Vim To-Do \(id\s+(\d+)\)\*/);
+  const board = props.board || footer?.[1]?.trim() || '';
+  const parsedId = footer ? Number(footer[2]) : NaN;
+  const footerId = Number.isFinite(parsedId) ? parsedId : null;
+  const id = props.vimTodoId ?? footerId;
+  const status: Note['status'] = props.status ?? (/#vim-todo\/complete\b/.test(norm) ? 'complete' : 'pending');
+
   const lines = norm.split('\n');
   let i = 0;
   let title = '';
@@ -284,7 +659,12 @@ export function parseObsidianMarkdownImport(md: string): { title: string; notes_
     i = 1;
   }
   while (i < lines.length && lines[i].trim() === '') i += 1;
-  if (lines[i] && /^\*\*Due:\*\*/.test(lines[i])) i += 1;
+  let due_at: number | null = null;
+  if (lines[i] && /^\*\*Due:\*\*/.test(lines[i])) {
+    due_at = parseDueDateFromObsidian(lines[i]);
+    i += 1;
+  }
+  if (props.due != null) due_at = props.due;
   while (i < lines.length && lines[i].trim() === '') i += 1;
 
   let rest = lines.slice(i).join('\n');
@@ -295,5 +675,5 @@ export function parseObsidianMarkdownImport(md: string): { title: string; notes_
     if (alt >= 0 && /\n---\s*$/m.test(rest.slice(alt))) rest = rest.slice(0, alt).trim();
   }
 
-  return { title, notes_html: rest };
+  return { title, notes_html: rest, board, status, due_at, id, priority: props.priority };
 }

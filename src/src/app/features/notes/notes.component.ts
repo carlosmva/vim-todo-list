@@ -14,7 +14,12 @@ import { PriorityRibbonService } from '../../core/services/priority-ribbon.servi
 import { Note, formatDueDate, formatPriorityLabel, nextPriority } from '../../core/models/note.model';
 import { NotesKeyboardBridge } from '../../core/keyboard/notes-keyboard-bridge.service';
 import { NotesVimEditorService } from '../../core/keyboard/notes-vim-editor.service';
-import { focusCardPrimaryAction, getCardFromElement, safeFocus } from '../../core/keyboard/keyboard-focus.util';
+import {
+  focusCardPrimaryAction,
+  getCardFromElement,
+  resolveBoardTabElement,
+  safeFocus,
+} from '../../core/keyboard/keyboard-focus.util';
 import { addCalendarMonthsClamped, dateToDateInputValue } from '../../core/utils/date.util';
 import {
   applyMarkdownToEditor,
@@ -159,6 +164,7 @@ export class NotesComponent implements OnInit, OnDestroy {
       focusFilter: () => this.focusFilter(),
       setBoardColumnSplit: (which) => this.setBoardColumnSplit(which),
       renameFocusedCard: () => this.renameFocusedCard(),
+      renameFocusedBoard: () => this.renameFocusedBoard(),
       loadMoreAfter: (noteId) => this.loadMoreAfter(noteId),
       loadMoreBefore: (noteId) => this.loadMoreBefore(noteId),
       focusExtremeCard: (which) => this.focusExtremeCard(which),
@@ -336,6 +342,77 @@ export class NotesComponent implements OnInit, OnDestroy {
     body.parentNode?.insertBefore(input, body);
     input.focus();
     input.select();
+  }
+
+  renameFocusedBoard(): void {
+    const tab = resolveBoardTabElement(document.activeElement);
+    if (!tab || tab.querySelector('.noteBoardRenameInput')) return;
+    const oldName = (tab.getAttribute('data-board') || '').trim();
+    if (!oldName) return;
+    const label = tab.querySelector('.tabLabel');
+    if (!(label instanceof HTMLElement)) return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'noteBoardRenameInput bx--text-input';
+    input.value = oldName;
+    input.maxLength = 30;
+    input.setAttribute('aria-label', 'Rename board');
+    const finish = (save: boolean) => {
+      if (!input.isConnected) return;
+      input.remove();
+      label.hidden = false;
+      const next = input.value.trim();
+      if (!save || !next || next === oldName) {
+        label.textContent = oldName;
+        safeFocus(tab);
+        return;
+      }
+      void this.commitBoardRename(oldName, next);
+    };
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(true);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', () => finish(true));
+    label.hidden = true;
+    label.parentNode?.insertBefore(input, label);
+    input.focus();
+    input.select();
+  }
+
+  private async commitBoardRename(oldName: string, newName: string): Promise<void> {
+    if (this.obsidian.isSyncMode()) await this.obsidian.ensureVaultAccess();
+    if (!this.repo.renameBoard(oldName, newName)) {
+      this.obsidianMessageKind.set('error');
+      this.obsidianMessage.set('Could not rename that board. The name may already be in use.');
+      this.refresh();
+      this.focusBoardTab(oldName);
+      return;
+    }
+    if (this.state.activeBoard() === oldName) this.state.setActiveBoard(newName);
+    await this.dbService.persist();
+    this.refresh();
+    this.focusBoardTab(newName);
+    if (this.obsidian.isSyncMode()) {
+      const result = await this.obsidian.pushNotesOnBoard(newName);
+      this.applyObsidianResult(result);
+    }
+  }
+
+  private focusBoardTab(board: string): void {
+    afterNextRender(() => {
+      const tab = document.querySelector<HTMLElement>(
+        `#boardTabs [role="tab"][data-board="${CSS.escape(board)}"]`
+      );
+      if (tab) safeFocus(tab);
+    }, { injector: this.injector });
   }
 
   refresh(): void {
@@ -1816,8 +1893,171 @@ export class NotesComponent implements OnInit, OnDestroy {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  // A WebGL overlay keeps the fire simulation off the board's paint path.
+  // Uses the licensed Flame Shader Card fragment program as a card-sized exit overlay.
   private animateCompizBurn(rect: DOMRect): Promise<void> {
+    const canvas = document.createElement('canvas');
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const width = Math.max(1, Math.ceil(rect.width * pixelRatio));
+    const height = Math.max(1, Math.ceil(rect.height * pixelRatio));
+    canvas.width = width;
+    canvas.height = height;
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:2147483647;pointer-events:none;border-radius:6px;filter:saturate(1.3);transform:scaleY(-1);transform-origin:center;opacity:0;`;
+    document.body.append(canvas);
+
+    const context = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false });
+    if (!context) {
+      canvas.remove();
+      return this.animateCompizBurnParticles(rect);
+    }
+
+    const compile = (type: number, source: string): WebGLShader | null => {
+      const shader = context.createShader(type);
+      if (!shader) return null;
+      context.shaderSource(shader, source);
+      context.compileShader(shader);
+      return context.getShaderParameter(shader, context.COMPILE_STATUS) ? shader : null;
+    };
+    const vertex = compile(
+      context.VERTEX_SHADER,
+      `attribute vec2 position;
+       void main() { gl_Position = vec4(position, 0.0, 1.0); }`
+    );
+    const fragment = compile(
+      context.FRAGMENT_SHADER,
+      `precision mediump float;
+       uniform float iTime;
+       uniform vec2 iResolution;
+       uniform vec3 uColor;
+
+       float hash(vec2 p) {
+         p = fract(p * vec2(123.34, 456.21));
+         p += dot(p, p + 45.32);
+         return fract(p.x * p.y);
+       }
+
+       float noise(vec2 p) {
+         vec2 i = floor(p);
+         vec2 f = fract(p);
+         f = f * f * (3.0 - 2.0 * f);
+         float a = hash(i);
+         float b = hash(i + vec2(1.0, 0.0));
+         float c = hash(i + vec2(0.0, 1.0));
+         float d = hash(i + vec2(1.0, 1.0));
+         return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+       }
+
+       float fbm(vec2 p) {
+         float value = 0.0;
+         float amplitude = 0.5;
+         for (int i = 0; i < 4; i++) {
+           value += amplitude * noise(p);
+           p *= 2.0;
+           amplitude *= 0.5;
+         }
+         return value;
+       }
+
+       vec2 turbulence(vec2 p) {
+         float frequency = 5.0;
+         mat2 rotation = mat2(0.6, -0.8, 0.8, 0.6);
+         for (float i = 0.0; i < 6.0; i++) {
+           float phase = frequency * (p * rotation).y + i;
+           p += 0.7 * rotation[0] * sin(phase) / frequency;
+           rotation *= mat2(0.6, -0.8, 0.8, 0.6);
+           frequency *= 1.3;
+         }
+         return p;
+       }
+
+       void main() {
+         vec2 p = (gl_FragCoord.xy * 2.0 - iResolution.xy) / iResolution.y;
+         vec2 screen = p;
+         // Keep one flame source centered, but widen it for the task-card aspect ratio.
+         p.x *= 0.24;
+         float xstretch = 2.0 - 1.5 * smoothstep(-2.0, 2.0, p.y);
+         float ystretch = 1.0 - 0.5 / (1.0 + p.x * p.x);
+         vec2 stretch = vec2(xstretch, ystretch);
+         p *= stretch;
+         float scroll = 0.2 * iTime;
+         p.y -= scroll;
+         p = turbulence(p);
+         p.y += scroll;
+         float distanceToFlame = length(min(p, p / vec2(1.0, stretch.y))) - 0.7;
+         float light = 1.0 / pow(distanceToFlame * distanceToFlame + 0.4 * max(p.y + 0.5, 0.0), 3.0);
+         vec2 source = p + 1.4 * vec2(0.0, 1.0) * stretch;
+         vec3 baseColor = uColor * 0.9;
+         vec3 gradient = 0.1 / (1.0 + 8.0 * length(source) / baseColor);
+         float flickerTime = 3.0 * iTime;
+         float flicker = 1.0 + 0.04 * cos(flickerTime + sin(flickerTime * 1.618 - p.y));
+         vec3 ambient = 4.0 * flicker / (1.0 + dot(screen, screen)) * gradient;
+         float grain = fbm((p - 0.2 * vec2(0.0, iTime)) / 10.0 * 5.0 * 10.0);
+         vec3 color = ambient + light * gradient * vec3(grain);
+         color = pow(1.0 - exp(-color * 3.4), vec3(0.52));
+         float flameAlpha = smoothstep(0.075, 0.62, max(max(color.r, color.g), color.b));
+         gl_FragColor = vec4(color, flameAlpha);
+       }`
+    );
+    const program = context.createProgram();
+    if (!vertex || !fragment || !program) {
+      canvas.remove();
+      return this.animateCompizBurnParticles(rect);
+    }
+    context.attachShader(program, vertex);
+    context.attachShader(program, fragment);
+    context.linkProgram(program);
+    if (!context.getProgramParameter(program, context.LINK_STATUS)) {
+      canvas.remove();
+      return this.animateCompizBurnParticles(rect);
+    }
+
+    const buffer = context.createBuffer();
+    const position = context.getAttribLocation(program, 'position');
+    const time = context.getUniformLocation(program, 'iTime');
+    const resolution = context.getUniformLocation(program, 'iResolution');
+    const color = context.getUniformLocation(program, 'uColor');
+    if (!buffer || position < 0 || !time || !resolution || !color) {
+      canvas.remove();
+      return this.animateCompizBurnParticles(rect);
+    }
+    context.useProgram(program);
+    context.bindBuffer(context.ARRAY_BUFFER, buffer);
+    context.bufferData(context.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), context.STATIC_DRAW);
+    context.enableVertexAttribArray(position);
+    context.vertexAttribPointer(position, 2, context.FLOAT, false, 0, 0);
+    context.viewport(0, 0, width, height);
+    context.clearColor(0, 0, 0, 0);
+    context.enable(context.BLEND);
+    context.blendFunc(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA);
+
+    return new Promise((resolve) => {
+      const startedAt = performance.now();
+      const render = (now: number): void => {
+        const progress = Math.min((now - startedAt) / NotesComponent.DELETE_ANIMATION_MS, 1);
+        const envelope = Math.sin(Math.min(progress, 0.88) / 0.88 * Math.PI) * 0.96;
+        canvas.style.opacity = String(envelope);
+        context.uniform1f(time, progress * 4.8);
+        context.uniform2f(resolution, width, height);
+        context.uniform3f(color, 1, 0.28, 0.018);
+        context.clear(context.COLOR_BUFFER_BIT);
+        context.drawArrays(context.TRIANGLES, 0, 6);
+        if (progress < 1) {
+          requestAnimationFrame(render);
+          return;
+        }
+        context.deleteBuffer(buffer);
+        context.deleteShader(vertex);
+        context.deleteShader(fragment);
+        context.deleteProgram(program);
+        canvas.remove();
+        resolve();
+      };
+      requestAnimationFrame(render);
+    });
+  }
+
+  // Fallback for browsers where the licensed shader cannot compile.
+  private animateCompizBurnParticles(rect: DOMRect): Promise<void> {
     const canvas = document.createElement('canvas');
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const width = window.innerWidth;

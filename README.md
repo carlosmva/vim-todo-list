@@ -6,6 +6,12 @@ Chrome extension for fast, keyboard-first task notes stored locally in an embedd
 
 Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
 
+## What's new in 1.3.1
+
+- **Focus Mode**: press `f` on a pending task to work one item at a time; Esc returns to the board.
+- First-run **guided tour**, with replay from **Settings → Keyboard** or the header pin.
+- AI add-note suggestions no longer leak prompt markup into the completion.
+
 ## What's new in 1.3.0
 
 - Angular-based popup with responsive **medium**, **large**, and **full-screen** sizes.

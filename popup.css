@@ -1465,7 +1465,8 @@ app-root {
 [data-theme="dark"] .noteObsidianSyncBadge,
 [data-theme="solarized-dark"] .noteObsidianSyncBadge,
 [data-theme="command-line"] .noteObsidianSyncBadge,
-[data-theme="nothing"] .noteObsidianSyncBadge {
+[data-theme="nothing"] .noteObsidianSyncBadge,
+[data-theme="puppertino-dark"] .noteObsidianSyncBadge {
   border-color: var(--modern-border-strong, var(--modern-border, #60799f));
   color: var(--modern-text, #e8eef8);
   background: var(--modern-surface-1, #1f2a3a);
@@ -1473,7 +1474,8 @@ app-root {
 
 [data-theme="dark"] .noteObsidianSyncBadge--synced,
 [data-theme="solarized-dark"] .noteObsidianSyncBadge--synced,
-[data-theme="nothing"] .noteObsidianSyncBadge--synced {
+[data-theme="nothing"] .noteObsidianSyncBadge--synced,
+[data-theme="puppertino-dark"] .noteObsidianSyncBadge--synced {
   border-color: #42be65;
   color: #42be65;
   background: rgba(66, 190, 101, 0.14);
@@ -1481,7 +1483,8 @@ app-root {
 
 [data-theme="dark"] .noteObsidianSyncBadge--diverged,
 [data-theme="solarized-dark"] .noteObsidianSyncBadge--diverged,
-[data-theme="nothing"] .noteObsidianSyncBadge--diverged {
+[data-theme="nothing"] .noteObsidianSyncBadge--diverged,
+[data-theme="puppertino-dark"] .noteObsidianSyncBadge--diverged {
   border-color: #f1c21b;
   color: #f1c21b;
   background: rgba(241, 194, 27, 0.16);
@@ -1489,7 +1492,8 @@ app-root {
 
 [data-theme="dark"] .noteObsidianSyncBadge--warn,
 [data-theme="solarized-dark"] .noteObsidianSyncBadge--warn,
-[data-theme="nothing"] .noteObsidianSyncBadge--warn {
+[data-theme="nothing"] .noteObsidianSyncBadge--warn,
+[data-theme="puppertino-dark"] .noteObsidianSyncBadge--warn {
   border-color: #ff8389;
   color: #ff8389;
   background: rgba(255, 131, 137, 0.14);
@@ -1634,14 +1638,16 @@ app-root {
 
 [data-theme="dark"] .obsidianConflictModal__diffLine--added,
 [data-theme="solarized-dark"] .obsidianConflictModal__diffLine--added,
-[data-theme="nothing"] .obsidianConflictModal__diffLine--added {
+[data-theme="nothing"] .obsidianConflictModal__diffLine--added,
+[data-theme="puppertino-dark"] .obsidianConflictModal__diffLine--added {
   color: #aff5b4;
   background: rgba(46, 160, 67, 0.26);
 }
 
 [data-theme="dark"] .obsidianConflictModal__diffLine--removed,
 [data-theme="solarized-dark"] .obsidianConflictModal__diffLine--removed,
-[data-theme="nothing"] .obsidianConflictModal__diffLine--removed {
+[data-theme="nothing"] .obsidianConflictModal__diffLine--removed,
+[data-theme="puppertino-dark"] .obsidianConflictModal__diffLine--removed {
   color: #ffdcd7;
   background: rgba(248, 81, 73, 0.25);
 }

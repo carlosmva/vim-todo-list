@@ -10,6 +10,15 @@
   gap: 0.35rem;
 }
 
+:host ::ng-deep .noteBoardRenameInput {
+  min-width: 6rem;
+  max-width: 10rem;
+  height: 1.4rem;
+  margin: 0;
+  padding: 0 0.35rem;
+  font: inherit;
+}
+
 :host ::ng-deep .noteBoardTab--drop-target .bx--tabs__nav-link {
   background: color-mix(in srgb, var(--modern-focus, #0f62fe) 18%, var(--modern-surface-2, #fff)) !important;
   color: var(--modern-text, currentColor) !important;

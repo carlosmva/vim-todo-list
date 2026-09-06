@@ -10,6 +10,23 @@
     >
       <h3 id="obsidianConflictTitle" class="obsidianConflictModal__title">Resolve conflict</h3>
       <p id="obsidianConflictHint" class="obsidianConflictModal__hint">{{ hint(conflict) }}</p>
+      @if (conflict.propertyDiffs?.length) {
+        <div class="obsidianConflictModal__props" aria-label="Properties differences">
+          <div class="obsidianConflictModal__colLabel">Properties</div>
+          <div class="obsidianConflictModal__propHead">
+            <span>Field</span>
+            <span>This card</span>
+            <span>Vault file</span>
+          </div>
+          @for (row of conflict.propertyDiffs; track row.key) {
+            <div class="obsidianConflictModal__propRow">
+              <span class="obsidianConflictModal__propKey">{{ row.key }}</span>
+              <span>{{ row.appValue }}</span>
+              <span>{{ row.vaultValue }}</span>
+            </div>
+          }
+        </div>
+      }
       <div class="obsidianConflictModal__grid">
         <div class="obsidianConflictModal__col">
           <div class="obsidianConflictModal__colLabel">This card (extension)</div>

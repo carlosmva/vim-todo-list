@@ -8,6 +8,7 @@ import {
   nextPriority,
 } from '../models/note.model';
 import type { PriorityRibbonNote } from '../models/priority-ribbon.model';
+import { DEFAULT_BOARD } from '../models/envelope.model';
 import { DatabaseService } from './database.service';
 
 @Injectable({ providedIn: 'root' })
@@ -67,6 +68,23 @@ export class NotesRepository {
       priority: normalizePriority(row[idx['priority']]),
       due_at: row[idx['due_at']] != null ? (row[idx['due_at']] as number) : null,
     }));
+  }
+
+  renameBoard(oldName: string, newName: string): boolean {
+    const oldN = String(oldName || '').trim();
+    const newN = String(newName || '').trim();
+    if (!oldN || !newN || oldN === newN) return false;
+    if (this.queryBoards().includes(newN)) return false;
+    this.db().run('BEGIN');
+    try {
+      this.db().run('UPDATE notes SET board = ?, updated_at = ? WHERE board = ?', [newN, Date.now(), oldN]);
+      this.db().run('UPDATE boards SET name = ? WHERE name = ?', [newN, oldN]);
+      this.db().run('COMMIT');
+      return true;
+    } catch {
+      this.db().run('ROLLBACK');
+      return false;
+    }
   }
 
   addBoard(name: string): boolean {
@@ -168,6 +186,75 @@ export class NotesRepository {
     return rows;
   }
 
+  insertNoteWithId(input: {
+    id: number;
+    board: string;
+    text: string;
+    notes_html?: string;
+    status?: Note['status'];
+    priority?: Note['priority'] | null;
+    due_at?: number | null;
+    created_at?: number;
+    updated_at?: number;
+  }): boolean {
+    const id = Number(input.id);
+    if (!Number.isFinite(id) || id <= 0) return false;
+    if (this.queryNote(id)) return false;
+    const board = String(input.board || '').trim() || DEFAULT_BOARD;
+    this.addBoard(board);
+    const now = Date.now();
+    const createdAt = Number.isFinite(input.created_at) ? Number(input.created_at) : now;
+    const updatedAt = Number.isFinite(input.updated_at) ? Number(input.updated_at) : createdAt;
+    const status = input.status === 'complete' ? 'complete' : 'pending';
+    const completedAt = status === 'complete' ? updatedAt : null;
+    const dueAt = input.due_at != null && Number.isFinite(input.due_at) ? Number(input.due_at) : null;
+    const sortOrder = this.getNextPendingSortOrder(board);
+    const priority = normalizePriority(input.priority);
+    const stmt = this.db().prepare(
+      `INSERT INTO notes(id, text, status, priority, created_at, updated_at, completed_at, notes_html, sort_order, board, due_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    stmt.run([
+      id,
+      String(input.text || '').trim() || `Note ${id}`,
+      status,
+      priority,
+      createdAt,
+      updatedAt,
+      completedAt,
+      String(input.notes_html || ''),
+      sortOrder,
+      board,
+      dueAt,
+    ]);
+    stmt.free();
+    this.bumpNotesIdSequence();
+    return true;
+  }
+
+  private bumpNotesIdSequence(): void {
+    const maxRes = this.db().exec('SELECT COALESCE(MAX(id), 0) AS m FROM notes');
+    const maxId = maxRes.length ? Number(maxRes[0].values?.[0]?.[0]) : 0;
+    if (!Number.isFinite(maxId) || maxId <= 0) return;
+    try {
+      const seqRes = this.db().exec("SELECT seq FROM sqlite_sequence WHERE name = 'notes'");
+      if (!seqRes.length || !seqRes[0].values.length) {
+        this.db().run("INSERT INTO sqlite_sequence(name, seq) VALUES('notes', ?)", [maxId]);
+        return;
+      }
+      const seq = Number(seqRes[0].values[0][0]);
+      if (!Number.isFinite(seq) || seq < maxId) {
+        this.db().run("UPDATE sqlite_sequence SET seq = ? WHERE name = 'notes'", [maxId]);
+      }
+    } catch {
+      try {
+        this.db().run("INSERT INTO sqlite_sequence(name, seq) VALUES('notes', ?)", [maxId]);
+      } catch {
+        // sql.js may not expose sqlite_sequence the same way in every build.
+      }
+    }
+  }
+
   insertNote(board: string, text: string, dueAt: number | null = null): number {
     const now = Date.now();
     const sortOrder = this.getNextPendingSortOrder(board);
@@ -247,9 +334,32 @@ export class NotesRepository {
     stmt.free();
   }
 
-  updateNoteFromVault(noteId: number, text: string, notesHtml: string, updatedAt: number): void {
-    const stmt = this.db().prepare('UPDATE notes SET text = ?, notes_html = ?, updated_at = ? WHERE id = ?');
-    stmt.run([text.trim(), notesHtml, updatedAt, noteId]);
+  updateNoteFromVault(
+    noteId: number,
+    text: string,
+    notesHtml: string,
+    updatedAt: number,
+    fields?: {
+      due_at?: number | null;
+      status?: Note['status'];
+      board?: string;
+      priority?: Note['priority'] | null;
+    }
+  ): void {
+    const current = this.queryNote(noteId);
+    if (!current) return;
+    const status = fields?.status === 'complete' || fields?.status === 'pending' ? fields.status : current.status;
+    const completedAt =
+      status === 'complete' ? current.completed_at ?? updatedAt : status === 'pending' ? null : current.completed_at;
+    const board = String(fields?.board ?? current.board ?? '').trim() || current.board;
+    if (board && board !== current.board) this.addBoard(board);
+    const dueAt = fields && 'due_at' in fields ? fields.due_at ?? null : current.due_at;
+    const priority = fields?.priority != null ? normalizePriority(fields.priority) : current.priority;
+    const stmt = this.db().prepare(
+      `UPDATE notes SET text = ?, notes_html = ?, updated_at = ?, due_at = ?, status = ?, completed_at = ?, board = ?, priority = ?
+       WHERE id = ?`
+    );
+    stmt.run([text.trim(), notesHtml, updatedAt, dueAt, status, completedAt, board, priority, noteId]);
     stmt.free();
   }
 

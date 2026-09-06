@@ -10,9 +10,10 @@ import { BackgroundBridgeService } from '../../core/services/background-bridge.s
 import { NotesRepository } from '../../core/services/notes.repository';
 import { PriorityRibbonService } from '../../core/services/priority-ribbon.service';
 import { readObsidianSyncEnabled } from '../../core/utils/obsidian-markdown.util';
-import { ObsidianService } from '../../core/services/obsidian.service';
+import { boardDirectoryPath } from '../../core/utils/obsidian-vault-scan.util';
+import { ObsidianService, type VaultCompareResult } from '../../core/services/obsidian.service';
 import { GuidedTourService } from '../../core/services/guided-tour.service';
-import { THEME_ORDER, ThemeId } from '../../core/models/envelope.model';
+import { THEME_LABELS, THEME_ORDER, ThemeId } from '../../core/models/envelope.model';
 import {
   DEFAULT_PRIORITY_RIBBON_LIMIT,
   PRIORITY_RIBBON_LIMITS,
@@ -75,6 +76,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   private readonly settingsKeyboard = inject(SettingsKeyboardBridge);
 
   readonly themeOptions = THEME_ORDER;
+  readonly themeLabels = THEME_LABELS;
   readonly priorityRibbonLimitOptions = PRIORITY_RIBBON_LIMITS;
   readonly popupSizeOptions = POPUP_SIZE_ORDER.map((id) => ({
     id,
@@ -116,6 +118,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
   obsSync = signal(false);
   obsCacheStatus = signal('');
   vaultLinkedName = signal('');
+  vaultCompare = signal<VaultCompareResult | null>(null);
+  vaultCompareError = signal('');
+  vaultImportStatus = signal('');
 
   newBoardName = '';
   private vaultChannel: BroadcastChannel | null = null;
@@ -125,6 +130,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.refreshBoards();
     this.listenForVaultSelection();
     void this.restoreVaultSelection();
+    void this.obsidian.preloadVaultRoot();
     this.settingsKeyboard.register({
       selectTab: (tab) => this.selectTab(tab),
       activeTab: () => this.activeTab(),
@@ -295,9 +301,20 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.refreshBoards();
   }
 
-  removeBoard(board: string): void {
+  async removeBoard(board: string): Promise<void> {
     if (this.boards().length <= 1) return;
-    if (!window.confirm(`Remove "${board}" and all tasks in it?`)) return;
+    const vaultNote =
+      this.obsSync() && this.vaultLinkedName()
+        ? ` The vault folder ${boardDirectoryPath(this.obsFolder().trim() || 'ToDo', board)} and its Markdown files will also be deleted.`
+        : '';
+    if (!window.confirm(`Remove "${board}" and all tasks in it?${vaultNote}`)) return;
+    const notes = this.repo.queryNotes(board);
+    if (this.obsSync()) {
+      await this.obsidian.ensureVaultAccess();
+      const vaultResult = await this.obsidian.deleteBoardFolder(board);
+      if (vaultResult.kind === 'error') this.obsCacheStatus.set(vaultResult.message);
+    }
+    for (const note of notes) await this.obsidian.forgetFilePath(note.id);
     this.repo.deleteBoard(board);
     this.refreshBoards();
     if (this.state.activeBoard() === board) {
@@ -316,12 +333,27 @@ export class SettingsComponent implements OnInit, OnDestroy {
     chrome.tabs.create({ url: chrome.runtime.getURL('pick-vault.html') });
   }
 
+  grantVaultAccess(): void {
+    this.obsidian.openGrantAccessPage();
+  }
+
   private listenForVaultSelection(): void {
     if (typeof BroadcastChannel === 'undefined') return;
     this.vaultChannel = new BroadcastChannel('vim-todo-obsidian-vault');
     this.vaultChannel.onmessage = (event) => {
-      if (event.data?.type !== 'linked') return;
-      this.applyVaultSelection(event.data?.folderName);
+      if (event.data?.type === 'linked') {
+        this.applyVaultSelection(event.data?.folderName);
+        void this.obsidian.reloadVaultRoot();
+        this.obsCacheStatus.set(
+          'Vault folder linked. Next: Allow folder access. Chrome asks again for this window, on the same vault root — not the ToDo notes folder.'
+        );
+        return;
+      }
+      if (event.data?.type === 'permission-granted') {
+        void this.obsidian.reloadVaultRoot();
+        this.vaultCompareError.set('');
+        this.obsCacheStatus.set('Folder access granted. Compare vault and Open in Obsidian can use the vault now.');
+      }
     };
   }
 
@@ -349,6 +381,43 @@ export class SettingsComponent implements OnInit, OnDestroy {
   async clearObsidianCache(): Promise<void> {
     await this.obsidian.clearPathCaches();
     this.obsCacheStatus.set('Cleared remembered vault paths and first-open cache. The next sync can recreate or remap files.');
+  }
+
+  canCompareVault(): boolean {
+    return this.obsSync() && !!this.vaultLinkedName().trim();
+  }
+
+  async compareVault(): Promise<void> {
+    this.vaultCompareError.set('');
+    this.vaultImportStatus.set('');
+    this.vaultCompare.set(null);
+    const result = await this.obsidian.compareVaultNotes();
+    if (result.kind === 'error') {
+      this.vaultCompareError.set(result.message);
+      if (result.code === 'permission-denied') this.obsidian.openGrantAccessPage();
+      return;
+    }
+    this.vaultCompare.set(result.compare);
+  }
+
+  cancelVaultImport(): void {
+    this.vaultCompare.set(null);
+  }
+
+  async confirmVaultImport(): Promise<void> {
+    const compare = this.vaultCompare();
+    if (!compare) return;
+    const result = await this.obsidian.importMissingVaultNotes(compare);
+    if (result.kind === 'error') {
+      this.vaultCompareError.set(result.message);
+      return;
+    }
+    this.vaultCompare.set(null);
+    this.vaultImportStatus.set(
+      `Imported ${result.imported}. Already in database ${result.skipped}. Ignored ${result.ignored}.`
+    );
+    this.refreshBoards();
+    this.stateRef.reloadDatabaseSettings();
   }
 
   readonly stateRef = this.state;

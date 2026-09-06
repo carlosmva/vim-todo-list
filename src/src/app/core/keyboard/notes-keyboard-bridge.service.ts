@@ -24,6 +24,7 @@ export interface NotesKeyboardHandlers {
   focusFilter(): void;
   setBoardColumnSplit(which: 'pending' | 'complete'): void;
   renameFocusedCard?(): void;
+  renameFocusedBoard?(): void;
   loadMoreAfter?(noteId: number): boolean;
   loadMoreBefore?(noteId: number): boolean;
   focusExtremeCard?(which: 'first' | 'last'): boolean;

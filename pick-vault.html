@@ -15,9 +15,11 @@
         <p class="vaultAccessKicker">Obsidian Sync</p>
         <h1 id="pickVaultTitle" class="vaultAccessTitle">Choose Your Vault Folder</h1>
         <p class="vaultAccessIntro">
-          Select the vault’s <strong>root</strong> folder — the one whose name appears in Obsidian’s lower-left vault
-          menu — not the hidden <code>.obsidian</code> folder inside it. The extension popup cannot open the system
-          folder picker in some environments, so this full page is used instead.
+          Select the vault’s <strong>root</strong> folder — the name in Obsidian’s lower-left vault menu. Do not pick
+          the notes folder (for example <code>ToDo</code>) and do not pick the hidden <code>.obsidian</code> folder.
+          Chrome will ask you to Allow read/write. That Allow only applies to this tab. After you return to Settings,
+          click <strong>Allow folder access</strong> so the extension window can use the same folder. You do not choose
+          a second folder.
         </p>
       </header>
       <section class="vaultAccessPanel" aria-label="Vault folder picker">

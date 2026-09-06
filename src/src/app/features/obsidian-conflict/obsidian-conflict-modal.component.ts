@@ -28,12 +28,16 @@ export class ObsidianConflictModalComponent {
     const nav = getNavKeys(this.state.keyLayout());
     const mod = modKeyLabel(this.state.keyboardNavPlatform());
     const move = `${nav.left.toUpperCase()}${nav.down.toUpperCase()}${nav.up.toUpperCase()}${nav.right.toUpperCase()}`;
+    const properties =
+      conflict.propertyDiffs?.length > 0
+        ? ` Properties differ: ${conflict.propertyDiffs.map((row) => row.key).join(', ')}.`
+        : '';
     return buildObsidianConflictHint({
       vaultFileTime: conflict.vaultUpdatedAt,
       appUpdatedAt: conflict.appUpdatedAt,
       vaultNewerByClock: conflict.vaultNewerByClock,
       appNewerByClock: conflict.appNewerByClock,
-      keys: `Keys: 1 keep card · 2 keep vault · Enter confirm · Esc cancel · arrows or ${move} (${mod}+ also).`,
+      keys: `Keys: 1 keep card · 2 keep vault · Enter confirm · Esc cancel · arrows or ${move} (${mod}+ also).${properties}`,
     });
   }
 

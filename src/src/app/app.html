@@ -17,7 +17,7 @@
             [ngModel]="themeModel()"
           >
             @for (theme of themeOptions; track theme) {
-              <option [value]="theme">{{ theme }}</option>
+              <option [value]="theme">{{ themeLabels[theme] }}</option>
             }
           </select>
           <a id="instructionsLink" routerLink="/instructions" class="headerLink" routerLinkActive="headerLink--active">Instructions</a>
