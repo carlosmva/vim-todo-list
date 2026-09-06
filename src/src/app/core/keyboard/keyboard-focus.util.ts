@@ -385,10 +385,8 @@ export function focusViewContentEntry(path: string, fromHeaderEl: Element | null
   }
 
   if (route === '/calendar') {
-    const day = document.querySelector<HTMLElement>('.calendarDayCell');
-    if (day) return safeFocus(day);
-    const close = document.querySelector<HTMLElement>('[aria-label="Calendar"] .instructionsHeader .monoLinkButton');
-    return close ? safeFocus(close) : false;
+    if (focusCalendarSelectedDay()) return true;
+    return focusCalendarClose();
   }
 
   if (route === '/settings') {
@@ -405,6 +403,64 @@ export function focusViewContentEntry(path: string, fromHeaderEl: Element | null
   return close ? safeFocus(close) : false;
 }
 
+export function getCalendarCloseButton(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    '[aria-label="Calendar"] .title-bar__closeLink, [aria-label="Calendar"] .instructionsHeader .monoLinkButton'
+  );
+}
+
+export function getCalendarMonthTabs(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[aria-label="Calendar"] .title-bar__month')].filter(isVisible);
+}
+
+export function focusCalendarClose(): boolean {
+  return safeFocus(getCalendarCloseButton());
+}
+
+export function focusCalendarSelectedDay(): boolean {
+  return safeFocus(
+    document.querySelector<HTMLElement>('.calendarDayCell--selected') ??
+      document.querySelector<HTMLElement>('.calendarDayCell')
+  );
+}
+
+function calendarGridRows(): number[] {
+  return [...document.querySelectorAll<HTMLElement>('.calendarDayCell')]
+    .map((cell) => Number(cell.dataset['calendarRow']))
+    .filter(Number.isFinite);
+}
+
+function focusCalendarCell(month: number, row: number, column: number): boolean {
+  const target = document.querySelector<HTMLElement>(
+    `.calendarDayCell[data-calendar-month="${month}"]` +
+      `[data-calendar-row="${row}"][data-calendar-column="${column}"]`
+  );
+  if (target) return safeFocus(target);
+  return safeFocus(document.querySelector<HTMLElement>('.calendarDayCell--selected'));
+}
+
+function stepVisibleCalendarMonth(delta: -1 | 1, row: number | 'last', column: number): boolean {
+  const button = document.querySelector<HTMLButtonElement>(
+    `[data-calendar-month-step="${delta}"]:not([disabled])`
+  );
+  if (!button) return false;
+  button.click();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const rows = calendarGridRows();
+      const lastRow = rows.length ? Math.max(...rows) : 0;
+      const targetRow = row === 'last' ? lastRow : row;
+      const month = Number(document.querySelector<HTMLElement>('.calendarDayCell')?.dataset['calendarMonth']);
+      if (!Number.isFinite(month)) {
+        safeFocus(document.querySelector<HTMLElement>('.calendarDayCell--selected'));
+        return;
+      }
+      focusCalendarCell(month, targetRow, column);
+    });
+  });
+  return true;
+}
+
 /** Moves calendar focus by its visual seven-column grid coordinates. */
 export function moveCalendarFocus(rowDelta: number, columnDelta: number): boolean {
   const active = document.activeElement;
@@ -415,23 +471,29 @@ export function moveCalendarFocus(rowDelta: number, columnDelta: number): boolea
   const column = Number(active.dataset['calendarColumn']);
   if (![month, row, column].every(Number.isFinite)) return false;
 
+  const lastRow = Math.max(0, ...calendarGridRows());
   let targetMonth = month;
-  const targetRow = row + rowDelta;
+  let targetRow = row + rowDelta;
   let targetColumn = column + columnDelta;
 
   if (columnDelta === 1 && targetColumn >= 7) {
-    targetMonth++;
-    targetColumn = 0;
-  } else if (columnDelta === -1 && targetColumn < 0) {
-    targetMonth--;
-    targetColumn = 6;
+    return stepVisibleCalendarMonth(1, row, 0);
+  }
+  if (columnDelta === -1 && targetColumn < 0) {
+    return stepVisibleCalendarMonth(-1, row, 6);
+  }
+  if (rowDelta === -1 && targetRow < 0) {
+    return stepVisibleCalendarMonth(-1, 'last', column);
+  }
+  if (rowDelta === 1 && targetRow > lastRow) {
+    return stepVisibleCalendarMonth(1, 0, column);
   }
 
   const selector =
     `.calendarDayCell[data-calendar-month="${targetMonth}"]` +
     `[data-calendar-row="${targetRow}"][data-calendar-column="${targetColumn}"]`;
   const target = document.querySelector<HTMLElement>(selector);
-  return target ? safeFocus(target) : false;
+  return target ? safeFocus(target) : true;
 }
 
 /** In-app route from an anchor href, or null for external / non-nav links. */

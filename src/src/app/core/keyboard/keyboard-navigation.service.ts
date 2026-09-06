@@ -21,10 +21,14 @@ import {
 } from './notes-vim-editor.util';
 import { NotesVimEditorService } from './notes-vim-editor.service';
 import {
+  focusCalendarClose,
+  focusCalendarSelectedDay,
   focusCardPrimaryAction,
   focusMainBoardSwitcherTab,
   focusNotesSearchRow,
   focusViewContentEntry,
+  getCalendarCloseButton,
+  getCalendarMonthTabs,
   getActiveViewNavLink,
   getAllCardsInDomOrder,
   getBoardColumnElements,
@@ -555,11 +559,48 @@ export class KeyboardNavigationService {
     const calendarTask =
       activeEl instanceof HTMLElement && activeEl.classList.contains('calendarTaskLink');
     if (path === '/calendar') {
+      const closeBtn = getCalendarCloseButton();
+      const monthTabs = getCalendarMonthTabs();
+      const onClose = activeEl === closeBtn;
+      const monthTabIndex = activeEl instanceof HTMLElement ? monthTabs.indexOf(activeEl) : -1;
+      if (onClose || monthTabIndex >= 0) {
+        if (key === nav.left || key === nav.right) {
+          const chrome = [...monthTabs, ...(closeBtn ? [closeBtn] : [])];
+          const idx = activeEl instanceof HTMLElement ? chrome.indexOf(activeEl) : -1;
+          if (idx >= 0) {
+            const next = chrome[idx + (key === nav.right ? 1 : -1)];
+            if (next) safeFocus(next);
+          }
+          return;
+        }
+        if (key === nav.down) {
+          focusCalendarSelectedDay();
+          return;
+        }
+        if (key === nav.up) {
+          const link = getActiveViewNavLink();
+          if (link) safeFocus(link);
+          return;
+        }
+      }
+
       if (calendarDay) {
-        if (key === nav.up && moveCalendarFocus(-1, 0)) return;
-        if (key === nav.down && moveCalendarFocus(1, 0)) return;
-        if (key === nav.left && moveCalendarFocus(0, -1)) return;
-        if (key === nav.right && moveCalendarFocus(0, 1)) return;
+        if (key === nav.up) {
+          if (!moveCalendarFocus(-1, 0)) focusCalendarClose();
+          return;
+        }
+        if (key === nav.down) {
+          moveCalendarFocus(1, 0);
+          return;
+        }
+        if (key === nav.left) {
+          moveCalendarFocus(0, -1);
+          return;
+        }
+        if (key === nav.right) {
+          moveCalendarFocus(0, 1);
+          return;
+        }
       }
 
       if (calendarTask) {

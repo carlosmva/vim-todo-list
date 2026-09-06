@@ -6,6 +6,23 @@
   overflow: hidden;
 }
 
+.notesToast {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-start: 50%;
+  z-index: 40;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border: 1px solid var(--modern-border, var(--cds-border-subtle, #e0e0e0));
+  border-radius: var(--modern-radius-sm, 8px);
+  background: var(--modern-surface-2, var(--cds-layer-02, #fff));
+  color: var(--modern-text, inherit);
+  box-shadow: var(--modern-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.18));
+  font-size: 0.85rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 :host ::ng-deep .tabs .bx--tabs__nav-link {
   gap: 0.35rem;
 }

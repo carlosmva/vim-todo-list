@@ -6,6 +6,12 @@ Chrome extension for fast, keyboard-first task notes stored locally in an embedd
 
 Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
 
+## What's new in 1.3.2
+
+- Calendar uses the selected theme, a single-month agenda layout, and task-count pills.
+- Arrow keys can leave the calendar grid to Close.
+- Clicking a link on a flipped card copies it to the clipboard.
+
 ## What's new in 1.3.1
 
 - **Focus Mode**: press `f` on a pending task to work one item at a time; Esc returns to the board.

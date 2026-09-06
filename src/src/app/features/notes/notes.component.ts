@@ -123,6 +123,8 @@ export class NotesComponent implements OnInit, OnDestroy {
   private deleteReturnFocusNoteId: number | null = null;
   private readonly linkDraftByNoteId = new Map<number, LinkDraft>();
   private conflictResolvedSub?: Subscription;
+  readonly linkCopiedToast = signal('');
+  private linkCopiedToastTimer: ReturnType<typeof setTimeout> | null = null;
 
   ngOnInit(): void {
     this.refresh();
@@ -206,6 +208,7 @@ export class NotesComponent implements OnInit, OnDestroy {
     this.keyboardBridge.unregister();
     this.clearTaskAutocomplete();
     this.clearEditorAutocomplete();
+    this.clearLinkCopiedToast();
   }
 
   focusFilter(): void {
@@ -2362,6 +2365,53 @@ export class NotesComponent implements OnInit, OnDestroy {
 
   links(note: Note) {
     return this.repo.queryLinks(note.id);
+  }
+
+  async copyNoteLink(event: Event, url: string): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const text = String(url || '').trim();
+    if (!text) {
+      this.showLinkCopiedToast("Couldn't copy link");
+      return;
+    }
+    const copied = await this.writeClipboardText(text);
+    this.showLinkCopiedToast(copied ? 'Copied to clipboard' : "Couldn't copy link");
+  }
+
+  private async writeClipboardText(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      try {
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.setAttribute('readonly', '');
+        input.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(input);
+        input.select();
+        const ok = document.execCommand('copy');
+        input.remove();
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  private showLinkCopiedToast(message: string): void {
+    this.clearLinkCopiedToast();
+    this.linkCopiedToast.set(message);
+    this.linkCopiedToastTimer = setTimeout(() => this.clearLinkCopiedToast(), 1600);
+  }
+
+  private clearLinkCopiedToast(): void {
+    if (this.linkCopiedToastTimer) {
+      clearTimeout(this.linkCopiedToastTimer);
+      this.linkCopiedToastTimer = null;
+    }
+    this.linkCopiedToast.set('');
   }
 
   async deleteLink(linkId: number, noteId: number): Promise<void> {

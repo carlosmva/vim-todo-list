@@ -1,55 +1,104 @@
 <div class="view" aria-label="Calendar">
-  <div class="instructionsHeader">
-    <div class="instructionsTitle">Calendar</div>
-    <a routerLink="/" class="monoLinkButton">Close</a>
-  </div>
-  <div class="calendarLayout">
-    <div class="calendarContent">
-      @for (month of months(); track month.title; let monthIndex = $index) {
-        <div class="calendarMonth" [attr.data-calendar-month]="monthIndex">
-          <h3 class="calendarMonthTitle">{{ month.title }}</h3>
-          <div class="calendarWeekdays" aria-hidden="true">
-            @for (label of weekdayLabels; track label) {
-              <span class="calendarWeekday">{{ label }}</span>
-            }
-          </div>
-          <div class="calendarDays">
-            @for (cell of month.days; track $index; let cellIndex = $index) {
-              <div class="calendarCell" [class.calendarCell--empty]="cell === null">
-                @if (cell !== null) {
-                  <button
-                    type="button"
-                    class="calendarDayCell monoLinkButton"
-                    [class.calendarDayCell--selected]="selectedDay() === cell"
-                    [class.hasTasks]="tasksForDay(cell).length > 0"
-                    (click)="selectDay(cell)"
-                    (focus)="selectDay(cell)"
-                    (keydown.enter)="focusFirstTask(cell, $event)"
-                    [attr.data-calendar-month]="monthIndex"
-                    [attr.data-calendar-row]="calendarRow(cellIndex)"
-                    [attr.data-calendar-column]="calendarColumn(cellIndex)"
-                  >
-                    <span class="calendarCellDay">{{ dayNum(cell) }}</span>
-                    @if (tasksForDay(cell).length) {
-                      <span class="taskCount">{{ tasksForDay(cell).length }}</span>
-                    }
-                  </button>
-                }
-              </div>
-            } 
-          </div>
-        </div>
-      }
-    </div>
-    <aside class="calendarRightPane" aria-label="Tasks for selected day">
-      <div class="calendarDayLabel" aria-live="polite">{{ selectedLabel() }}</div>
-      <div class="calendarDayTasks">
-        @for (task of selectedTasks(); track task.id) {
-          <button type="button" class="monoLinkButton calendarTaskLink" (click)="goToNote(task)">
-            {{ task.text.slice(0, 60) }}
+  <main class="calendar-contain">
+    <section class="title-bar instructionsHeader">
+      <span class="title-bar__year">Calendar &gt; {{ visibleMonth()?.title }}</span>
+      <div class="title-bar__months" role="tablist" aria-label="Visible months">
+        @for (month of months(); track month.offset) {
+          <button
+            type="button"
+            class="title-bar__month"
+            role="tab"
+            [class.title-bar__month--active]="month.offset === monthOffset()"
+            [attr.aria-selected]="month.offset === monthOffset()"
+            (click)="showMonth(month.offset)"
+          >
+            {{ month.shortTitle }}
           </button>
         }
       </div>
+      <a routerLink="/" class="monoLinkButton title-bar__closeLink">Close</a>
+    </section>
+
+    <aside class="calendar__sidebar" aria-label="Tasks for selected day">
+      <div class="sidebar__nav">
+        <button type="button" class="sidebar__nav-item" (click)="goToNotes()" aria-label="Add a note">
+          <span aria-hidden="true">+</span>
+        </button>
+        <button
+          type="button"
+          class="sidebar__nav-item"
+          data-calendar-month-step="-1"
+          (click)="showMonth(monthOffset() - 1)"
+          [disabled]="monthOffset() === 0"
+          aria-label="Previous month"
+        >
+          <span aria-hidden="true">↑</span>
+        </button>
+        <button
+          type="button"
+          class="sidebar__nav-item"
+          data-calendar-month-step="1"
+          (click)="showMonth(monthOffset() + 1)"
+          [disabled]="monthOffset() === months().length - 1"
+          aria-label="Next month"
+        >
+          <span aria-hidden="true">↓</span>
+        </button>
+      </div>
+      <h2 class="sidebar__heading" aria-live="polite">
+        <span class="sidebar__weekday">{{ selectedHeading().weekday }}</span>
+        @if (selectedHeading().monthDay) {
+          <span class="sidebar__monthDay">{{ selectedHeading().monthDay }}</span>
+        }
+      </h2>
+      <ul class="sidebar__list">
+        @for (task of selectedTasks(); track task.id) {
+          <li class="sidebar__list-item">
+            <button type="button" class="calendarTaskLink" (click)="goToNote(task)">
+              <span class="list-item__time">{{ task.board || 'Inbox' }}</span>
+              <span class="list-item__text">{{ task.text }}</span>
+            </button>
+          </li>
+        } @empty {
+          <li class="sidebar__list-item sidebar__list-item--empty">No due notes this day.</li>
+        }
+      </ul>
     </aside>
-  </div>
+
+    @if (visibleMonth(); as month) {
+      <section class="calendar__days" [attr.data-calendar-month]="month.offset">
+        <section class="calendar__top-bar" aria-hidden="true">
+          @for (label of weekdayLabels; track label) {
+            <span class="top-bar__days">{{ label }}</span>
+          }
+        </section>
+        @for (week of month.weeks; track $index; let weekIndex = $index) {
+          <section class="calendar__week">
+            @for (cell of week; track cell.ts; let columnIndex = $index) {
+              <button
+                type="button"
+                class="calendar__day calendarDayCell"
+                [class.inactive]="!cell.inMonth"
+                [class.today]="cell.isToday"
+                [class.calendarDayCell--selected]="selectedDay() === cell.ts"
+                (click)="selectDay(cell.ts)"
+                (focus)="selectDay(cell.ts)"
+                (keydown.enter)="focusFirstTask(cell.ts, $event)"
+                [attr.data-calendar-month]="month.offset"
+                [attr.data-calendar-row]="weekIndex"
+                [attr.data-calendar-column]="columnIndex"
+                [attr.aria-current]="cell.isToday ? 'date' : null"
+                [attr.aria-pressed]="selectedDay() === cell.ts"
+              >
+                <span class="calendar__date">{{ cell.day }}</span>
+                @if (countLabel(cell); as label) {
+                  <span class="calendar__task" [class.calendar__task--today]="cell.isToday">{{ label }}</span>
+                }
+              </button>
+            }
+          </section>
+        }
+      </section>
+    }
+  </main>
 </div>

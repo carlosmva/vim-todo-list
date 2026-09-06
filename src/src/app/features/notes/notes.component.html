@@ -1,4 +1,7 @@
 <div class="view" id="notesView" aria-label="Notes view">
+  @if (linkCopiedToast(); as toast) {
+    <div class="notesToast" role="status" aria-live="polite">{{ toast }}</div>
+  }
   @if (addDialogVisible()) {
   <div id="addNoteModal" class="addNoteModal" role="presentation">
     <div class="addNoteModalBackdrop" aria-hidden="true" (click)="closeAddDialog()"></div>
@@ -460,7 +463,12 @@
                         } @else {
                           @for (link of links(note); track link.id) {
                             <div class="linkRow">
-                              <a [href]="link.url" target="_blank" rel="noreferrer">{{ link.description || link.url }}</a>
+                              <a
+                                [href]="link.url"
+                                rel="noreferrer"
+                                title="Copy link"
+                                (click)="copyNoteLink($event, link.url)"
+                              >{{ link.description || link.url }}</a>
                               <button
                                 type="button"
                                 class="monoLinkButton"
