@@ -31,17 +31,24 @@ export class PriorityRibbonService {
       (key) => this.dbService.getSetting(key),
       this.storage.getEnvelope().ai
     );
-    this.enabled.set(enabled);
     this.limit.set(limit);
-    this.refreshItems();
+    if (enabled) {
+      const next = this.repo.queryPriorityRibbonNotes(limit);
+      if (!sameRibbonItems(this.items(), next)) this.items.set(next);
+    } else if (this.items().length) {
+      this.items.set([]);
+    }
+    this.enabled.set(enabled);
   }
 
   refreshItems(): void {
     if (!this.enabled()) {
-      this.items.set([]);
+      if (this.items().length) this.items.set([]);
       return;
     }
-    this.items.set(this.repo.queryPriorityRibbonNotes(this.limit()));
+    const next = this.repo.queryPriorityRibbonNotes(this.limit());
+    if (sameRibbonItems(this.items(), next)) return;
+    this.items.set(next);
   }
 
   saveSettings(enabled: boolean, limit: PriorityRibbonLimit): void {
@@ -61,4 +68,18 @@ export class PriorityRibbonService {
 
     this.refreshItems();
   }
+}
+
+function sameRibbonItems(current: PriorityRibbonNote[], next: PriorityRibbonNote[]): boolean {
+  if (current.length !== next.length) return false;
+  return current.every((item, index) => {
+    const other = next[index];
+    return (
+      item.id === other.id &&
+      item.text === other.text &&
+      item.board === other.board &&
+      item.priority === other.priority &&
+      item.due_at === other.due_at
+    );
+  });
 }

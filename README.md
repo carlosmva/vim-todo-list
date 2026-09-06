@@ -6,6 +6,12 @@ Chrome extension for fast, keyboard-first task notes stored locally in an embedd
 
 Also available in chrome webstore https://chromewebstore.google.com/detail/vim-todo-list/ofanmcblejkboimkfachgfgimfencdmd
 
+## What's new in 1.3.3
+
+- Priority ribbon rotates top pending tasks above the header.
+- Interface and header title fonts use installed system families and apply immediately.
+- Theme, interface font, and header title font dropdowns share the same keyboard arming.
+
 ## What's new in 1.3.2
 
 - Calendar uses the selected theme, a single-month agenda layout, and task-count pills.

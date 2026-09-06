@@ -1,25 +1,64 @@
 export const DEFAULT_HEADER_TITLE = 'Vim To-Do List';
 
-/** Top-tier defaults — Puppertino uses -apple-system + Inter. */
-export const DEFAULT_INTERFACE_FONT = 'inter' as const;
-export const DEFAULT_HEADER_TITLE_FONT = 'inter' as const;
+/** Theme chrome uses the platform UI face until the user picks a family. */
+export const DEFAULT_INTERFACE_FONT = 'system-ui';
+export const DEFAULT_HEADER_TITLE_FONT = '';
 
-export const PUPPERTINO_FONT_STACK =
-  '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif';
-
+/** Installed-family names. Kept as a fallback when local font enumeration is blocked. */
 export const INTERFACE_FONT_ORDER = [
-  'plus-jakarta',
-  'inter',
-  'manrope',
-  'dm-sans',
-  'sora',
-  'montserrat',
-  'red-hat',
+  'system-ui',
+  'Segoe UI',
+  'Calibri',
+  'Cambria',
+  'Candara',
+  'Consolas',
+  'Constantia',
+  'Corbel',
+  'Georgia',
+  'Tahoma',
+  'Trebuchet MS',
+  'Verdana',
+  'Arial',
+  'Arial Black',
+  'Comic Sans MS',
+  'Impact',
+  'Times New Roman',
+  'Courier New',
+  'Lucida Console',
+  'Lucida Sans Unicode',
+  'Palatino Linotype',
+  'Franklin Gothic Medium',
+  'Bahnschrift',
+  'Cascadia Code',
+  'Cascadia Mono',
+  'Aptos',
+  'Sitka Text',
+  'Ink Free',
+  'Helvetica',
+  'Helvetica Neue',
+  'San Francisco',
+  'Avenir',
+  'Futura',
+  'Gill Sans',
+  'Optima',
+  'Palatino',
+  'Baskerville',
+  'Menlo',
+  'Monaco',
+  'Geneva',
+  'Lucida Grande',
+  'sans-serif',
+  'serif',
+  'monospace',
+  'ui-sans-serif',
+  'ui-serif',
+  'ui-monospace',
+  'ui-rounded',
 ] as const;
 
-export type InterfaceFontKey = (typeof INTERFACE_FONT_ORDER)[number];
+export type InterfaceFontKey = string;
 
-export const INTERFACE_FONT_LABELS: Record<InterfaceFontKey, string> = {
+const LEGACY_INTERFACE_FONT_FAMILIES: Record<string, string> = {
   inter: 'Inter',
   manrope: 'Manrope',
   'dm-sans': 'DM Sans',
@@ -29,37 +68,33 @@ export const INTERFACE_FONT_LABELS: Record<InterfaceFontKey, string> = {
   'red-hat': 'Red Hat Text',
 };
 
-export const INTERFACE_FONT_FAMILIES: Record<InterfaceFontKey, string> = {
-  inter: `${PUPPERTINO_FONT_STACK}`,
-  manrope: '"Manrope", system-ui, sans-serif',
-  'dm-sans': '"DM Sans", system-ui, sans-serif',
-  'plus-jakarta': '"Plus Jakarta Sans", system-ui, sans-serif',
-  sora: '"Sora", system-ui, sans-serif',
-  montserrat: '"Montserrat", system-ui, sans-serif',
-  'red-hat': '"Red Hat Text", system-ui, sans-serif',
-};
+const GENERIC_FONT_FAMILIES = new Set([
+  'system-ui',
+  'sans-serif',
+  'serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'ui-sans-serif',
+  'ui-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'emoji',
+  'math',
+  'fangsong',
+]);
 
 /** Value "" means follow each theme's header title styling. */
-export const HEADER_TITLE_FONT_ORDER = [
-  '',
-  'plus-jakarta',
-  'kelvinized',
-  'inter',
-  'manrope',
-  'dm-sans',
-  'sora',
-  'montserrat',
-  'red-hat',
-  'space-grotesk',
-  'doto',
-  'space-mono',
-] as const;
+export const HEADER_TITLE_FONT_ORDER = ['', ...INTERFACE_FONT_ORDER] as const;
 
-export type HeaderTitleFontKey = (typeof HEADER_TITLE_FONT_ORDER)[number];
+export type HeaderTitleFontKey = string;
 
-export const HEADER_TITLE_FONT_LABELS: Record<HeaderTitleFontKey, string> = {
+export const HEADER_TITLE_FONT_LABELS: Record<string, string> = {
   '': 'Theme default',
-  kelvinized: 'Kelvinized',
+};
+
+const LEGACY_HEADER_TITLE_FONT_FAMILIES: Record<string, string> = {
+  kelvinized: 'Kelvinized Normal',
   inter: 'Inter',
   manrope: 'Manrope',
   'dm-sans': 'DM Sans',
@@ -70,20 +105,6 @@ export const HEADER_TITLE_FONT_LABELS: Record<HeaderTitleFontKey, string> = {
   'space-grotesk': 'Space Grotesk',
   doto: 'Doto',
   'space-mono': 'Space Mono',
-};
-
-export const HEADER_TITLE_FONT_FAMILIES: Record<Exclude<HeaderTitleFontKey, ''>, string> = {
-  kelvinized: '"Kelvinized Normal", system-ui, sans-serif',
-  inter: PUPPERTINO_FONT_STACK,
-  manrope: '"Manrope", system-ui, sans-serif',
-  'dm-sans': '"DM Sans", system-ui, sans-serif',
-  'plus-jakarta': '"Plus Jakarta Sans", system-ui, sans-serif',
-  sora: '"Sora", system-ui, sans-serif',
-  montserrat: '"Montserrat", system-ui, sans-serif',
-  'red-hat': '"Red Hat Display", system-ui, sans-serif',
-  'space-grotesk': '"Space Grotesk", system-ui, sans-serif',
-  doto: '"Doto", "Space Grotesk", system-ui, sans-serif',
-  'space-mono': '"Space Mono", ui-monospace, monospace',
 };
 
 export function normalizeHeaderTitleInput(value: string): string {
@@ -98,16 +119,34 @@ export function headerTitleForDisplay(storedRaw: string): string {
   return trimmed || DEFAULT_HEADER_TITLE;
 }
 
+export function sanitizeFontFamilyName(raw: string): string {
+  return String(raw || '')
+    .replace(/["';{}\\<>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
 export function normalizeInterfaceFontKey(stored: string): InterfaceFontKey | '' {
-  const key = String(stored || '').trim();
+  const key = sanitizeFontFamilyName(stored);
   if (!key) return '';
-  return (INTERFACE_FONT_ORDER as readonly string[]).includes(key) ? (key as InterfaceFontKey) : '';
+  return LEGACY_INTERFACE_FONT_FAMILIES[key] || key;
+}
+
+export function interfaceFontCss(family: string): string {
+  const name = normalizeInterfaceFontKey(family) || DEFAULT_INTERFACE_FONT;
+  if (GENERIC_FONT_FAMILIES.has(name)) return `${name}, sans-serif`;
+  return `"${name}", system-ui, sans-serif`;
+}
+
+export function headerTitleFontCss(family: string): string {
+  return interfaceFontCss(family);
 }
 
 export function normalizeHeaderTitleFontKey(stored: string): HeaderTitleFontKey {
-  const key = String(stored || '').trim();
+  const key = sanitizeFontFamilyName(stored);
   if (!key) return '';
-  return (HEADER_TITLE_FONT_ORDER as readonly string[]).includes(key) ? (key as HeaderTitleFontKey) : '';
+  return LEGACY_HEADER_TITLE_FONT_FAMILIES[key] || key;
 }
 
 export function resolveInterfaceFont(stored: string | null | undefined): InterfaceFontKey {
@@ -116,17 +155,15 @@ export function resolveInterfaceFont(stored: string | null | undefined): Interfa
 }
 
 export function resolveHeaderTitleFont(stored: string | null | undefined): HeaderTitleFontKey {
-  if (stored === null || stored === undefined || stored === '') {
-    return DEFAULT_HEADER_TITLE_FONT;
-  }
-  const normalized = normalizeHeaderTitleFontKey(stored);
-  return normalized || DEFAULT_HEADER_TITLE_FONT;
+  if (stored === null || stored === undefined) return DEFAULT_HEADER_TITLE_FONT;
+  return normalizeHeaderTitleFontKey(stored);
 }
 
 export function interfaceFontLabel(key: InterfaceFontKey): string {
-  return INTERFACE_FONT_LABELS[key] || key;
+  return normalizeInterfaceFontKey(key) || key || DEFAULT_INTERFACE_FONT;
 }
 
 export function headerTitleFontLabel(key: HeaderTitleFontKey): string {
-  return HEADER_TITLE_FONT_LABELS[key] || key || 'Theme default';
+  const normalized = normalizeHeaderTitleFontKey(key);
+  return HEADER_TITLE_FONT_LABELS[normalized] || normalized || 'Theme default';
 }

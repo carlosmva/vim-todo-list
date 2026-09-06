@@ -39,10 +39,6 @@ export class App implements OnDestroy {
   themeModel = computed(() => this.state.theme());
   readonly headerTitleDisplay = this.state.headerTitleDisplay;
   readonly ribbonEnabled = this.ribbon.enabled;
-  readonly ribbonAtTop = computed(() => {
-    const size = this.state.popupSize();
-    return size === 'm' || size === 'l';
-  });
 
   private readonly url = toSignal(
     this.router.events.pipe(

@@ -1,9 +1,23 @@
 /* Legacy popup.css + modern.css drive layout and themes. Keep Angular overrides minimal. */
 
 .monoLinkButton,
-.headerLink {
-  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+.headerLink,
+.headerThemeSelect {
+  font-family: var(--modern-font-sans);
+}
+
+html[data-interface-font] body,
+html[data-interface-font] body *:not(#headerTitle) {
+  font-family: var(--modern-font-sans) !important;
+}
+
+html[data-header-title-font] #headerTitle {
+  font-family: var(--header-title-font-family) !important;
+}
+
+html[data-interface-font] .priorityRibbon,
+html[data-interface-font] .priorityRibbon * {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
 }
 
 .loading {

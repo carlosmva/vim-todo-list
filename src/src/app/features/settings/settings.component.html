@@ -111,14 +111,20 @@
               <label for="settingsInterfaceFontSelect">Interface font</label>
               <select
                 id="settingsInterfaceFontSelect"
-                class="bx--text-input appearanceThemeSelect"
+                class="headerThemeSelect appearanceThemeSelect"
                 aria-label="Interface font"
+                appArmedSelectKeyboard
+                [armedSelectOrder]="interfaceFontOptions()"
+                [armedSelectValue]="stateRef.interfaceFont()"
+                (armedSelectChange)="onInterfaceFontChange($event)"
+                armedSelectSubject="Interface font"
+                [armedSelectLabel]="interfaceFontLabelFn"
                 [ngModel]="stateRef.interfaceFont()"
-                (ngModelChange)="onInterfaceFontChange($event)"
                 name="interfaceFont"
+                (pointerdown)="onInterfaceFontPointerDown()"
               >
-                @for (font of interfaceFontOptions; track font) {
-                  <option [value]="font">{{ interfaceFontLabels[font] }}</option>
+                @for (font of interfaceFontOptions(); track font) {
+                  <option [value]="font" [style.font-family]="font">{{ font }}</option>
                 }
               </select>
             </div>
@@ -145,19 +151,22 @@
               <label for="settingsHeaderTitleFontSelect">Header title font</label>
               <select
                 id="settingsHeaderTitleFontSelect"
-                class="bx--text-input appearanceThemeSelect"
+                class="headerThemeSelect appearanceThemeSelect"
                 aria-label="Header title font"
                 appArmedSelectKeyboard
-                [armedSelectOrder]="headerTitleFontOptions"
+                [armedSelectOrder]="headerTitleFontOptions()"
                 [armedSelectValue]="stateRef.headerTitleFont()"
                 (armedSelectChange)="onHeaderTitleFontChange($event)"
                 armedSelectSubject="Header title font"
                 [armedSelectLabel]="headerTitleFontLabelFn"
                 [ngModel]="stateRef.headerTitleFont()"
                 name="headerTitleFont"
+                (pointerdown)="onHeaderTitleFontPointerDown()"
               >
-                @for (font of headerTitleFontOptions; track font || 'theme-default') {
-                  <option [value]="font">{{ headerTitleFontLabels[font] }}</option>
+                @for (font of headerTitleFontOptions(); track font || 'theme-default') {
+                  <option [value]="font" [style.font-family]="font || 'inherit'">{{
+                    font ? font : 'Theme default'
+                  }}</option>
                 }
               </select>
             </div>
@@ -263,7 +272,7 @@
                 Generate Priorities ribbon
               </label>
               <p class="obsidianIntro settingsBoardsHint">
-                When enabled, a stock-ticker style ribbon rotates your top pending tasks in the main view nav row.
+                When enabled, a stock-ticker style ribbon rotates your top pending tasks above the header.
               </p>
               @if (aiPriorityRibbon()) {
                 <div class="keyLayoutRadios">

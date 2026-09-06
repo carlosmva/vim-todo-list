@@ -30,14 +30,12 @@ import { ThemeSelectKeyboardDirective } from '../../core/keyboard/theme-select-k
 import { ArmedSelectKeyboardDirective } from '../../core/keyboard/armed-select-keyboard.directive';
 import { modKeyLabel, type KeyboardNavPlatform } from '../../core/keyboard/keyboard.model';
 import {
-  HEADER_TITLE_FONT_LABELS,
   HEADER_TITLE_FONT_ORDER,
   headerTitleFontLabel,
-  INTERFACE_FONT_LABELS,
   INTERFACE_FONT_ORDER,
-  type HeaderTitleFontKey,
-  type InterfaceFontKey,
+  interfaceFontLabel,
 } from '../../core/models/appearance-font.model';
+import { SystemFontsService } from '../../core/services/system-fonts.service';
 import {
   SettingsKeyboardBridge,
   type SettingsTabId,
@@ -74,6 +72,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   private readonly obsidian = inject(ObsidianService);
   private readonly tour = inject(GuidedTourService);
   private readonly settingsKeyboard = inject(SettingsKeyboardBridge);
+  private readonly systemFonts = inject(SystemFontsService);
 
   readonly themeOptions = THEME_ORDER;
   readonly themeLabels = THEME_LABELS;
@@ -82,12 +81,10 @@ export class SettingsComponent implements OnInit, OnDestroy {
     id,
     label: POPUP_SIZE_DIMENSIONS[id].label,
   }));
-  readonly interfaceFontOptions = INTERFACE_FONT_ORDER;
-  readonly interfaceFontLabels = INTERFACE_FONT_LABELS;
-  readonly headerTitleFontOptions = HEADER_TITLE_FONT_ORDER;
-  readonly headerTitleFontLabels = HEADER_TITLE_FONT_LABELS;
-  readonly headerTitleFontLabelFn = (value: string): string =>
-    headerTitleFontLabel(value as HeaderTitleFontKey);
+  readonly interfaceFontOptions = signal<readonly string[]>(INTERFACE_FONT_ORDER);
+  readonly interfaceFontLabelFn = (value: string): string => interfaceFontLabel(value);
+  readonly headerTitleFontOptions = signal<readonly string[]>(HEADER_TITLE_FONT_ORDER);
+  readonly headerTitleFontLabelFn = (value: string): string => headerTitleFontLabel(value);
   readonly defaultOllamaEndpoint = DEFAULT_OLLAMA_ENDPOINT;
   headerTitleInput = '';
   readonly layoutOptions = [
@@ -131,6 +128,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.listenForVaultSelection();
     void this.restoreVaultSelection();
     void this.obsidian.preloadVaultRoot();
+    void this.loadSystemFonts();
     this.settingsKeyboard.register({
       selectTab: (tab) => this.selectTab(tab),
       activeTab: () => this.activeTab(),
@@ -176,8 +174,25 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.state.setPopupSize(size);
   }
 
-  onInterfaceFontChange(font: InterfaceFontKey): void {
+  onInterfaceFontChange(font: string): void {
     this.state.setInterfaceFont(font);
+  }
+
+  onInterfaceFontPointerDown(): void {
+    void this.loadSystemFonts();
+  }
+
+  onHeaderTitleFontPointerDown(): void {
+    void this.loadSystemFonts();
+  }
+
+  private async loadSystemFonts(): Promise<void> {
+    const fonts = await this.systemFonts.list([
+      this.state.interfaceFont(),
+      this.state.headerTitleFont(),
+    ]);
+    this.interfaceFontOptions.set(fonts);
+    this.headerTitleFontOptions.set(['', ...fonts]);
   }
 
   onHeaderTitleInput(value: string): void {
@@ -190,7 +205,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   onHeaderTitleFontChange(font: string): void {
-    this.state.setHeaderTitleFont(font as HeaderTitleFontKey);
+    this.state.setHeaderTitleFont(font);
   }
 
   onLayoutChange(layout: 'qwerty' | 'dvorak'): void {

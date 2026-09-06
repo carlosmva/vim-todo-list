@@ -28,7 +28,7 @@ export class ArmedSelectKeyboardDirective implements OnInit {
   ngOnInit(): void {
     const select = this.el.nativeElement;
     const handlers: ArmedSelectHandlers = {
-      order: this.armedSelectOrder(),
+      getOrder: () => this.armedSelectOrder(),
       getValue: () => this.armedSelectValue(),
       onCommit: (value) => this.armedSelectChange.emit(value),
       labelFor: (value) => this.armedSelectLabel()(value),

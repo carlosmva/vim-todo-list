@@ -11,6 +11,8 @@ import {
 import { POPUP_SIZE_ORDER, PopupSizeId } from '../models/popup-size.model';
 import { defaultKeyboardNavPlatform, type KeyboardNavPlatform } from '../keyboard/keyboard.model';
 import {
+  DEFAULT_HEADER_TITLE_FONT,
+  DEFAULT_INTERFACE_FONT,
   headerTitleForDisplay,
   normalizeHeaderTitleInput,
   normalizeHeaderTitleFontKey,
@@ -29,8 +31,8 @@ export class AppStateService {
   readonly keyboardNavPlatform = signal<KeyboardNavPlatform>(defaultKeyboardNavPlatform());
   readonly popupSize = signal<PopupSizeId>('m');
   readonly headerTitleRaw = signal('');
-  readonly headerTitleFont = signal<HeaderTitleFontKey>('inter');
-  readonly interfaceFont = signal<InterfaceFontKey>('inter');
+  readonly headerTitleFont = signal<HeaderTitleFontKey>(DEFAULT_HEADER_TITLE_FONT);
+  readonly interfaceFont = signal<InterfaceFontKey>(DEFAULT_INTERFACE_FONT);
   readonly headerTitleDisplay = computed(() => headerTitleForDisplay(this.headerTitleRaw()));
   readonly ready = signal(false);
 

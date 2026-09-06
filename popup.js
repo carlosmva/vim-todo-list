@@ -4329,9 +4329,20 @@ async function main() {
 
   function applyInterfaceFontKey(key) {
     const resolved = normalizeInterfaceFontKey(key);
-    const root = document.documentElement;
-    if (resolved) root.style.setProperty("--modern-font-sans", INTERFACE_FONT_FAMILIES[resolved]);
-    else root.style.removeProperty("--modern-font-sans");
+    const family = resolved ? INTERFACE_FONT_FAMILIES[resolved] : "";
+    const roots = [document.documentElement, document.body];
+    for (const node of roots) {
+      if (!(node instanceof HTMLElement)) continue;
+      if (family) {
+        node.style.setProperty("--modern-font-sans", family);
+        node.style.setProperty("--puppertino-font", family);
+        node.setAttribute("data-interface-font", resolved);
+      } else {
+        node.style.removeProperty("--modern-font-sans");
+        node.style.removeProperty("--puppertino-font");
+        node.removeAttribute("data-interface-font");
+      }
+    }
     if (settingsInterfaceFontSelect instanceof HTMLSelectElement) settingsInterfaceFontSelect.value = resolved;
   }
 

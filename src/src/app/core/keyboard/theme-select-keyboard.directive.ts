@@ -26,7 +26,7 @@ export class ThemeSelectKeyboardDirective implements OnInit {
   ngOnInit(): void {
     const select = this.el.nativeElement;
     this.armedSelect.register(select, {
-      order: THEME_ORDER,
+      getOrder: () => THEME_ORDER,
       getValue: () => this.themeSelectValue(),
       onCommit: (theme) => this.themeSelectChange.emit(theme as ThemeId),
       labelFor: (theme) => THEME_LABELS[theme as ThemeId] || theme,

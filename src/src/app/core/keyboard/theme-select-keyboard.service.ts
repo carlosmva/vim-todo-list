@@ -3,7 +3,7 @@ import type { NavKeys, KeyboardNavPlatform } from './keyboard.model';
 import { modKeyOnly } from './keyboard.model';
 
 export interface ArmedSelectHandlers {
-  order: readonly string[];
+  getOrder: () => readonly string[];
   getValue: () => string;
   onCommit: (value: string) => void;
   labelFor: (value: string) => string;
@@ -32,7 +32,7 @@ export class ThemeSelectKeyboardService {
 
   register(select: HTMLSelectElement, handlers: ArmedSelectHandlers): void {
     const reg: ArmedSelectRegistration = {
-      order: handlers.order,
+      getOrder: handlers.getOrder,
       getValue: handlers.getValue,
       onCommit: handlers.onCommit,
       labelFor: handlers.labelFor,
@@ -97,6 +97,12 @@ export class ThemeSelectKeyboardService {
       this.setArmed(select, false);
       return true;
     }
+    if (reg.armed && raw.length === 1 && !e.repeat) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.jumpSelect(select, raw);
+      return true;
+    }
     if (NATIVE_SELECT_NAV_KEYS.has(raw) || raw.length === 1) {
       e.preventDefault();
       e.stopPropagation();
@@ -155,7 +161,7 @@ export class ThemeSelectKeyboardService {
 
     const value = select.value;
     reg.changeAllowed = false;
-    if (!(reg.order as readonly string[]).includes(value)) {
+    if (!reg.getOrder().includes(value)) {
       this.syncSelectValue(select, reg);
       return;
     }
@@ -189,14 +195,34 @@ export class ThemeSelectKeyboardService {
     const reg = this.registrations.get(select);
     if (!reg?.armed) return;
 
-    const order = reg.order;
-    let idx = (order as readonly string[]).indexOf(select.value);
+    const order = reg.getOrder();
+    if (!order.length) return;
+    let idx = order.indexOf(select.value);
     if (idx < 0) idx = 0;
     idx = (idx + delta + order.length) % order.length;
 
     reg.changeAllowed = true;
     select.value = order[idx];
     select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  private jumpSelect(select: HTMLSelectElement, letter: string): void {
+    const reg = this.registrations.get(select);
+    if (!reg?.armed) return;
+    const order = reg.getOrder();
+    if (!order.length) return;
+    const needle = letter.toLowerCase();
+    const current = Math.max(0, order.indexOf(select.value));
+    for (let step = 1; step <= order.length; step += 1) {
+      const value = order[(current + step) % order.length];
+      const label = reg.labelFor(value);
+      if (label.toLowerCase().startsWith(needle)) {
+        reg.changeAllowed = true;
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
+    }
   }
 
   private updateArmedUi(select: HTMLSelectElement, reg: ArmedSelectRegistration): void {

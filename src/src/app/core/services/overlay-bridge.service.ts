@@ -1,9 +1,9 @@
 import { Injectable } from '@angular/core';
 import { ThemeId } from '../models/envelope.model';
 import {
-  HEADER_TITLE_FONT_FAMILIES,
+  headerTitleFontCss,
   headerTitleForDisplay,
-  INTERFACE_FONT_FAMILIES,
+  interfaceFontCss,
   type HeaderTitleFontKey,
   type InterfaceFontKey,
 } from '../models/appearance-font.model';
@@ -35,7 +35,18 @@ export class OverlayBridgeService {
   }
 
   setInterfaceFont(key: InterfaceFontKey): void {
-    document.documentElement.style.setProperty('--modern-font-sans', INTERFACE_FONT_FAMILIES[key]);
+    const family = interfaceFontCss(key);
+    this.applyRootVar('--modern-font-sans', family);
+    this.applyRootVar('--puppertino-font', family);
+    document.documentElement.style.setProperty('font-family', family);
+    document.body?.style.setProperty('font-family', family);
+    document.documentElement.setAttribute('data-interface-font', key);
+    document.body?.setAttribute('data-interface-font', key);
+  }
+
+  private applyRootVar(name: string, value: string): void {
+    document.documentElement.style.setProperty(name, value);
+    document.body?.style.setProperty(name, value);
   }
 
   setHeaderTitleText(storedRaw: string): void {
@@ -46,20 +57,26 @@ export class OverlayBridgeService {
   }
 
   setHeaderTitleFont(key: HeaderTitleFontKey): void {
-    const root = document.documentElement;
-    if (!key) {
-      root.style.removeProperty('--header-title-font-family');
-    } else {
-      root.style.setProperty('--header-title-font-family', HEADER_TITLE_FONT_FAMILIES[key]);
+    const family = key ? headerTitleFontCss(key) : '';
+    const roots = [document.documentElement, document.body];
+    for (const node of roots) {
+      if (!node) continue;
+      if (family) {
+        node.style.setProperty('--header-title-font-family', family);
+        node.setAttribute('data-header-title-font', key);
+      } else {
+        node.style.removeProperty('--header-title-font-family');
+        node.removeAttribute('data-header-title-font');
+      }
     }
 
     const el = document.getElementById('headerTitle');
     if (!(el instanceof HTMLElement)) return;
-    if (!key) {
+    if (!family) {
       el.style.removeProperty('font-family');
       return;
     }
-    el.style.setProperty('font-family', HEADER_TITLE_FONT_FAMILIES[key]);
+    el.style.setProperty('font-family', family);
   }
 
   close(): void {

@@ -1,7 +1,7 @@
 @if (ready()) {
   <div class="app" role="application" aria-label="Notes Kanban">
     <div class="app__topChrome">
-    @if (showViewNav() && ribbonEnabled() && ribbonAtTop()) {
+    @if (showViewNav() && ribbonEnabled()) {
       <app-priority-ribbon class="app__ribbonTop" />
     }
     <header class="header" aria-label="Header">
@@ -73,9 +73,6 @@
             Calendar
           </a>
         </div>
-        @if (ribbonEnabled() && !ribbonAtTop()) {
-          <app-priority-ribbon class="viewNav__ribbon" />
-        }
       </nav>
     }
     </div>
